@@ -1,0 +1,145 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: sairo-be-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: sairo-be
+  SSM_DOCUMENT: sairo-be-deploy
+  EC2_INSTANCE_ID: i-0306e7dd93fa22383
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Run tests
+        run: ./gradlew test --no-daemon
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: arn:aws:iam::632154834220:role/sairo-be-github-actions-deploy-role
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-${{ github.run_id }}
+          allowed-account-ids: "632154834220"
+          role-duration-seconds: 1800
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+
+      - name: Build and push image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          image_digest="$(
+            aws ecr batch-get-image \
+              --repository-name "${ECR_REPOSITORY}" \
+              --image-ids "imageTag=${IMAGE_TAG}" \
+              --query "images[0].imageId.imageDigest" \
+              --output text
+          )"
+
+          if [[ "${image_digest}" == sha256:* ]]; then
+            echo "Image already exists: ${image_digest}"
+            echo "Skipping duplicate build and push."
+          else
+            image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+            docker build \
+              --pull \
+              --label "org.opencontainers.image.revision=${IMAGE_TAG}" \
+              -t "${image}" \
+              .
+
+            docker push "${image}"
+          fi
+
+      - name: Deploy via SSM
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          command_id="$(
+            aws ssm send-command \
+              --document-name "${SSM_DOCUMENT}" \
+              --instance-ids "${EC2_INSTANCE_ID}" \
+              --parameters "imageTag=${IMAGE_TAG}" \
+              --comment "GitHub Actions run ${GITHUB_RUN_ID}" \
+              --query "Command.CommandId" \
+              --output text
+          )"
+
+          echo "SSM command ID: ${command_id}"
+
+          for attempt in $(seq 1 100); do
+            status="$(
+              aws ssm get-command-invocation \
+                --command-id "${command_id}" \
+                --instance-id "${EC2_INSTANCE_ID}" \
+                --query "Status" \
+                --output text 2>/dev/null || echo "Pending"
+            )"
+
+            echo "Attempt ${attempt}/100: ${status}"
+
+            case "${status}" in
+              Success)
+                echo "---- deployment output ----"
+                aws ssm get-command-invocation \
+                  --command-id "${command_id}" \
+                  --instance-id "${EC2_INSTANCE_ID}" \
+                  --query "StandardOutputContent" \
+                  --output text
+                exit 0
+                ;;
+              Failed|Cancelled|TimedOut)
+                echo "---- stdout ----"
+                aws ssm get-command-invocation \
+                  --command-id "${command_id}" \
+                  --instance-id "${EC2_INSTANCE_ID}" \
+                  --query "StandardOutputContent" \
+                  --output text || true
+
+                echo "---- stderr ----"
+                aws ssm get-command-invocation \
+                  --command-id "${command_id}" \
+                  --instance-id "${EC2_INSTANCE_ID}" \
+                  --query "StandardErrorContent" \
+                  --output text || true
+                exit 1
+                ;;
+            esac
+
+            sleep 10
+          done
+
+          echo "Timed out waiting for SSM command."
+          exit 1
