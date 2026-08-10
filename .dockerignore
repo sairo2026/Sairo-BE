@@ -2,4 +2,17 @@
 .gradle
 build
 .idea
+.vscode
+.github
 *.md
+
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.jks
+**/application-local.yml
+**/application-secret.yml
+**/logs
+**/*.log
