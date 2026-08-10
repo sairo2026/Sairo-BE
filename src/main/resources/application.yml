@@ -1,3 +1,22 @@
 spring:
   application:
     name: sairo-be
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  session:
+    jdbc:
+      initialize-schema: never
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health

@@ -4,6 +4,7 @@ build
 .idea
 .vscode
 .github
+deploy
 *.md
 
 **/.env

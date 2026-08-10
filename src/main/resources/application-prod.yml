@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    username: ${DB_APP_USERNAME}
+    password: ${DB_APP_PASSWORD}
+
+  flyway:
+    enabled: true
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    user: ${DB_MIGRATOR_USERNAME}
+    password: ${DB_MIGRATOR_PASSWORD}

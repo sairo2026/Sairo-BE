@@ -52,3 +52,7 @@ logs/
 *.key
 *.p12
 *.jks
+
+### Deploy runtime artifacts ###
+/deploy/env/
+/deploy/last-good-tag

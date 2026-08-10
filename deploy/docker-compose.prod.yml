@@ -1,0 +1,16 @@
+services:
+  api:
+    image: ${ECR_REPOSITORY_URI}:${IMAGE_TAG}
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    env_file:
+      - path: ./env/app.env
+        format: raw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
