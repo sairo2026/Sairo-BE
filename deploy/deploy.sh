@@ -110,19 +110,20 @@ deploy_tag() {
     docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" up -d
 }
 
+wait_for_healthy() {
+  for _ in $(seq 1 20); do
+    if curl -fsS "${HEALTH_URL}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 3
+  done
+  return 1
+}
+
 deploy_tag "${IMAGE_TAG}"
 
 echo "[deploy] waiting for health check"
-healthy=false
-for _ in $(seq 1 20); do
-  if curl -fsS "${HEALTH_URL}" >/dev/null 2>&1; then
-    healthy=true
-    break
-  fi
-  sleep 3
-done
-
-if [ "${healthy}" = true ]; then
+if wait_for_healthy; then
   echo "[deploy] healthy, recording ${IMAGE_TAG} as last-good"
   echo "${IMAGE_TAG}" > "${LAST_GOOD_FILE}"
   exit 0
@@ -132,6 +133,13 @@ echo "[deploy] health check failed for ${IMAGE_TAG}"
 if [ -n "${PREVIOUS_TAG}" ] && [ "${PREVIOUS_TAG}" != "${IMAGE_TAG}" ]; then
   echo "[deploy] rolling back to ${PREVIOUS_TAG}"
   deploy_tag "${PREVIOUS_TAG}"
+
+  echo "[deploy] waiting for health check after rollback"
+  if wait_for_healthy; then
+    echo "[deploy] rollback to ${PREVIOUS_TAG} is healthy"
+  else
+    echo "[deploy] rollback failed health check" >&2
+  fi
 else
   echo "[deploy] no previous good tag available to roll back to"
 fi
