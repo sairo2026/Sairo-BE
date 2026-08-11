@@ -89,10 +89,6 @@ umask 077
   echo "DB_NAME=${DB_NAME}"
   echo "DB_APP_USERNAME=${DB_APP_USERNAME}"
   echo "DB_APP_PASSWORD=${DB_APP_PASSWORD}"
-  # TODO: Remove after this image becomes last-good.
-  # Required only to start the legacy rollback image.
-  echo "DB_MIGRATOR_USERNAME=${DB_MIGRATOR_USERNAME}"
-  echo "DB_MIGRATOR_PASSWORD=${DB_MIGRATOR_PASSWORD}"
 } > "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
