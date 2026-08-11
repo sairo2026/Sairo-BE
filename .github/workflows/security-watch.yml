@@ -1,0 +1,38 @@
+name: Security Watch
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: security-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run unit tests
+        run: python3 deploy/scripts/tests/test_security_watch.py -v
+
+      - name: Fetch Cloudflare IPv4 list
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --proto '=https' --tlsv1.2 \
+            https://www.cloudflare.com/ips-v4 -o /tmp/cf-ips-live.txt
+
+      - name: Check Cloudflare IP drift and Origin cert expiry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 deploy/scripts/security_watch.py --live-ips /tmp/cf-ips-live.txt --check all
