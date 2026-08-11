@@ -25,6 +25,7 @@ COMPOSE_DIR="/opt/sairo"
 COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.prod.yml"
 ENV_DIR="${COMPOSE_DIR}/env"
 ENV_FILE="${ENV_DIR}/app.env"
+MIGRATE_ENV_FILE="${ENV_DIR}/migrate.env"
 LAST_GOOD_FILE="${COMPOSE_DIR}/last-good-tag"
 HEALTH_URL="http://127.0.0.1:8080/actuator/health"
 
@@ -88,10 +89,22 @@ umask 077
   echo "DB_NAME=${DB_NAME}"
   echo "DB_APP_USERNAME=${DB_APP_USERNAME}"
   echo "DB_APP_PASSWORD=${DB_APP_PASSWORD}"
+  # TODO: Remove after this image becomes last-good.
+  # Required only to start the legacy rollback image.
   echo "DB_MIGRATOR_USERNAME=${DB_MIGRATOR_USERNAME}"
   echo "DB_MIGRATOR_PASSWORD=${DB_MIGRATOR_PASSWORD}"
 } > "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
+
+umask 077
+{
+  echo "DB_HOST=${DB_HOST}"
+  echo "DB_PORT=${DB_PORT}"
+  echo "DB_NAME=${DB_NAME}"
+  echo "DB_MIGRATOR_USERNAME=${DB_MIGRATOR_USERNAME}"
+  echo "DB_MIGRATOR_PASSWORD=${DB_MIGRATOR_PASSWORD}"
+} > "${MIGRATE_ENV_FILE}"
+chmod 600 "${MIGRATE_ENV_FILE}"
 
 unset APP_SECRET_JSON MIGRATOR_SECRET_JSON DB_APP_PASSWORD DB_MIGRATOR_PASSWORD
 
@@ -100,14 +113,24 @@ if [ -f "${LAST_GOOD_FILE}" ]; then
   PREVIOUS_TAG=$(cat "${LAST_GOOD_FILE}")
 fi
 
+run_migration() {
+  local tag="$1"
+  echo "[deploy] pulling migrate image ${tag}"
+  IMAGE_TAG="${tag}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
+    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" pull migrate
+  echo "[deploy] running migration for ${tag}"
+  IMAGE_TAG="${tag}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
+    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" run --rm migrate
+}
+
 deploy_tag() {
   local tag="$1"
   echo "[deploy] pulling ${tag}"
   IMAGE_TAG="${tag}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
-    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" pull
+    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" pull api
   echo "[deploy] starting ${tag}"
   IMAGE_TAG="${tag}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
-    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" up -d
+    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" up -d api
 }
 
 wait_for_healthy() {
@@ -119,6 +142,11 @@ wait_for_healthy() {
   done
   return 1
 }
+
+if ! run_migration "${IMAGE_TAG}"; then
+  echo "[deploy] migration failed for ${IMAGE_TAG}, leaving current api container untouched" >&2
+  exit 1
+fi
 
 deploy_tag "${IMAGE_TAG}"
 

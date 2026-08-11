@@ -4,8 +4,6 @@ spring:
     username: ${DB_APP_USERNAME}
     password: ${DB_APP_PASSWORD}
 
+  # Flyway runs separately via the "migrate" profile (see application-migrate.yml).
   flyway:
-    enabled: true
-    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
-    user: ${DB_MIGRATOR_USERNAME}
-    password: ${DB_MIGRATOR_PASSWORD}
+    enabled: false

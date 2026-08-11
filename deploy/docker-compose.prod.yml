@@ -14,3 +14,16 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # One-off migration step. `profiles` keeps it out of a bare `docker compose
+  # up`; deploy.sh always targets it explicitly via `run --rm migrate`, which
+  # activates its profile automatically regardless.
+  migrate:
+    image: ${ECR_REPOSITORY_URI}:${IMAGE_TAG}
+    profiles: ["migration"]
+    environment:
+      SPRING_PROFILES_ACTIVE: migrate
+    env_file:
+      - path: ./env/migrate.env
+        format: raw
+    restart: "no"

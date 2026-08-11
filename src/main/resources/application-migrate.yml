@@ -1,0 +1,17 @@
+spring:
+  main:
+    web-application-type: none
+
+  # No app DataSource/JPA in this profile at all — Flyway builds its own
+  # connection from spring.flyway.* below, so DB_APP_* is never needed here.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration
+
+  flyway:
+    enabled: true
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
+    user: ${DB_MIGRATOR_USERNAME}
+    password: ${DB_MIGRATOR_PASSWORD}
