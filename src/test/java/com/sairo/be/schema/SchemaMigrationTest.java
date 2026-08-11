@@ -30,7 +30,7 @@ class SchemaMigrationTest extends AbstractSchemaTest {
     }
 
     @Test
-    void V1부터_V4까지_네_마이그레이션이_모두_성공했다() throws Exception {
+    void V1부터_V5까지_다섯_마이그레이션이_모두_성공했다() throws Exception {
         withRollback(conn -> {
             try (PreparedStatement ps = conn.prepareStatement(
                     "SELECT version, success FROM flyway_schema_history ORDER BY installed_rank")) {
@@ -40,7 +40,7 @@ class SchemaMigrationTest extends AbstractSchemaTest {
                         assertThat(rs.getBoolean("success")).as("version %s는 성공해야 함", rs.getString("version")).isTrue();
                         versions.add(rs.getString("version"));
                     }
-                    assertThat(versions).containsExactly("1", "2", "3", "4");
+                    assertThat(versions).containsExactly("1", "2", "3", "4", "5");
                 }
             }
         });
@@ -52,13 +52,13 @@ class SchemaMigrationTest extends AbstractSchemaTest {
     }
 
     @Test
-    void 도메인_테이블의_제약_개수는_193개다() throws Exception {
-        withRollback(conn -> assertThat(countConstraints(conn)).isEqualTo(193));
+    void 도메인_테이블의_제약_개수는_195개다() throws Exception {
+        withRollback(conn -> assertThat(countConstraints(conn)).isEqualTo(195));
     }
 
     @Test
-    void 도메인_테이블의_인덱스_개수는_47개다() throws Exception {
-        withRollback(conn -> assertThat(countIndexes(conn)).isEqualTo(47));
+    void 도메인_테이블의_인덱스_개수는_48개다() throws Exception {
+        withRollback(conn -> assertThat(countIndexes(conn)).isEqualTo(48));
     }
 
     private int countTables(Connection conn) throws java.sql.SQLException {
