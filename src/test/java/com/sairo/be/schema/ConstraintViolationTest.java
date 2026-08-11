@@ -160,6 +160,106 @@ class ConstraintViolationTest extends AbstractSchemaTest {
     }
 
     @Test
+    void 다른_회원의_로그인_수단으로_로그인기록을_남기면_실패한다() {
+        assertConstraintViolation(null, conn -> {
+            long memberA = insertMember(conn, "A", uniqueEmail("a"));
+            long memberB = insertMember(conn, "B", uniqueEmail("b"));
+            long identityB = insertLoginIdentity(conn, memberB);
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO login_history (member_id, login_identity_id) VALUES (?, ?)")) {
+                ps.setLong(1, memberA);
+                ps.setLong(2, identityB);
+                ps.executeUpdate();
+            }
+        });
+    }
+
+    @Test
+    void 본인의_로그인_수단으로_로그인기록을_남길_수_있다() throws Exception {
+        withRollback(conn -> {
+            long member = insertMember(conn, "A", uniqueEmail("a"));
+            long identity = insertLoginIdentity(conn, member);
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO login_history (member_id, login_identity_id) VALUES (?, ?)")) {
+                ps.setLong(1, member);
+                ps.setLong(2, identity);
+                int rows = ps.executeUpdate();
+                assertThat(rows).isEqualTo(1);
+            }
+        });
+    }
+
+    @Test
+    void 다른_사무소_조율을_재조율_원본으로_참조하면_실패한다() {
+        assertConstraintViolation(null, conn -> {
+            long memberA = insertMember(conn, "A", uniqueEmail("a"));
+            long officeA = insertOffice(conn, "사무소A", uniqueBizNo());
+            insertApprovedSystemAdmin(conn, memberA, officeA, uniqueBizNo());
+            long propertyA = insertProperty(conn, officeA);
+            long coordinationA = insertCoordination(conn, officeA, propertyA, memberA);
+
+            long memberB = insertMember(conn, "B", uniqueEmail("b"));
+            long officeB = insertOffice(conn, "사무소B", uniqueBizNo());
+            insertApprovedSystemAdmin(conn, memberB, officeB, uniqueBizNo());
+            long propertyB = insertProperty(conn, officeB);
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO coordination (office_id, property_id, created_by_member_id, customer_name, customer_phone, link_token_hash, link_expires_at, origin_coordination_id) "
+                            + "VALUES (?, ?, ?, '고객', '010-1111-2222', ?, now() + interval '1 day', ?)")) {
+                ps.setLong(1, officeB);
+                ps.setLong(2, propertyB);
+                ps.setLong(3, memberB);
+                ps.setString(4, uniqueToken());
+                ps.setLong(5, coordinationA);
+                ps.executeUpdate();
+            }
+        });
+    }
+
+    @Test
+    void 자기_자신을_재조율_원본으로_참조하면_실패한다() {
+        assertConstraintViolation(null, conn -> {
+            long member = insertMember(conn, "A", uniqueEmail("a"));
+            long office = insertOffice(conn, "사무소", uniqueBizNo());
+            insertApprovedSystemAdmin(conn, member, office, uniqueBizNo());
+            long property = insertProperty(conn, office);
+            long coordination = insertCoordination(conn, office, property, member);
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE coordination SET origin_coordination_id = ? WHERE id = ?")) {
+                ps.setLong(1, coordination);
+                ps.setLong(2, coordination);
+                ps.executeUpdate();
+            }
+        });
+    }
+
+    @Test
+    void 같은_사무소_조율을_재조율_원본으로_참조할_수_있다() throws Exception {
+        withRollback(conn -> {
+            long member = insertMember(conn, "A", uniqueEmail("a"));
+            long office = insertOffice(conn, "사무소", uniqueBizNo());
+            insertApprovedSystemAdmin(conn, member, office, uniqueBizNo());
+            long property = insertProperty(conn, office);
+            long origin = insertCoordination(conn, office, property, member);
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO coordination (office_id, property_id, created_by_member_id, customer_name, customer_phone, link_token_hash, link_expires_at, origin_coordination_id) "
+                            + "VALUES (?, ?, ?, '고객', '010-1111-2222', ?, now() + interval '1 day', ?)")) {
+                ps.setLong(1, office);
+                ps.setLong(2, property);
+                ps.setLong(3, member);
+                ps.setString(4, uniqueToken());
+                ps.setLong(5, origin);
+                int rows = ps.executeUpdate();
+                assertThat(rows).isEqualTo(1);
+            }
+        });
+    }
+
+    @Test
     void 매물_소프트삭제_컬럼_조합이_어긋나면_실패한다() {
         assertConstraintViolation(null, conn -> {
             long office = insertOffice(conn, "사무소", uniqueBizNo());
@@ -170,6 +270,18 @@ class ConstraintViolationTest extends AbstractSchemaTest {
                 ps.executeUpdate();
             }
         });
+    }
+
+    private long insertLoginIdentity(Connection conn, long memberId) throws java.sql.SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO login_identity (member_id, provider, provider_key) VALUES (?, 'EMAIL', ?) RETURNING id")) {
+            ps.setLong(1, memberId);
+            ps.setString(2, uniqueEmail("identity"));
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getLong(1);
+            }
+        }
     }
 
     private long insertProperty(Connection conn, long officeId) throws java.sql.SQLException {
