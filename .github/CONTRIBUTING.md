@@ -1,24 +1,33 @@
 # GitHub 협업 규칙
 
-이 문서는 사이로 백엔드 저장소의 Issue, 브랜치, 커밋과 Pull Request 작성 기준을 설명한다.
+이 문서는 사이로 백엔드 저장소의 브랜치 전략, Issue, 커밋과 Pull Request 작성 기준을 설명한다.
+
+## 브랜치 전략
+
+저장소는 `main`과 `dev` 두 개의 상시 브랜치만 유지한다.
+
+- `dev`: 개발 중인 모든 기능이 모이는 통합 브랜치. 기본(default) 브랜치이며 기능 브랜치는 여기서 분기하고 Pull Request도 여기로 보낸다.
+- `main`: 실제 운영에 배포되는 브랜치. `main`에 push되면 Deploy 워크플로가 자동으로 운영 서버에 배포한다. 그래서 `main`은 전체 기능 개발과 검수(QA)가 끝났을 때만, `dev`를 병합해서 갱신한다. 기능 브랜치를 `main`에 직접 병합하지 않는다.
+- 기능 브랜치는 병합 후 남기지 않는다. 저장소의 "Automatically delete head branches" 설정이 켜져 있어 Pull Request가 병합되면 브랜치가 자동으로 삭제된다. 그 결과 저장소에는 평소 `main`, `dev` 두 브랜치만 남는다.
 
 ## 작업 순서
 
 1. 실제 작업 범위만 담은 Issue를 만든다.
 2. Assignee를 `KimTaeHwan21`, 작업 종류에 맞는 Label을 지정한다.
-3. Issue의 Development에 작업 브랜치를 연결한다.
+3. Issue의 Development에 `dev`에서 분기한 작업 브랜치를 연결한다.
 4. 브랜치에서 변경하고 검증한 뒤 커밋한다.
-5. Pull Request를 만들고 Assignee·Label·관련 Issue를 확인한다.
-6. 필수 CI 통과 후 squash merge한다. `main`에 직접 push하지 않는다.
+5. `dev`를 대상으로 Pull Request를 만들고 Assignee·Label·관련 Issue를 확인한다.
+6. 필수 CI 통과 후 `dev`로 squash merge한다. 브랜치는 자동 삭제된다.
+7. 전체 기능 개발과 검수가 끝나면 `dev`→`main` Pull Request를 만들어 병합한다. 이 병합은 운영 배포를 직접 실행하므로 병합 전에 반드시 별도로 승인받는다.
 
 ## 제목과 브랜치
 
 | 대상 | 형식 | 예시 |
 |---|---|---|
 | Issue | `[SAIRO-BE] <type>: <한글 요약>` | `[SAIRO-BE] feat: 마이페이지 개발` |
-| 브랜치 | `<type>/<영문-kebab-case>` | `feat/my-page` |
+| 브랜치 | `<type>/<영문-kebab-case>` (`dev`에서 분기) | `feat/my-page` |
 | 커밋 | `<type>: <한글 요약>` | `feat: 마이페이지 조회 기능 추가` |
-| Pull Request | `<type>: <한글 요약>` | `feat: 마이페이지 개발` |
+| Pull Request | `<type>: <한글 요약>` (base는 보통 `dev`) | `feat: 마이페이지 개발` |
 
 ## type과 Label
 
