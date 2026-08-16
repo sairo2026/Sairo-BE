@@ -8,6 +8,8 @@
 
 - `dev`: 개발 중인 모든 기능이 모이는 통합 브랜치. 기본(default) 브랜치이며 기능 브랜치는 여기서 분기하고 Pull Request도 여기로 보낸다.
 - `main`: 실제 운영에 배포되는 브랜치. `main`에 push되면 Deploy 워크플로가 자동으로 운영 서버에 배포한다. 그래서 `main`은 전체 기능 개발과 검수(QA)가 끝났을 때만, `dev`를 병합해서 갱신한다. 기능 브랜치를 `main`에 직접 병합하지 않는다.
+- `dev`는 `protect-dev` ruleset으로 보호하며 기능 브랜치의 Pull Request는 squash merge만 허용한다.
+- `main`은 `protect-main` ruleset으로 보호하며 `dev`에서 보내는 배포 Pull Request는 merge commit만 허용한다. 이를 통해 `dev`의 커밋 이력을 유지하고 두 브랜치의 조상 관계가 갈라지는 것을 방지한다.
 - 기능 브랜치는 병합 후 남기지 않는다. 저장소의 "Automatically delete head branches" 설정이 켜져 있어 Pull Request가 병합되면 브랜치가 자동으로 삭제된다. 그 결과 저장소에는 평소 `main`, `dev` 두 브랜치만 남는다.
 
 ## 작업 순서
@@ -18,7 +20,7 @@
 4. 브랜치에서 변경하고 검증한 뒤 커밋한다.
 5. `dev`를 대상으로 Pull Request를 만들고 Assignee·Label·관련 Issue를 확인한다.
 6. 필수 CI 통과 후 `dev`로 squash merge한다. 브랜치는 자동 삭제된다.
-7. 전체 기능 개발과 검수가 끝나면 `dev`→`main` Pull Request를 만들어 병합한다. 이 병합은 운영 배포를 직접 실행하므로 병합 전에 반드시 별도로 승인받는다.
+7. 전체 기능 개발과 검수가 끝나면 `dev`→`main` Pull Request를 만들고 merge commit으로 병합한다. squash merge를 사용하지 않는다. 이 병합은 운영 배포를 직접 실행하므로 병합 전 운영 DB 읽기 전용 사전 조회와 테스트 검증을 거친다.
 
 ## 제목과 브랜치
 
@@ -50,6 +52,7 @@
 - Issue에는 현재 작업만 적고 별개의 미래 작업은 시작할 때 새 Issue로 만든다.
 - Pull Request에는 실제 변경과 핵심 검증만 적고 완료할 Issue는 `closed #번호`로 연결한다.
 - Assignee·Label·Development 브랜치를 비워 두지 않는다.
+- Issue 체크박스는 생성 시 `- [ ]`로 시작하되, 해당 작업을 완료하고 PR을 병합할 때는 병합 전후로 반드시 완료 항목을 `- [x]`로 갱신한다. PR 병합으로 Issue가 자동으로 닫히는 것과 체크박스 갱신은 별개 동작이라 자동으로 되지 않는다.
 - 커밋에 `Co-Authored-By` 등 자동화 도구의 공동 작성자 trailer를 넣지 않는다.
 
 ## 간단한 예시
