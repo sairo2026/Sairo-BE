@@ -20,7 +20,7 @@
 4. 브랜치에서 변경하고 검증한 뒤 커밋한다.
 5. `dev`를 대상으로 Pull Request를 만들고 Assignee·Label·관련 Issue를 확인한다.
 6. 필수 CI 통과 후 `dev`로 squash merge한다. 브랜치는 자동 삭제된다.
-7. 전체 기능 개발과 검수가 끝나면 `dev`→`main` Pull Request를 만들고 merge commit으로 병합한다. squash merge를 사용하지 않는다. 이 병합은 운영 배포를 직접 실행하므로 병합 전에 반드시 별도로 승인받는다.
+7. 전체 기능 개발과 검수가 끝나면 `dev`→`main` Pull Request를 만들고 merge commit으로 병합한다. squash merge를 사용하지 않는다. 이 병합은 운영 배포를 직접 실행하므로 병합 전 운영 DB 읽기 전용 사전 조회와 테스트 검증을 거친다.
 
 ## 제목과 브랜치
 
