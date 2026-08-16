@@ -135,27 +135,30 @@ class ConstraintViolationTest extends AbstractSchemaTest {
             long member = insertMember(conn, "A", uniqueEmail("a"));
             insertApprovedSystemAdmin(conn, member, office, uniqueBizNo());
             long property = insertProperty(conn, office);
+            long contractId = insertActiveContract(conn, office, property, member, "MONTHLY", "2027-01-01");
 
             try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO expiry_task (office_id, property_id, contract_expiry_date, target_date) "
-                            + "VALUES (?, ?, DATE '2027-01-01', DATE '2026-01-01')")) {
+                    "INSERT INTO expiry_task (office_id, property_id, property_contract_id, deal_type, contract_end_date, target_date) "
+                            + "VALUES (?, ?, ?, 'MONTHLY', DATE '2027-01-01', DATE '2026-01-01')")) {
                 ps.setLong(1, office);
                 ps.setLong(2, property);
+                ps.setLong(3, contractId);
                 ps.executeUpdate();
             }
         });
     }
 
     @Test
-    void 같은_매물에_OPEN_D90_업무가_중복되면_실패한다() {
+    void 같은_계약에_D90_업무가_중복되면_실패한다() {
         assertConstraintViolation(null, conn -> {
             long office = insertOffice(conn, "사무소", uniqueBizNo());
             long member = insertMember(conn, "A", uniqueEmail("a"));
             insertApprovedSystemAdmin(conn, member, office, uniqueBizNo());
             long property = insertProperty(conn, office);
+            long contractId = insertActiveContract(conn, office, property, member, "MONTHLY", "2027-01-01");
 
-            insertOpenExpiryTask(conn, office, property, "2027-01-01");
-            insertOpenExpiryTask(conn, office, property, "2027-06-01");
+            insertOpenExpiryTask(conn, office, property, contractId, "MONTHLY", "2027-01-01");
+            insertOpenExpiryTask(conn, office, property, contractId, "MONTHLY", "2027-01-01");
         });
     }
 
@@ -286,9 +289,26 @@ class ConstraintViolationTest extends AbstractSchemaTest {
 
     private long insertProperty(Connection conn, long officeId) throws java.sql.SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO property (office_id, address_base, deal_type, has_contract, property_status, updated_at) "
-                        + "VALUES (?, '서울시 어딘가', 'MONTHLY', false, 'NO_CONTRACT', now()) RETURNING id")) {
+                "INSERT INTO property (office_id, address_base, deal_type, property_status, updated_at) "
+                        + "VALUES (?, '서울시 어딘가', 'MONTHLY', 'NO_CONTRACT', now()) RETURNING id")) {
             ps.setLong(1, officeId);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getLong(1);
+            }
+        }
+    }
+
+    private long insertActiveContract(Connection conn, long officeId, long propertyId, long memberId, String dealType, String contractEndDate) throws java.sql.SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO property_contract (office_id, property_id, deal_type, created_by_member_id, contract_start_date, contract_end_date, "
+                        + "owner_party_name, owner_party_phone, counterparty_name, counterparty_phone, deposit_amount, updated_at) "
+                        + "VALUES (?, ?, ?, ?, CURRENT_DATE, ?::date, '임대인', '010-0000-0000', '임차인', '010-1111-1111', 100000000, now()) RETURNING id")) {
+            ps.setLong(1, officeId);
+            ps.setLong(2, propertyId);
+            ps.setString(3, dealType);
+            ps.setLong(4, memberId);
+            ps.setString(5, contractEndDate);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rs.getLong(1);
@@ -333,14 +353,16 @@ class ConstraintViolationTest extends AbstractSchemaTest {
         }
     }
 
-    private void insertOpenExpiryTask(Connection conn, long officeId, long propertyId, String contractExpiryDate) throws java.sql.SQLException {
+    private void insertOpenExpiryTask(Connection conn, long officeId, long propertyId, long propertyContractId, String dealType, String contractEndDate) throws java.sql.SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO expiry_task (office_id, property_id, contract_expiry_date, target_date) "
-                        + "VALUES (?, ?, ?::date, ?::date - 90)")) {
+                "INSERT INTO expiry_task (office_id, property_id, property_contract_id, deal_type, contract_end_date, target_date) "
+                        + "VALUES (?, ?, ?, ?, ?::date, ?::date - 90)")) {
             ps.setLong(1, officeId);
             ps.setLong(2, propertyId);
-            ps.setString(3, contractExpiryDate);
-            ps.setString(4, contractExpiryDate);
+            ps.setLong(3, propertyContractId);
+            ps.setString(4, dealType);
+            ps.setString(5, contractEndDate);
+            ps.setString(6, contractEndDate);
             ps.executeUpdate();
         }
     }
