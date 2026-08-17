@@ -31,7 +31,7 @@ class SchemaMigrationTest extends AbstractSchemaTest {
     }
 
     @Test
-    void V1부터_V7까지_일곱_마이그레이션이_모두_성공했다() throws Exception {
+    void V1부터_V8까지_여덟_마이그레이션이_모두_성공했다() throws Exception {
         withRollback(conn -> {
             try (PreparedStatement ps = conn.prepareStatement(
                     "SELECT version, success FROM flyway_schema_history ORDER BY installed_rank")) {
@@ -41,7 +41,7 @@ class SchemaMigrationTest extends AbstractSchemaTest {
                         assertThat(rs.getBoolean("success")).as("version %s는 성공해야 함", rs.getString("version")).isTrue();
                         versions.add(rs.getString("version"));
                     }
-                    assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7");
+                    assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
                 }
             }
         });
@@ -67,7 +67,7 @@ class SchemaMigrationTest extends AbstractSchemaTest {
             new NamedObject("coordination_status_history", "fk_status_history_changed_by_membership", "FOREIGN KEY (changed_by_member_id, office_id) REFERENCES office_membership(member_id, office_id) ON DELETE RESTRICT"),
             new NamedObject("coordination_status_history", "fk_status_history_parent", "FOREIGN KEY (coordination_id, office_id) REFERENCES coordination(id, office_id) ON DELETE RESTRICT"),
             new NamedObject("document_move_outbox", "ck_outbox_status", "CHECK (((((status)::text = 'PENDING'::text) AND (locked_at IS NULL) AND (locked_by IS NULL) AND (lock_token IS NULL) AND (lock_expires_at IS NULL) AND (processed_at IS NULL)) OR (((status)::text = 'IN_PROGRESS'::text) AND (locked_at IS NOT NULL) AND (locked_by IS NOT NULL) AND (lock_token IS NOT NULL) AND (lock_expires_at IS NOT NULL) AND (processed_at IS NULL)) OR (((status)::text = 'DONE'::text) AND (processed_at IS NOT NULL) AND (locked_at IS NULL) AND (locked_by IS NULL) AND (lock_token IS NULL) AND (lock_expires_at IS NULL)) OR (((status)::text = 'FAILED'::text) AND (last_error IS NOT NULL) AND (locked_at IS NULL) AND (locked_by IS NULL) AND (lock_token IS NULL) AND (lock_expires_at IS NULL))))"),
-            new NamedObject("email_verification_code", "ck_email_verification_consumed", "CHECK (((consumed_at IS NULL) OR (((status)::text = 'VERIFIED'::text) AND ((purpose)::text = ANY ((ARRAY['SIGNUP'::character varying, 'LOGIN'::character varying])::text[])))))"),
+            new NamedObject("email_verification_code", "ck_email_verification_consumed", "CHECK (((consumed_at IS NULL) OR (((status)::text = 'VERIFIED'::text) AND ((purpose)::text = ANY ((ARRAY['SIGNUP'::character varying, 'LOGIN'::character varying, 'EMAIL_CHANGE'::character varying])::text[])))))"),
             new NamedObject("email_verification_code", "ck_email_verification_status", "CHECK (((((status)::text = 'ACTIVE'::text) AND (verified_at IS NULL) AND (invalidated_at IS NULL)) OR (((status)::text = 'VERIFIED'::text) AND (verified_at IS NOT NULL) AND (invalidated_at IS NULL)) OR (((status)::text = ANY ((ARRAY['REPLACED'::character varying, 'LOCKED'::character varying, 'EXPIRED'::character varying])::text[])) AND (verified_at IS NULL) AND (invalidated_at IS NOT NULL))))"),
             new NamedObject("expiry_task", "ck_expiry_task_status", "CHECK (((((status)::text = 'OPEN'::text) AND (completed_at IS NULL) AND (cancelled_at IS NULL) AND (cancel_reason IS NULL)) OR (((status)::text = 'COMPLETED'::text) AND (completed_at IS NOT NULL) AND (cancelled_at IS NULL) AND (cancel_reason IS NULL)) OR (((status)::text = 'CANCELLED'::text) AND (completed_at IS NULL) AND (cancelled_at IS NOT NULL) AND (cancel_reason IS NOT NULL))))"),
             new NamedObject("expiry_task", "ck_expiry_task_target_date", "CHECK ((target_date = (contract_end_date - 90)))"),
