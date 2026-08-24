@@ -15,86 +15,89 @@ import org.junit.jupiter.api.Test;
 
 class ConcurrencyTest extends AbstractSchemaTest {
 
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private Long createdMemberId;
-    private Long createdOfficeId;
+  private final ExecutorService executor = Executors.newSingleThreadExecutor();
+  private Long createdMemberId;
+  private Long createdOfficeId;
 
-    @AfterEach
-    void cleanup() throws Exception {
-        try (Connection conn = dataSource.getConnection()) {
-            if (createdOfficeId != null) {
-                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM office WHERE id = ?")) {
-                    ps.setLong(1, createdOfficeId);
-                    ps.executeUpdate();
-                }
-            }
-            if (createdMemberId != null) {
-                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM member WHERE id = ?")) {
-                    ps.setLong(1, createdMemberId);
-                    ps.executeUpdate();
-                }
-            }
+  @AfterEach
+  void cleanup() throws Exception {
+    try (Connection conn = dataSource.getConnection()) {
+      if (createdOfficeId != null) {
+        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM office WHERE id = ?")) {
+          ps.setLong(1, createdOfficeId);
+          ps.executeUpdate();
         }
-        executor.shutdownNow();
+      }
+      if (createdMemberId != null) {
+        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM member WHERE id = ?")) {
+          ps.setLong(1, createdMemberId);
+          ps.executeUpdate();
+        }
+      }
+    }
+    executor.shutdownNow();
+  }
+
+  @Test
+  void 회원_행을_두_트랜잭션이_동시에_FOR_UPDATE로_잡으면_직렬화된다() throws Exception {
+    try (Connection setup = dataSource.getConnection()) {
+      createdMemberId = insertMember(setup, "회원", uniqueEmail("concurrency"));
     }
 
-    @Test
-    void 회원_행을_두_트랜잭션이_동시에_FOR_UPDATE로_잡으면_직렬화된다() throws Exception {
-        try (Connection setup = dataSource.getConnection()) {
-            createdMemberId = insertMember(setup, "회원", uniqueEmail("concurrency"));
-        }
+    assertSecondBlocksUntilFirstCommits(
+        "SELECT id FROM member WHERE id = ? FOR UPDATE", createdMemberId);
+  }
 
-        assertSecondBlocksUntilFirstCommits("SELECT id FROM member WHERE id = ? FOR UPDATE", createdMemberId);
+  @Test
+  void 사무소_행을_두_트랜잭션이_동시에_FOR_UPDATE로_잡으면_직렬화된다() throws Exception {
+    try (Connection setup = dataSource.getConnection()) {
+      createdOfficeId = insertOffice(setup, "동시성테스트사무소", uniqueBizNo());
     }
 
-    @Test
-    void 사무소_행을_두_트랜잭션이_동시에_FOR_UPDATE로_잡으면_직렬화된다() throws Exception {
-        try (Connection setup = dataSource.getConnection()) {
-            createdOfficeId = insertOffice(setup, "동시성테스트사무소", uniqueBizNo());
-        }
+    assertSecondBlocksUntilFirstCommits(
+        "SELECT id FROM office WHERE id = ? FOR UPDATE", createdOfficeId);
+  }
 
-        assertSecondBlocksUntilFirstCommits("SELECT id FROM office WHERE id = ? FOR UPDATE", createdOfficeId);
+  private void assertSecondBlocksUntilFirstCommits(String forUpdateSql, long id) throws Exception {
+    Connection first = dataSource.getConnection();
+    first.setAutoCommit(false);
+    try (PreparedStatement ps = first.prepareStatement(forUpdateSql)) {
+      ps.setLong(1, id);
+      try (ResultSet rs = ps.executeQuery()) {
+        assertThat(rs.next()).isTrue();
+      }
     }
 
-    private void assertSecondBlocksUntilFirstCommits(String forUpdateSql, long id) throws Exception {
-        Connection first = dataSource.getConnection();
-        first.setAutoCommit(false);
-        try (PreparedStatement ps = first.prepareStatement(forUpdateSql)) {
-            ps.setLong(1, id);
-            try (ResultSet rs = ps.executeQuery()) {
-                assertThat(rs.next()).isTrue();
+    Callable<Boolean> secondAttempt =
+        () -> {
+          try (Connection second = dataSource.getConnection()) {
+            second.setAutoCommit(false);
+            try (PreparedStatement ps = second.prepareStatement(forUpdateSql)) {
+              ps.setLong(1, id);
+              try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+              }
             }
-        }
-
-        Callable<Boolean> secondAttempt = () -> {
-            try (Connection second = dataSource.getConnection()) {
-                second.setAutoCommit(false);
-                try (PreparedStatement ps = second.prepareStatement(forUpdateSql)) {
-                    ps.setLong(1, id);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        rs.next();
-                    }
-                }
-                second.commit();
-                return true;
-            }
-        };
-        Future<Boolean> future = executor.submit(secondAttempt);
-
-        assertThat(isDoneWithin(future, 400)).isFalse();
-
-        first.commit();
-        first.close();
-
-        assertThat(future.get(5, TimeUnit.SECONDS)).isTrue();
-    }
-
-    private boolean isDoneWithin(Future<?> future, long millis) throws Exception {
-        try {
-            future.get(millis, TimeUnit.MILLISECONDS);
+            second.commit();
             return true;
-        } catch (java.util.concurrent.TimeoutException e) {
-            return false;
-        }
+          }
+        };
+    Future<Boolean> future = executor.submit(secondAttempt);
+
+    assertThat(isDoneWithin(future, 400)).isFalse();
+
+    first.commit();
+    first.close();
+
+    assertThat(future.get(5, TimeUnit.SECONDS)).isTrue();
+  }
+
+  private boolean isDoneWithin(Future<?> future, long millis) throws Exception {
+    try {
+      future.get(millis, TimeUnit.MILLISECONDS);
+      return true;
+    } catch (java.util.concurrent.TimeoutException e) {
+      return false;
     }
+  }
 }
