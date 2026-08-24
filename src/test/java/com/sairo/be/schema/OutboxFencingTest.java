@@ -163,10 +163,14 @@ class OutboxFencingTest extends AbstractSchemaTest {
         officeId = insertOffice(conn, "반려사무소", uniqueBizNo());
 
         try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO office_registration (applicant_member_id, business_registration_number, status, rejection_reason, reviewed_at) "
-                        + "VALUES (?, ?, 'REJECTED', '증빙 불충분', now()) RETURNING id")) {
+                "INSERT INTO office_registration (applicant_member_id, business_registration_number, real_estate_license_number, "
+                        + "requested_office_name, requested_representative_name, requested_phone, requested_address_base, "
+                        + "requested_address_detail, status, rejection_reason, reviewed_at) "
+                        + "SELECT ?, ?, real_estate_license_number, name, representative_name, phone, address_base, address_detail, "
+                        + "'REJECTED', '증빙 불충분', now() FROM office WHERE id = ? RETURNING id")) {
             ps.setLong(1, memberId);
             ps.setString(2, uniqueBizNo());
+            ps.setLong(3, officeId);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 officeRegistrationId = rs.getLong(1);

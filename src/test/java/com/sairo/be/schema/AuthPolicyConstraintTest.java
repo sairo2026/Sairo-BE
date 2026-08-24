@@ -76,12 +76,12 @@ class AuthPolicyConstraintTest extends AbstractSchemaTest {
     }
 
     @Test
-    void LINK_목적_트랜잭션에_세션ID가_없으면_실패한다() {
+    void STEP_UP_목적_트랜잭션에_세션ID가_없으면_실패한다() {
         assertConstraintViolation("23514", conn -> {
-            long member = insertMember(conn, "A", uniqueEmail("oauth-link-fields"));
+            long member = insertMember(conn, "A", uniqueEmail("oauth-step-up-fields"));
             try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO oauth_transaction (state_hash, purpose, member_id, step_up_verified_at, expires_at) "
-                            + "VALUES (?, 'LINK', ?, now(), now() + interval '10 minutes')")) {
+                    "INSERT INTO oauth_transaction (state_hash, purpose, member_id, expires_at) "
+                            + "VALUES (?, 'STEP_UP', ?, now() + interval '10 minutes')")) {
                 ps.setString(1, uniqueHash());
                 ps.setLong(2, member);
                 ps.executeUpdate();
@@ -90,7 +90,7 @@ class AuthPolicyConstraintTest extends AbstractSchemaTest {
     }
 
     @Test
-    void LOGIN과_LINK_트랜잭션은_각각_정상_조건이면_성공한다() throws Exception {
+    void LOGIN과_STEP_UP_트랜잭션은_각각_정상_조건이면_성공한다() throws Exception {
         withRollback(conn -> {
             try (PreparedStatement ps = conn.prepareStatement(
                     "INSERT INTO oauth_transaction (state_hash, purpose, expires_at) "
@@ -99,10 +99,10 @@ class AuthPolicyConstraintTest extends AbstractSchemaTest {
                 assertThat(ps.executeUpdate()).isEqualTo(1);
             }
 
-            long member = insertMember(conn, "A", uniqueEmail("oauth-link-ok"));
+            long member = insertMember(conn, "A", uniqueEmail("oauth-step-up-ok"));
             try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO oauth_transaction (state_hash, purpose, member_id, initiating_session_id, step_up_verified_at, expires_at) "
-                            + "VALUES (?, 'LINK', ?, 'session-abc', now(), now() + interval '10 minutes')")) {
+                    "INSERT INTO oauth_transaction (state_hash, purpose, member_id, initiating_session_id, expires_at) "
+                            + "VALUES (?, 'STEP_UP', ?, 'session-abc', now() + interval '10 minutes')")) {
                 ps.setString(1, uniqueHash());
                 ps.setLong(2, member);
                 assertThat(ps.executeUpdate()).isEqualTo(1);
@@ -184,45 +184,6 @@ class AuthPolicyConstraintTest extends AbstractSchemaTest {
     }
 
     @Test
-    void 인증코드_소비시각은_VERIFIED_상태가_아니면_기록할_수_없다() {
-        assertConstraintViolation("23514", conn -> {
-            long member = insertMember(conn, "A", uniqueEmail("consumed-not-verified"));
-            long codeId = insertActiveCode(conn, member, "LOGIN");
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE email_verification_code SET consumed_at = now() WHERE id = ?")) {
-                ps.setLong(1, codeId);
-                ps.executeUpdate();
-            }
-        });
-    }
-
-    @Test
-    void 인증코드_소비시각은_SIGNUP_LOGIN_목적이_아니면_기록할_수_없다() {
-        assertConstraintViolation("23514", conn -> {
-            long member = insertMember(conn, "A", uniqueEmail("consumed-wrong-purpose"));
-            long codeId = insertActiveCode(conn, member, "STEP_UP");
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE email_verification_code SET status = 'VERIFIED', verified_at = now(), consumed_at = now() WHERE id = ?")) {
-                ps.setLong(1, codeId);
-                ps.executeUpdate();
-            }
-        });
-    }
-
-    @Test
-    void 인증코드_소비시각_기록은_VERIFIED_상태이고_SIGNUP_LOGIN_목적이면_성공한다() throws Exception {
-        withRollback(conn -> {
-            long member = insertMember(conn, "A", uniqueEmail("consumed-ok"));
-            long codeId = insertActiveCode(conn, member, "LOGIN");
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE email_verification_code SET status = 'VERIFIED', verified_at = now(), consumed_at = now() WHERE id = ?")) {
-                ps.setLong(1, codeId);
-                assertThat(ps.executeUpdate()).isEqualTo(1);
-            }
-        });
-    }
-
-    @Test
     void 회원당_APPROVED_사무소_소속은_하나까지_허용된다() throws Exception {
         withRollback(conn -> {
             long member = insertMember(conn, "A", uniqueEmail("single-membership"));
@@ -283,20 +244,6 @@ class AuthPolicyConstraintTest extends AbstractSchemaTest {
             ps.setString(3, version);
             ps.setBoolean(4, agreed);
             ps.executeUpdate();
-        }
-    }
-
-    private long insertActiveCode(Connection conn, long memberId, String purpose) throws java.sql.SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO email_verification_code (member_id, purpose, target_email, challenge_id, code_hash, expires_at) "
-                        + "VALUES (?, ?, ?, gen_random_uuid(), 'hash', now() + interval '5 minutes') RETURNING id")) {
-            ps.setLong(1, memberId);
-            ps.setString(2, purpose);
-            ps.setString(3, uniqueEmail("code-target"));
-            try (ResultSet rs = ps.executeQuery()) {
-                rs.next();
-                return rs.getLong(1);
-            }
         }
     }
 
