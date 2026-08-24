@@ -33,7 +33,10 @@ class AuthPolicyDdlShapeTest extends AbstractSchemaTest {
             assertColumn(conn, "rate_limit_counter", "window_started_at", "timestamp with time zone", "NO", null);
             assertColumn(conn, "rate_limit_counter", "request_count", "integer", "NO", "1");
 
-            assertColumn(conn, "email_verification_code", "consumed_at", "timestamp with time zone", "YES", null);
+            assertColumn(conn, "member", "email", "character varying", "YES", null);
+            assertColumn(conn, "operator", "kakao_provider_key", "character varying", "NO", null);
+            assertColumn(conn, "operator", "disabled_at", "timestamp with time zone", "YES", null);
+            assertColumn(conn, "property", "archived_at", "timestamp with time zone", "YES", null);
         });
     }
 

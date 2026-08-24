@@ -71,8 +71,8 @@ class ConstraintViolationTest extends AbstractSchemaTest {
     }
 
     @Test
-    void 관리자_본인의_자진_탈퇴는_자기참조여도_성공한다() throws Exception {
-        withRollback(conn -> {
+    void 관리자_본인의_소속_회수를_자기참조로_기록하면_실패한다() {
+        assertConstraintViolation(null, conn -> {
             long member = insertMember(conn, "관리자", uniqueEmail("admin"));
             long office = insertOffice(conn, "사무소", uniqueBizNo());
             long membership = insertApprovedSystemAdmin(conn, member, office, uniqueBizNo());
@@ -83,8 +83,7 @@ class ConstraintViolationTest extends AbstractSchemaTest {
                 ps.setLong(1, membership);
                 ps.setLong(2, office);
                 ps.setLong(3, membership);
-                int rows = ps.executeUpdate();
-                assertThat(rows).isEqualTo(1);
+                ps.executeUpdate();
             }
         });
     }
@@ -116,15 +115,6 @@ class ConstraintViolationTest extends AbstractSchemaTest {
                 ps.setString(4, uniqueToken());
                 ps.executeUpdate();
             }
-        });
-    }
-
-    @Test
-    void 이메일_활성_인증코드는_같은_대상_같은_목적으로_중복될_수_없다() {
-        assertConstraintViolation(null, conn -> {
-            String email = uniqueEmail("dup-code");
-            insertActiveVerificationCode(conn, email, "SIGNUP");
-            insertActiveVerificationCode(conn, email, "SIGNUP");
         });
     }
 
@@ -340,16 +330,6 @@ class ConstraintViolationTest extends AbstractSchemaTest {
                 rs.next();
                 return rs.getLong(1);
             }
-        }
-    }
-
-    private void insertActiveVerificationCode(Connection conn, String email, String purpose) throws java.sql.SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO email_verification_code (purpose, target_email, challenge_id, code_hash, expires_at) "
-                        + "VALUES (?, ?, gen_random_uuid(), 'x', now() + interval '5 minutes')")) {
-            ps.setString(1, purpose);
-            ps.setString(2, email);
-            ps.executeUpdate();
         }
     }
 
