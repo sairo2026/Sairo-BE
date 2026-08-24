@@ -21,66 +21,69 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers
 class ChecksumMismatchTest {
 
-    @Container
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"));
+  @Container
+  private static final PostgreSQLContainer POSTGRES =
+      new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"));
 
-    private Path migrationDir;
+  private Path migrationDir;
 
-    @BeforeEach
-    void copyMigrationsToTempDir() throws IOException {
-        migrationDir = Files.createTempDirectory("sairo-flyway-checksum-test");
-        Path source = Path.of("src/main/resources/db/migration");
-        for (String fileName : new String[]{
-                "V1__init.sql",
-                "V2__create_member_and_office_schema.sql",
-                "V3__create_property_and_coordination_schema.sql",
-                "V4__create_expiry_task_and_shedlock.sql"
+  @BeforeEach
+  void copyMigrationsToTempDir() throws IOException {
+    migrationDir = Files.createTempDirectory("sairo-flyway-checksum-test");
+    Path source = Path.of("src/main/resources/db/migration");
+    for (String fileName :
+        new String[] {
+          "V1__init.sql",
+          "V2__create_member_and_office_schema.sql",
+          "V3__create_property_and_coordination_schema.sql",
+          "V4__create_expiry_task_and_shedlock.sql"
         }) {
-            Files.copy(source.resolve(fileName), migrationDir.resolve(fileName));
-        }
+      Files.copy(source.resolve(fileName), migrationDir.resolve(fileName));
     }
+  }
 
-    @AfterEach
-    void cleanupTempDir() throws IOException {
-        try (var walk = Files.walk(migrationDir)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+  @AfterEach
+  void cleanupTempDir() throws IOException {
+    try (var walk = Files.walk(migrationDir)) {
+      walk.sorted(Comparator.reverseOrder())
+          .forEach(
+              p -> {
                 try {
-                    Files.delete(p);
+                  Files.delete(p);
                 } catch (IOException ignored) {
                 }
-            });
-        }
+              });
     }
+  }
 
-    private Flyway flywayFor(Path location) {
-        return Flyway.configure()
-                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("filesystem:" + location)
-                .load();
-    }
+  private Flyway flywayFor(Path location) {
+    return Flyway.configure()
+        .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        .locations("filesystem:" + location)
+        .load();
+  }
 
-    @Test
-    void 이미_적용된_마이그레이션_파일을_바꾸면_validate가_실패한다() throws IOException {
-        Flyway flyway = flywayFor(migrationDir);
-        flyway.migrate();
+  @Test
+  void 이미_적용된_마이그레이션_파일을_바꾸면_validate가_실패한다() throws IOException {
+    Flyway flyway = flywayFor(migrationDir);
+    flyway.migrate();
 
-        Path v2 = migrationDir.resolve("V2__create_member_and_office_schema.sql");
-        String original = Files.readString(v2, StandardCharsets.UTF_8);
-        Files.writeString(v2, original + "\n-- 체크섬을 깨뜨리기 위한 사후 변경\n", StandardCharsets.UTF_8);
+    Path v2 = migrationDir.resolve("V2__create_member_and_office_schema.sql");
+    String original = Files.readString(v2, StandardCharsets.UTF_8);
+    Files.writeString(v2, original + "\n-- 체크섬을 깨뜨리기 위한 사후 변경\n", StandardCharsets.UTF_8);
 
-        Flyway flywayAfterEdit = flywayFor(migrationDir);
-        assertThatThrownBy(flywayAfterEdit::validate)
-                .isInstanceOf(FlywayValidateException.class)
-                .hasMessageContaining("checksum");
-    }
+    Flyway flywayAfterEdit = flywayFor(migrationDir);
+    assertThatThrownBy(flywayAfterEdit::validate)
+        .isInstanceOf(FlywayValidateException.class)
+        .hasMessageContaining("checksum");
+  }
 
-    @Test
-    void 파일을_바꾸지_않으면_validate는_그대로_통과한다() {
-        Flyway flyway = flywayFor(migrationDir);
-        flyway.migrate();
+  @Test
+  void 파일을_바꾸지_않으면_validate는_그대로_통과한다() {
+    Flyway flyway = flywayFor(migrationDir);
+    flyway.migrate();
 
-        Flyway flywayAgain = flywayFor(migrationDir);
-        assertThatCode(flywayAgain::validate).doesNotThrowAnyException();
-    }
+    Flyway flywayAgain = flywayFor(migrationDir);
+    assertThatCode(flywayAgain::validate).doesNotThrowAnyException();
+  }
 }

@@ -2,6 +2,8 @@
 
 이 문서는 사이로 백엔드 저장소의 브랜치 전략, Issue, 커밋과 Pull Request 작성 기준을 설명한다.
 
+Java·Spring 코드 구조와 작성 규칙은 [`docs/CODE_CONVENTION.md`](../docs/CODE_CONVENTION.md)를 따른다. PR 전 `./gradlew check`를 통과해야 한다.
+
 ## 브랜치 전략
 
 저장소는 `main`과 `dev` 두 개의 상시 브랜치만 유지한다.
