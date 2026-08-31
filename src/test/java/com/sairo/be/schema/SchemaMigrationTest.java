@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,28 +16,30 @@ class SchemaMigrationTest extends AbstractSchemaTest {
 
   private static final List<String> DOMAIN_TABLES =
       List.of(
-          "member",
-          "login_identity",
+          "app_user",
           "login_history",
+          "terms_catalog",
+          "terms_agreement",
           "office",
           "office_registration",
           "office_registration_status_history",
-          "document_move_outbox",
           "office_membership",
           "office_membership_status_history",
           "property",
           "property_contract",
           "coordination",
           "coordination_candidate_time",
+          "coordination_customer_response",
+          "customer_response_candidate",
+          "customer_response_link",
           "coordination_status_history",
           "expiry_task",
-          "operator",
-          "shedlock",
-          "terms_catalog",
-          "terms_agreement",
-          "oauth_transaction",
-          "kakao_signup_ticket",
-          "rate_limit_counter");
+          "operator_account",
+          "rate_limit_counter",
+          "shedlock");
+
+  private static final Set<String> NON_DOMAIN_TABLES =
+      Set.of("spring_session", "spring_session_attributes", "flyway_schema_history");
 
   @Autowired private Flyway flyway;
 
@@ -45,7 +49,7 @@ class SchemaMigrationTest extends AbstractSchemaTest {
   }
 
   @Test
-  void V1부터_V9까지_아홉_마이그레이션이_모두_성공했다() throws Exception {
+  void V1부터_V10까지_열_마이그레이션이_모두_성공했다() throws Exception {
     withRollback(
         conn -> {
           try (PreparedStatement ps =
@@ -59,338 +63,532 @@ class SchemaMigrationTest extends AbstractSchemaTest {
                     .isTrue();
                 versions.add(rs.getString("version"));
               }
-              assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
+              assertThat(versions)
+                  .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
             }
           }
         });
   }
 
   @Test
-  void 도메인_테이블_22개가_전부_존재한다() throws Exception {
-    withRollback(conn -> assertThat(countTables(conn)).isEqualTo(22));
+  void 도메인_테이블_집합이_정확히_21개와_일치한다() throws Exception {
+    withRollback(
+        conn -> {
+          Set<String> actual = new HashSet<>();
+          try (PreparedStatement ps =
+                  conn.prepareStatement(
+                      "SELECT table_name FROM information_schema.tables WHERE table_schema='public'");
+              ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+              String name = rs.getString(1);
+              if (!NON_DOMAIN_TABLES.contains(name)) {
+                actual.add(name);
+              }
+            }
+          }
+          assertThat(actual)
+              .as("public 스키마의 도메인 테이블 집합이 DOMAIN_TABLES와 정확히 같아야 함(추가/누락 없이)")
+              .containsExactlyInAnyOrderElementsOf(DOMAIN_TABLES);
+        });
   }
 
-  // 참조 DDL에서 ALTER TABLE ... ADD CONSTRAINT로 명시적으로 이름 붙인 제약 47개.
-  // PK 인라인 정의, 컬럼 인라인 CHECK/REFERENCES, NOT NULL의 PostgreSQL 내부 표현은 이 목록에 포함하지 않는다.
-  // 총 개수(information_schema.table_constraints 기준 240개)는 그 내부 표현까지 섞인 값이라 여기서는 쓰지 않는다 — PostgreSQL
-  // 버전이나 내부 표현이 바뀌면 총 개수는 흔들릴 수 있지만, 아래 이름별 정의는 흔들리지 않는다.
+  @Test
+  void 회원가입_사업자인증_상태_테이블은_V10에서_제거됐다() throws Exception {
+    withRollback(
+        conn -> {
+          for (String removed :
+              List.of(
+                  "member",
+                  "login_identity",
+                  "email_verification_code",
+                  "oauth_transaction",
+                  "kakao_signup_ticket",
+                  "document_move_outbox",
+                  "operator")) {
+            assertThat(tableExists(conn, removed)).as("%s는 V10에서 제거되어야 함", removed).isZero();
+          }
+        });
+  }
+
+  @Test
+  void 컬럼_165개가_이름_타입_길이_NULL여부_기본값까지_전부_일치한다() throws Exception {
+    withRollback(
+        conn -> {
+          for (ColumnSpec c : COLUMN_SPECS) {
+            assertColumnMatches(conn, c);
+          }
+        });
+  }
+
   private static final List<NamedObject> NAMED_CONSTRAINTS =
       List.of(
           new NamedObject(
-              "coordination",
-              "ck_coordination_confirmation_pair",
-              "CHECK (((confirmed_candidate_time_id IS NULL) = (confirmed_at IS NULL)))"),
-          new NamedObject(
-              "coordination",
-              "ck_coordination_origin_not_self",
-              "CHECK (((origin_coordination_id IS NULL) OR (origin_coordination_id <> id)))"),
-          new NamedObject(
-              "coordination",
-              "ck_coordination_status_columns",
-              "CHECK (((((status)::text = 'PENDING_RESPONSE'::text) AND (last_responded_at IS NULL) AND (confirmed_at IS NULL) AND (completed_at IS NULL) AND (cancelled_at IS NULL) AND (rebooking_requested_at IS NULL)) OR (((status)::text = 'RESPONDED'::text) AND (last_responded_at IS NOT NULL) AND (confirmed_at IS NULL) AND (completed_at IS NULL) AND (cancelled_at IS NULL) AND (rebooking_requested_at IS NULL)) OR (((status)::text = 'CONFIRMED'::text) AND (confirmed_at IS NOT NULL) AND (completed_at IS NULL) AND (cancelled_at IS NULL) AND (rebooking_requested_at IS NULL)) OR (((status)::text = 'COMPLETED'::text) AND (confirmed_at IS NOT NULL) AND (completed_at IS NOT NULL) AND (cancelled_at IS NULL) AND (rebooking_requested_at IS NULL)) OR (((status)::text = 'CANCELLED'::text) AND (cancelled_at IS NOT NULL) AND (completed_at IS NULL) AND (rebooking_requested_at IS NULL)) OR (((status)::text = 'NEEDS_REBOOKING'::text) AND (rebooking_requested_at IS NOT NULL) AND (confirmed_at IS NULL) AND (completed_at IS NULL) AND (cancelled_at IS NULL))))"),
-          new NamedObject(
-              "coordination",
-              "fk_coordination_confirmed_time",
-              "FOREIGN KEY (confirmed_candidate_time_id, id) REFERENCES coordination_candidate_time(id, coordination_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "coordination",
-              "fk_coordination_created_by_membership",
-              "FOREIGN KEY (created_by_member_id, office_id) REFERENCES office_membership(member_id, office_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "coordination",
-              "fk_coordination_origin_office",
-              "FOREIGN KEY (origin_coordination_id, office_id) REFERENCES coordination(id, office_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "coordination",
-              "fk_coordination_property_office",
-              "FOREIGN KEY (property_id, office_id) REFERENCES property(id, office_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "coordination_status_history",
-              "ck_status_history_actor",
-              "CHECK (((((change_source)::text = 'OFFICE_MEMBER'::text) AND (changed_by_member_id IS NOT NULL)) OR (((change_source)::text = ANY ((ARRAY['CUSTOMER_LINK'::character varying, 'SYSTEM_BATCH'::character varying])::text[])) AND (changed_by_member_id IS NULL))))"),
-          new NamedObject(
-              "coordination_status_history",
-              "fk_status_history_changed_by_membership",
-              "FOREIGN KEY (changed_by_member_id, office_id) REFERENCES office_membership(member_id, office_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "coordination_status_history",
-              "fk_status_history_parent",
-              "FOREIGN KEY (coordination_id, office_id) REFERENCES coordination(id, office_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "document_move_outbox",
-              "ck_outbox_status",
-              "CHECK (((((status)::text = 'PENDING'::text) AND (locked_at IS NULL) AND (locked_by IS NULL) AND (lock_token IS NULL) AND (lock_expires_at IS NULL) AND (processed_at IS NULL)) OR (((status)::text = 'IN_PROGRESS'::text) AND (locked_at IS NOT NULL) AND (locked_by IS NOT NULL) AND (lock_token IS NOT NULL) AND (lock_expires_at IS NOT NULL) AND (processed_at IS NULL)) OR (((status)::text = 'DONE'::text) AND (processed_at IS NOT NULL) AND (locked_at IS NULL) AND (locked_by IS NULL) AND (lock_token IS NULL) AND (lock_expires_at IS NULL)) OR (((status)::text = 'FAILED'::text) AND (last_error IS NOT NULL) AND (locked_at IS NULL) AND (locked_by IS NULL) AND (lock_token IS NULL) AND (lock_expires_at IS NULL))))"),
-          new NamedObject(
-              "expiry_task",
-              "ck_expiry_task_status",
-              "CHECK (((((status)::text = 'OPEN'::text) AND (completed_at IS NULL) AND (cancelled_at IS NULL) AND (cancel_reason IS NULL)) OR (((status)::text = 'COMPLETED'::text) AND (completed_at IS NOT NULL) AND (cancelled_at IS NULL) AND (cancel_reason IS NULL)) OR (((status)::text = 'CANCELLED'::text) AND (completed_at IS NULL) AND (cancelled_at IS NOT NULL) AND (cancel_reason IS NOT NULL))))"),
-          new NamedObject(
-              "expiry_task",
-              "ck_expiry_task_target_date",
-              "CHECK ((target_date = (contract_end_date - 90)))"),
-          new NamedObject(
-              "expiry_task", "ck_expiry_task_type", "CHECK (((task_type)::text = 'D90'::text))"),
-          new NamedObject(
-              "expiry_task",
-              "fk_expiry_task_contract_office_property",
-              "FOREIGN KEY (property_contract_id, office_id, property_id, deal_type) REFERENCES property_contract(id, office_id, property_id, deal_type) ON DELETE RESTRICT"),
-          new NamedObject(
-              "kakao_signup_ticket",
-              "ck_kakao_signup_ticket_expires",
-              "CHECK ((expires_at > created_at))"),
-          new NamedObject(
-              "kakao_signup_ticket",
-              "ck_kakao_signup_ticket_used",
-              "CHECK (((used_at IS NULL) OR (used_at >= created_at)))"),
-          new NamedObject(
-              "login_history",
-              "fk_login_history_identity_member",
-              "FOREIGN KEY (login_identity_id, member_id) REFERENCES login_identity(id, member_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "login_identity", "uq_login_identity_id_member", "UNIQUE (id, member_id)"),
-          new NamedObject(
-              "member",
-              "ck_member_withdrawn",
+              "app_user",
+              "ck_app_user_withdrawn",
               "CHECK ((((account_status)::text = 'WITHDRAWN'::text) = (withdrawn_at IS NOT NULL)))"),
-          new NamedObject(
-              "oauth_transaction",
-              "ck_oauth_transaction_expires",
-              "CHECK ((expires_at > created_at))"),
-          new NamedObject(
-              "oauth_transaction",
-              "ck_oauth_transaction_purpose_fields",
-              "CHECK (((((purpose)::text = 'STEP_UP'::text) AND (member_id IS NOT NULL) AND (initiating_session_id IS NOT NULL)) OR (((purpose)::text = 'LOGIN'::text) AND (member_id IS NULL) AND (initiating_session_id IS NULL) AND (step_up_verified_at IS NULL))))"),
-          new NamedObject(
-              "oauth_transaction",
-              "ck_oauth_transaction_used",
-              "CHECK (((used_at IS NULL) OR (used_at >= created_at)))"),
-          new NamedObject(
-              "office_membership",
-              "ck_office_membership_reviewer",
-              "CHECK (((reviewed_by_type IS NULL) OR (((reviewed_by_type)::text = 'ADMIN'::text) AND (reviewed_by_membership_id IS NOT NULL)) OR (((reviewed_by_type)::text = 'SYSTEM'::text) AND (reviewed_by_membership_id IS NULL))))"),
-          new NamedObject(
-              "office_membership",
-              "ck_office_membership_status",
-              "CHECK (((((status)::text = 'PENDING'::text) AND ((role)::text = 'STAFF'::text) AND (reviewed_at IS NULL) AND (reviewed_by_type IS NULL) AND (reviewed_by_membership_id IS NULL) AND (rejection_reason IS NULL) AND (revoked_at IS NULL) AND (revocation_reason IS NULL) AND (cancelled_at IS NULL) AND (reapplication_started_at IS NULL)) OR (((status)::text = 'APPROVED'::text) AND (reviewed_at IS NOT NULL) AND (reviewed_by_type IS NOT NULL) AND (rejection_reason IS NULL) AND (revoked_at IS NULL) AND (revocation_reason IS NULL) AND (cancelled_at IS NULL) AND (reapplication_started_at IS NULL)) OR (((status)::text = 'REJECTED'::text) AND (reviewed_at IS NOT NULL) AND (reviewed_by_type IS NOT NULL) AND (rejection_reason IS NOT NULL) AND (revoked_at IS NULL) AND (revocation_reason IS NULL) AND (cancelled_at IS NULL) AND ((reapplication_started_at IS NULL) OR (reapplication_started_at > reviewed_at))) OR (((status)::text = 'REVOKED'::text) AND (reviewed_at IS NOT NULL) AND (reviewed_by_type IS NOT NULL) AND (rejection_reason IS NULL) AND (revoked_at IS NOT NULL) AND (revocation_reason IS NOT NULL) AND (cancelled_at IS NULL) AND (reapplication_started_at IS NULL)) OR (((status)::text = 'CANCELLED'::text) AND (reviewed_at IS NULL) AND (reviewed_by_type IS NULL) AND (reviewed_by_membership_id IS NULL) AND (rejection_reason IS NULL) AND (revoked_at IS NULL) AND (revocation_reason IS NULL) AND (cancelled_at IS NOT NULL) AND (reapplication_started_at IS NULL))))"),
-          new NamedObject(
-              "office_membership",
-              "fk_membership_reviewed_by",
-              "FOREIGN KEY (reviewed_by_membership_id, office_id) REFERENCES office_membership(id, office_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "office_membership_status_history",
-              "ck_membership_history_actor",
-              "CHECK (((((changed_by_type)::text = 'ADMIN'::text) AND (changed_by_membership_id IS NOT NULL) AND (changed_by_membership_id <> office_membership_id)) OR (((changed_by_type)::text = ANY ((ARRAY['APPLICANT'::character varying, 'SYSTEM'::character varying])::text[])) AND (changed_by_membership_id IS NULL))))"),
-          new NamedObject(
-              "office_membership_status_history",
-              "fk_membership_history_changed_by",
-              "FOREIGN KEY (changed_by_membership_id, office_id) REFERENCES office_membership(id, office_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "office_membership_status_history",
-              "fk_membership_history_parent",
-              "FOREIGN KEY (office_membership_id, office_id) REFERENCES office_membership(id, office_id) ON DELETE RESTRICT"),
           new NamedObject(
               "office_registration",
               "ck_office_registration_status",
-              "CHECK (((((status)::text = ANY ((ARRAY['PENDING_REVIEW'::character varying, 'EVIDENCE_REQUESTED'::character varying])::text[])) AND (resulting_office_id IS NULL) AND (rejection_reason IS NULL) AND (reviewed_at IS NULL) AND (cancelled_at IS NULL) AND (reapplication_started_at IS NULL)) OR (((status)::text = 'APPROVED'::text) AND (resulting_office_id IS NOT NULL) AND (rejection_reason IS NULL) AND (reviewed_at IS NOT NULL) AND (cancelled_at IS NULL) AND (reapplication_started_at IS NULL)) OR (((status)::text = 'REJECTED'::text) AND (resulting_office_id IS NULL) AND (rejection_reason IS NOT NULL) AND (reviewed_at IS NOT NULL) AND (cancelled_at IS NULL) AND ((reapplication_started_at IS NULL) OR (reapplication_started_at > reviewed_at))) OR (((status)::text = 'CANCELLED'::text) AND (resulting_office_id IS NULL) AND (rejection_reason IS NULL) AND (reviewed_at IS NULL) AND (cancelled_at IS NOT NULL) AND (reapplication_started_at IS NULL))))"),
-          new NamedObject(
-              "office_registration",
-              "ck_office_registration_storage",
-              "CHECK ((((status)::text <> ALL ((ARRAY['REJECTED'::character varying, 'CANCELLED'::character varying])::text[])) OR (document_object_key IS NULL) OR ((document_storage_status)::text = ANY ((ARRAY['MOVE_PENDING'::character varying, 'PENDING_DELETION'::character varying, 'DELETED'::character varying, 'MOVE_FAILED'::character varying])::text[]))))"),
+              "CHECK (((((status)::text = ANY ((ARRAY['PENDING_REVIEW'::character varying, 'EVIDENCE_REQUESTED'::character varying])::text[])) AND (resulting_office_id IS NULL) AND (rejection_reason IS NULL) AND (reviewed_at IS NULL) AND (cancelled_at IS NULL) AND (resolved_at IS NULL)) OR (((status)::text = 'APPROVED'::text) AND (resulting_office_id IS NOT NULL) AND (rejection_reason IS NULL) AND (reviewed_at IS NOT NULL) AND (cancelled_at IS NULL) AND (resolved_at IS NULL)) OR (((status)::text = 'REJECTED'::text) AND (resulting_office_id IS NULL) AND (rejection_reason IS NOT NULL) AND (reviewed_at IS NOT NULL) AND (cancelled_at IS NULL)) OR (((status)::text = 'CANCELLED'::text) AND (resulting_office_id IS NULL) AND (rejection_reason IS NULL) AND (reviewed_at IS NULL) AND (cancelled_at IS NOT NULL) AND (resolved_at IS NULL))))"),
           new NamedObject(
               "office_registration_status_history",
-              "ck_reg_history_actor",
-              "CHECK (((((changed_by_type)::text = 'OPERATOR'::text) AND (changed_by_operator_id IS NOT NULL)) OR (((changed_by_type)::text = ANY ((ARRAY['APPLICANT'::character varying, 'SYSTEM'::character varying])::text[])) AND (changed_by_operator_id IS NULL))))"),
+              "ck_registration_history_actor",
+              "CHECK ((((changed_by_type)::text = 'OPERATOR'::text) = (changed_by_operator_id IS NOT NULL)))"),
+          new NamedObject(
+              "office_membership",
+              "ck_office_membership_status",
+              "CHECK (((((status)::text = 'PENDING'::text) AND ((role)::text = 'STAFF'::text) AND (reviewed_at IS NULL) AND (rejection_reason IS NULL) AND (revoked_at IS NULL) AND (revocation_reason IS NULL) AND (cancelled_at IS NULL) AND (resolved_at IS NULL)) OR (((status)::text = 'APPROVED'::text) AND (reviewed_at IS NOT NULL) AND (rejection_reason IS NULL) AND (revoked_at IS NULL) AND (revocation_reason IS NULL) AND (cancelled_at IS NULL) AND (resolved_at IS NULL)) OR (((status)::text = 'REJECTED'::text) AND (reviewed_at IS NOT NULL) AND (rejection_reason IS NOT NULL) AND (revoked_at IS NULL) AND (revocation_reason IS NULL) AND (cancelled_at IS NULL)) OR (((status)::text = 'REVOKED'::text) AND (reviewed_at IS NOT NULL) AND (rejection_reason IS NULL) AND (revoked_at IS NOT NULL) AND (revocation_reason IS NOT NULL) AND (cancelled_at IS NULL) AND (resolved_at IS NULL)) OR (((status)::text = 'CANCELLED'::text) AND (reviewed_at IS NULL) AND (rejection_reason IS NULL) AND (revoked_at IS NULL) AND (revocation_reason IS NULL) AND (cancelled_at IS NOT NULL) AND (resolved_at IS NULL))))"),
+          new NamedObject(
+              "office_membership_status_history",
+              "ck_membership_history_actor",
+              "CHECK (((((changed_by_type)::text = 'ADMIN'::text) AND (changed_by_membership_id IS NOT NULL) AND (changed_by_membership_id <> membership_id)) OR (((changed_by_type)::text = ANY ((ARRAY['APPLICANT'::character varying, 'SYSTEM'::character varying])::text[])) AND (changed_by_membership_id IS NULL))))"),
+          new NamedObject(
+              "property_contract",
+              "ck_property_contract_sale_terminal",
+              "CHECK ((((deal_type)::text <> 'SALE'::text) OR ((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'COMPLETED'::character varying, 'CANCELLED'::character varying])::text[]))))"),
+          new NamedObject(
+              "coordination",
+              "ck_coordination_completed",
+              "CHECK ((((status)::text <> 'COMPLETED'::text) OR ((scheduled_at IS NOT NULL) AND (confirmed_at IS NOT NULL))))"),
+          new NamedObject(
+              "coordination",
+              "ck_coordination_cancelled",
+              "CHECK ((((status)::text = 'CANCELLED'::text) = (cancelled_at IS NOT NULL)))"),
+          new NamedObject(
+              "coordination",
+              "fk_selected_buyer",
+              "FOREIGN KEY (selected_buyer_response_id, id) REFERENCES coordination_customer_response(id, coordination_id)"),
+          new NamedObject(
+              "coordination",
+              "fk_confirmed_candidate",
+              "FOREIGN KEY (confirmed_candidate_time_id, id) REFERENCES coordination_candidate_time(id, coordination_id)"),
           new NamedObject(
               "office_registration_status_history",
-              "fk_reg_history_operator",
-              "FOREIGN KEY (changed_by_operator_id) REFERENCES operator(id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "operator",
-              "ck_operator_status",
-              "CHECK (((((status)::text = 'ACTIVE'::text) AND (disabled_at IS NULL)) OR (((status)::text = 'DISABLED'::text) AND (disabled_at IS NOT NULL))))"),
-          new NamedObject(
-              "property",
-              "ck_property_soft_delete",
-              "CHECK ((((deleted_at IS NULL) AND (deleted_by_member_id IS NULL)) OR ((deleted_at IS NOT NULL) AND (deleted_by_member_id IS NOT NULL))))"),
-          new NamedObject(
-              "property",
-              "fk_property_deleted_by_membership",
-              "FOREIGN KEY (deleted_by_member_id, office_id) REFERENCES office_membership(member_id, office_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "property_contract",
-              "ck_property_contract_amounts",
-              "CHECK (((((deal_type)::text = 'SALE'::text) AND (sale_price IS NOT NULL) AND (sale_price >= 0) AND (deposit_amount IS NULL) AND (monthly_rent_amount IS NULL)) OR (((deal_type)::text = 'JEONSE'::text) AND (sale_price IS NULL) AND (deposit_amount IS NOT NULL) AND (deposit_amount >= 0) AND (monthly_rent_amount IS NULL)) OR (((deal_type)::text = 'MONTHLY'::text) AND (sale_price IS NULL) AND (deposit_amount IS NOT NULL) AND (deposit_amount >= 0) AND (monthly_rent_amount IS NOT NULL) AND (monthly_rent_amount >= 0))))"),
-          new NamedObject(
-              "property_contract",
-              "ck_property_contract_period",
-              "CHECK (((((deal_type)::text = 'SALE'::text) AND (contract_end_date IS NULL)) OR (((deal_type)::text = ANY ((ARRAY['JEONSE'::character varying, 'MONTHLY'::character varying])::text[])) AND (contract_end_date IS NOT NULL) AND (contract_end_date >= contract_start_date))))"),
-          new NamedObject(
-              "property_contract",
-              "ck_property_contract_previous_not_self",
-              "CHECK (((previous_contract_id IS NULL) OR (previous_contract_id <> id)))"),
-          new NamedObject(
-              "property_contract",
-              "ck_property_contract_status_fields",
-              "CHECK (((((status)::text = 'ACTIVE'::text) AND (ended_at IS NULL) AND (end_reason IS NULL)) OR (((status)::text = ANY ((ARRAY['COMPLETED'::character varying, 'RENEWED'::character varying])::text[])) AND (ended_at IS NOT NULL) AND (end_reason IS NULL)) OR (((status)::text = ANY ((ARRAY['TERMINATED'::character varying, 'CANCELLED'::character varying])::text[])) AND (ended_at IS NOT NULL) AND (end_reason IS NOT NULL))))"),
-          new NamedObject(
-              "property_contract",
-              "ck_property_contract_status_by_deal_type",
-              "CHECK ((((deal_type)::text <> 'SALE'::text) OR ((status)::text <> ALL ((ARRAY['RENEWED'::character varying, 'TERMINATED'::character varying])::text[]))))"),
-          new NamedObject(
-              "property_contract",
-              "fk_property_contract_created_by_membership",
-              "FOREIGN KEY (created_by_member_id, office_id) REFERENCES office_membership(member_id, office_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "property_contract",
-              "fk_property_contract_previous_same_property",
-              "FOREIGN KEY (previous_contract_id, office_id, property_id) REFERENCES property_contract(id, office_id, property_id) ON DELETE RESTRICT"),
-          new NamedObject(
-              "property_contract",
-              "fk_property_contract_property_office_type",
-              "FOREIGN KEY (property_id, office_id, deal_type) REFERENCES property(id, office_id, deal_type) ON DELETE RESTRICT"),
-          new NamedObject(
-              "rate_limit_counter", "ck_rate_limit_counter_count", "CHECK ((request_count > 0))"),
-          new NamedObject(
-              "terms_agreement",
-              "fk_terms_agreement_catalog",
-              "FOREIGN KEY (terms_code, terms_version) REFERENCES terms_catalog(terms_code, terms_version) ON DELETE RESTRICT"),
-          new NamedObject(
-              "terms_catalog",
-              "ck_terms_catalog_version_format",
-              "CHECK (((terms_version)::text ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'::text))"));
+              "fk_registration_history_operator",
+              "FOREIGN KEY (changed_by_operator_id) REFERENCES operator_account(id)"));
 
-  // 참조 DDL에서 CREATE INDEX로 명시적으로 이름 붙인 인덱스 31개.
-  // PK·UNIQUE 인라인 정의가 자동 생성하는 backing index는 이 목록에 포함하지 않는다.
-  // 총 개수(pg_indexes 기준 60개)는 그 backing index까지 섞인 값이라 여기서는 쓰지 않는다.
   private static final List<NamedObject> NAMED_INDEXES =
       List.of(
           new NamedObject(
-              "coordination",
-              "ix_coordination_office_confirmed",
-              "CREATE INDEX ix_coordination_office_confirmed ON public.coordination USING btree (office_id, confirmed_at)"),
-          new NamedObject(
-              "coordination",
-              "ix_coordination_office_status_created",
-              "CREATE INDEX ix_coordination_office_status_created ON public.coordination USING btree (office_id, status, created_at)"),
-          new NamedObject(
-              "coordination",
-              "uq_coordination_origin",
-              "CREATE UNIQUE INDEX uq_coordination_origin ON public.coordination USING btree (origin_coordination_id) WHERE (origin_coordination_id IS NOT NULL)"),
-          new NamedObject(
-              "coordination_candidate_time",
-              "ix_candidate_time_coordination_date",
-              "CREATE INDEX ix_candidate_time_coordination_date ON public.coordination_candidate_time USING btree (coordination_id, candidate_date, start_time)"),
-          new NamedObject(
-              "coordination_status_history",
-              "ix_status_history_coordination_created",
-              "CREATE INDEX ix_status_history_coordination_created ON public.coordination_status_history USING btree (coordination_id, created_at)"),
-          new NamedObject(
-              "document_move_outbox",
-              "ix_document_move_outbox_due",
-              "CREATE INDEX ix_document_move_outbox_due ON public.document_move_outbox USING btree (next_attempt_at) WHERE ((status)::text = 'PENDING'::text)"),
-          new NamedObject(
-              "document_move_outbox",
-              "ix_document_move_outbox_stuck",
-              "CREATE INDEX ix_document_move_outbox_stuck ON public.document_move_outbox USING btree (lock_expires_at) WHERE ((status)::text = 'IN_PROGRESS'::text)"),
-          new NamedObject(
-              "document_move_outbox",
-              "uq_document_move_outbox_active",
-              "CREATE UNIQUE INDEX uq_document_move_outbox_active ON public.document_move_outbox USING btree (office_registration_id, task_type) WHERE ((status)::text = ANY ((ARRAY['PENDING'::character varying, 'IN_PROGRESS'::character varying])::text[]))"),
-          new NamedObject(
-              "expiry_task",
-              "ix_expiry_task_office_status_target",
-              "CREATE INDEX ix_expiry_task_office_status_target ON public.expiry_task USING btree (office_id, status, target_date)"),
-          new NamedObject(
-              "kakao_signup_ticket",
-              "ix_kakao_signup_ticket_provider_key",
-              "CREATE INDEX ix_kakao_signup_ticket_provider_key ON public.kakao_signup_ticket USING btree (provider_key)"),
-          new NamedObject(
               "login_history",
-              "ix_login_history_member_created",
-              "CREATE INDEX ix_login_history_member_created ON public.login_history USING btree (member_id, created_at DESC)"),
-          new NamedObject(
-              "login_identity",
-              "uq_login_identity_active",
-              "CREATE UNIQUE INDEX uq_login_identity_active ON public.login_identity USING btree (provider, provider_key) WHERE (revoked_at IS NULL)"),
-          new NamedObject(
-              "login_identity",
-              "uq_login_identity_member_provider_active",
-              "CREATE UNIQUE INDEX uq_login_identity_member_provider_active ON public.login_identity USING btree (member_id, provider) WHERE (revoked_at IS NULL)"),
-          new NamedObject(
-              "member",
-              "uq_member_email_active",
-              "CREATE UNIQUE INDEX uq_member_email_active ON public.member USING btree (email) WHERE ((account_status)::text <> 'WITHDRAWN'::text)"),
-          new NamedObject(
-              "oauth_transaction",
-              "ix_oauth_transaction_expires",
-              "CREATE INDEX ix_oauth_transaction_expires ON public.oauth_transaction USING btree (expires_at) WHERE (used_at IS NULL)"),
-          new NamedObject(
-              "office_membership",
-              "ix_office_membership_member_status",
-              "CREATE INDEX ix_office_membership_member_status ON public.office_membership USING btree (member_id, status)"),
-          new NamedObject(
-              "office_membership",
-              "uq_office_membership_member_approved",
-              "CREATE UNIQUE INDEX uq_office_membership_member_approved ON public.office_membership USING btree (member_id) WHERE ((status)::text = 'APPROVED'::text)"),
-          new NamedObject(
-              "office_membership",
-              "uq_office_membership_member_pending",
-              "CREATE UNIQUE INDEX uq_office_membership_member_pending ON public.office_membership USING btree (member_id) WHERE ((status)::text = 'PENDING'::text)"),
-          new NamedObject(
-              "office_registration",
-              "ix_office_registration_bizno_status",
-              "CREATE INDEX ix_office_registration_bizno_status ON public.office_registration USING btree (business_registration_number, status)"),
+              "ix_login_history_user_created",
+              "CREATE INDEX ix_login_history_user_created ON public.login_history USING btree (user_id, created_at DESC)"),
           new NamedObject(
               "office_registration",
               "uq_office_registration_pending_applicant",
-              "CREATE UNIQUE INDEX uq_office_registration_pending_applicant ON public.office_registration USING btree (applicant_member_id) WHERE ((status)::text = ANY ((ARRAY['PENDING_REVIEW'::character varying, 'EVIDENCE_REQUESTED'::character varying])::text[]))"),
+              "CREATE UNIQUE INDEX uq_office_registration_pending_applicant ON public.office_registration USING btree (applicant_user_id) WHERE ((status)::text = ANY ((ARRAY['PENDING_REVIEW'::character varying, 'EVIDENCE_REQUESTED'::character varying])::text[]))"),
           new NamedObject(
               "office_registration",
               "uq_office_registration_pending_bizno",
               "CREATE UNIQUE INDEX uq_office_registration_pending_bizno ON public.office_registration USING btree (business_registration_number) WHERE ((status)::text = ANY ((ARRAY['PENDING_REVIEW'::character varying, 'EVIDENCE_REQUESTED'::character varying])::text[]))"),
           new NamedObject(
+              "office_membership",
+              "uq_user_approved_office",
+              "CREATE UNIQUE INDEX uq_user_approved_office ON public.office_membership USING btree (user_id) WHERE ((status)::text = 'APPROVED'::text)"),
+          new NamedObject(
+              "office_membership",
+              "uq_user_pending_office",
+              "CREATE UNIQUE INDEX uq_user_pending_office ON public.office_membership USING btree (user_id) WHERE ((status)::text = 'PENDING'::text)"),
+          new NamedObject(
+              "property_contract",
+              "uq_property_active_contract",
+              "CREATE UNIQUE INDEX uq_property_active_contract ON public.property_contract USING btree (property_id) WHERE ((status)::text = 'ACTIVE'::text)"),
+          new NamedObject(
+              "coordination_customer_response",
+              "uq_coordination_tenant",
+              "CREATE UNIQUE INDEX uq_coordination_tenant ON public.coordination_customer_response USING btree (coordination_id) WHERE ((role)::text = 'TENANT'::text)"),
+          new NamedObject(
+              "customer_response_link",
+              "uq_response_active_link",
+              "CREATE UNIQUE INDEX uq_response_active_link ON public.customer_response_link USING btree (response_id) WHERE (revoked_at IS NULL)"),
+          new NamedObject(
+              "coordination",
+              "ix_coordination_office_status",
+              "CREATE INDEX ix_coordination_office_status ON public.coordination USING btree (office_id, status, created_at DESC)"),
+          new NamedObject(
+              "coordination_customer_response",
+              "ix_response_coordination",
+              "CREATE INDEX ix_response_coordination ON public.coordination_customer_response USING btree (coordination_id, role)"),
+          new NamedObject(
+              "customer_response_link",
+              "ix_link_hash",
+              "CREATE INDEX ix_link_hash ON public.customer_response_link USING btree (token_hash)"));
+
+  private static final List<ColumnSpec> COLUMN_SPECS =
+      List.of(
+          new ColumnSpec(
+              "app_user",
+              "account_status",
+              "character varying",
+              10,
+              false,
+              "'ACTIVE'::character varying"),
+          new ColumnSpec(
+              "app_user", "created_at", "timestamp with time zone", null, false, "now()"),
+          new ColumnSpec("app_user", "id", "bigint", null, false, null),
+          new ColumnSpec("app_user", "kakao_provider_key", "character varying", 255, false, null),
+          new ColumnSpec("app_user", "name", "character varying", 50, false, null),
+          new ColumnSpec("app_user", "withdrawn_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("coordination", "cancel_reason", "text", null, true, null),
+          new ColumnSpec(
+              "coordination", "cancelled_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec(
+              "coordination", "confirmed_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("coordination", "confirmed_candidate_time_id", "bigint", null, true, null),
+          new ColumnSpec(
+              "coordination", "created_at", "timestamp with time zone", null, false, "now()"),
+          new ColumnSpec("coordination", "created_by_membership_id", "bigint", null, false, null),
+          new ColumnSpec("coordination", "id", "bigint", null, false, null),
+          new ColumnSpec("coordination", "office_id", "bigint", null, false, null),
+          new ColumnSpec("coordination", "property_id", "bigint", null, false, null),
+          new ColumnSpec(
+              "coordination", "scheduled_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("coordination", "selected_buyer_response_id", "bigint", null, true, null),
+          new ColumnSpec("coordination", "status", "character varying", 40, false, null),
+          new ColumnSpec(
+              "coordination", "updated_at", "timestamp with time zone", null, false, "now()"),
+          new ColumnSpec(
+              "coordination_candidate_time", "coordination_id", "bigint", null, false, null),
+          new ColumnSpec("coordination_candidate_time", "id", "bigint", null, false, null),
+          new ColumnSpec(
+              "coordination_candidate_time",
+              "starts_at",
+              "timestamp with time zone",
+              null,
+              false,
+              null),
+          new ColumnSpec(
+              "coordination_customer_response", "coordination_id", "bigint", null, false, null),
+          new ColumnSpec(
+              "coordination_customer_response",
+              "created_at",
+              "timestamp with time zone",
+              null,
+              false,
+              "now()"),
+          new ColumnSpec(
+              "coordination_customer_response",
+              "customer_name",
+              "character varying",
+              50,
+              false,
+              null),
+          new ColumnSpec(
+              "coordination_customer_response",
+              "customer_phone",
+              "character varying",
+              30,
+              false,
+              null),
+          new ColumnSpec("coordination_customer_response", "id", "bigint", null, false, null),
+          new ColumnSpec(
+              "coordination_customer_response", "reset_count", "integer", null, false, "0"),
+          new ColumnSpec(
+              "coordination_customer_response", "result", "character varying", 30, false, null),
+          new ColumnSpec(
+              "coordination_customer_response", "role", "character varying", 10, false, null),
+          new ColumnSpec(
+              "coordination_customer_response",
+              "submitted_at",
+              "timestamp with time zone",
+              null,
+              true,
+              null),
+          new ColumnSpec(
+              "coordination_status_history", "actor_membership_id", "bigint", null, true, null),
+          new ColumnSpec(
+              "coordination_status_history", "coordination_id", "bigint", null, false, null),
+          new ColumnSpec(
+              "coordination_status_history",
+              "created_at",
+              "timestamp with time zone",
+              null,
+              false,
+              "now()"),
+          new ColumnSpec(
+              "coordination_status_history", "from_status", "character varying", 40, true, null),
+          new ColumnSpec("coordination_status_history", "id", "bigint", null, false, null),
+          new ColumnSpec("coordination_status_history", "reason", "text", null, true, null),
+          new ColumnSpec(
+              "coordination_status_history", "source", "character varying", 20, false, null),
+          new ColumnSpec(
+              "coordination_status_history", "to_status", "character varying", 40, false, null),
+          new ColumnSpec(
+              "customer_response_candidate", "candidate_time_id", "bigint", null, false, null),
+          new ColumnSpec(
+              "customer_response_candidate", "coordination_id", "bigint", null, false, null),
+          new ColumnSpec(
+              "customer_response_candidate", "is_selected", "boolean", null, false, "false"),
+          new ColumnSpec("customer_response_candidate", "response_id", "bigint", null, false, null),
+          new ColumnSpec(
+              "customer_response_link",
+              "expires_at",
+              "timestamp with time zone",
+              null,
+              false,
+              null),
+          new ColumnSpec("customer_response_link", "id", "bigint", null, false, null),
+          new ColumnSpec(
+              "customer_response_link",
+              "issued_at",
+              "timestamp with time zone",
+              null,
+              false,
+              "now()"),
+          new ColumnSpec("customer_response_link", "response_id", "bigint", null, false, null),
+          new ColumnSpec(
+              "customer_response_link", "revoked_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("customer_response_link", "token_hash", "character", 64, false, null),
+          new ColumnSpec("expiry_task", "cancel_reason", "character varying", 40, true, null),
+          new ColumnSpec(
+              "expiry_task", "cancelled_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("expiry_task", "contract_id", "bigint", null, false, null),
+          new ColumnSpec(
+              "expiry_task", "created_at", "timestamp with time zone", null, false, "now()"),
+          new ColumnSpec("expiry_task", "id", "bigint", null, false, null),
+          new ColumnSpec("expiry_task", "office_id", "bigint", null, false, null),
+          new ColumnSpec("expiry_task", "property_id", "bigint", null, false, null),
+          new ColumnSpec("expiry_task", "status", "character varying", 10, false, null),
+          new ColumnSpec("expiry_task", "target_date", "date", null, false, null),
+          new ColumnSpec(
+              "login_history", "created_at", "timestamp with time zone", null, false, "now()"),
+          new ColumnSpec("login_history", "id", "bigint", null, false, null),
+          new ColumnSpec("login_history", "ip_address", "inet", null, true, null),
+          new ColumnSpec("login_history", "user_agent", "character varying", 500, true, null),
+          new ColumnSpec("login_history", "user_id", "bigint", null, false, null),
+          new ColumnSpec("office", "address", "character varying", 300, false, null),
+          new ColumnSpec(
+              "office", "business_registration_number", "character varying", 10, false, null),
+          new ColumnSpec("office", "created_at", "timestamp with time zone", null, false, "now()"),
+          new ColumnSpec("office", "id", "bigint", null, false, null),
+          new ColumnSpec("office", "name", "character varying", 100, false, null),
+          new ColumnSpec("office", "phone", "character varying", 30, false, null),
+          new ColumnSpec(
+              "office", "real_estate_license_number", "character varying", 30, false, null),
+          new ColumnSpec("office", "representative_name", "character varying", 50, false, null),
+          new ColumnSpec(
+              "office_membership", "cancelled_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("office_membership", "id", "bigint", null, false, null),
+          new ColumnSpec("office_membership", "office_id", "bigint", null, false, null),
+          new ColumnSpec("office_membership", "rejection_reason", "text", null, true, null),
+          new ColumnSpec(
+              "office_membership", "resolved_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec(
+              "office_membership", "reviewed_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("office_membership", "revocation_reason", "text", null, true, null),
+          new ColumnSpec(
+              "office_membership", "revoked_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("office_membership", "role", "character varying", 10, false, null),
+          new ColumnSpec("office_membership", "status", "character varying", 10, false, null),
+          new ColumnSpec("office_membership", "user_id", "bigint", null, false, null),
+          new ColumnSpec(
+              "office_membership_status_history",
+              "changed_by_membership_id",
+              "bigint",
+              null,
+              true,
+              null),
+          new ColumnSpec(
+              "office_membership_status_history",
+              "changed_by_type",
+              "character varying",
+              10,
+              false,
+              null),
+          new ColumnSpec(
+              "office_membership_status_history",
+              "created_at",
+              "timestamp with time zone",
+              null,
+              false,
+              "now()"),
+          new ColumnSpec(
+              "office_membership_status_history",
+              "from_status",
+              "character varying",
+              20,
+              true,
+              null),
+          new ColumnSpec("office_membership_status_history", "id", "bigint", null, false, null),
+          new ColumnSpec(
+              "office_membership_status_history", "membership_id", "bigint", null, false, null),
+          new ColumnSpec("office_membership_status_history", "reason", "text", null, true, null),
+          new ColumnSpec(
+              "office_membership_status_history",
+              "to_status",
+              "character varying",
+              20,
+              false,
+              null),
+          new ColumnSpec("office_registration", "applicant_user_id", "bigint", null, false, null),
+          new ColumnSpec(
               "office_registration",
-              "uq_office_registration_result",
-              "CREATE UNIQUE INDEX uq_office_registration_result ON public.office_registration USING btree (resulting_office_id) WHERE (resulting_office_id IS NOT NULL)"),
-          new NamedObject(
+              "business_registration_number",
+              "character varying",
+              10,
+              false,
+              null),
+          new ColumnSpec(
+              "office_registration", "cancelled_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec(
+              "office_registration",
+              "created_at",
+              "timestamp with time zone",
+              null,
+              false,
+              "now()"),
+          new ColumnSpec(
+              "office_registration", "evidence_object_key", "character varying", 500, true, null),
+          new ColumnSpec("office_registration", "id", "bigint", null, false, null),
+          new ColumnSpec(
+              "office_registration",
+              "real_estate_license_number",
+              "character varying",
+              30,
+              false,
+              null),
+          new ColumnSpec("office_registration", "rejection_reason", "text", null, true, null),
+          new ColumnSpec(
+              "office_registration", "requested_address", "character varying", 300, false, null),
+          new ColumnSpec(
+              "office_registration",
+              "requested_office_name",
+              "character varying",
+              100,
+              false,
+              null),
+          new ColumnSpec(
+              "office_registration", "requested_phone", "character varying", 30, false, null),
+          new ColumnSpec(
+              "office_registration",
+              "requested_representative_name",
+              "character varying",
+              50,
+              false,
+              null),
+          new ColumnSpec(
+              "office_registration", "resolved_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("office_registration", "resulting_office_id", "bigint", null, true, null),
+          new ColumnSpec(
+              "office_registration", "reviewed_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("office_registration", "status", "character varying", 30, false, null),
+          new ColumnSpec(
+              "office_registration_status_history",
+              "changed_by_operator_id",
+              "bigint",
+              null,
+              true,
+              null),
+          new ColumnSpec(
+              "office_registration_status_history",
+              "changed_by_type",
+              "character varying",
+              10,
+              false,
+              null),
+          new ColumnSpec(
+              "office_registration_status_history",
+              "created_at",
+              "timestamp with time zone",
+              null,
+              false,
+              "now()"),
+          new ColumnSpec(
+              "office_registration_status_history",
+              "from_status",
+              "character varying",
+              30,
+              true,
+              null),
+          new ColumnSpec("office_registration_status_history", "id", "bigint", null, false, null),
+          new ColumnSpec("office_registration_status_history", "reason", "text", null, true, null),
+          new ColumnSpec(
+              "office_registration_status_history", "registration_id", "bigint", null, false, null),
+          new ColumnSpec(
+              "office_registration_status_history",
+              "to_status",
+              "character varying",
+              30,
+              false,
+              null),
+          new ColumnSpec(
+              "operator_account", "created_at", "timestamp with time zone", null, false, "now()"),
+          new ColumnSpec("operator_account", "id", "bigint", null, false, null),
+          new ColumnSpec(
+              "operator_account", "kakao_provider_key", "character varying", 255, false, null),
+          new ColumnSpec("operator_account", "name", "character varying", 50, false, null),
+          new ColumnSpec("operator_account", "status", "character varying", 10, false, null),
+          new ColumnSpec("property", "address", "character varying", 300, false, null),
+          new ColumnSpec("property", "address_detail", "character varying", 100, true, null),
+          new ColumnSpec("property", "archived_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec(
+              "property", "created_at", "timestamp with time zone", null, false, "now()"),
+          new ColumnSpec("property", "deal_type", "character varying", 10, false, null),
+          new ColumnSpec("property", "deleted_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("property", "id", "bigint", null, false, null),
+          new ColumnSpec("property", "office_id", "bigint", null, false, null),
+          new ColumnSpec("property", "property_name", "character varying", 100, true, null),
+          new ColumnSpec(
               "property",
-              "ix_property_active",
-              "CREATE INDEX ix_property_active ON public.property USING btree (office_id, property_status) WHERE (deleted_at IS NULL)"),
-          new NamedObject(
-              "property",
-              "ix_property_archived",
-              "CREATE INDEX ix_property_archived ON public.property USING btree (office_id, archived_at) WHERE (deleted_at IS NULL)"),
-          new NamedObject(
-              "operator",
-              "uq_operator_kakao_provider_key",
-              "CREATE UNIQUE INDEX uq_operator_kakao_provider_key ON public.operator USING btree (kakao_provider_key)"),
-          new NamedObject(
-              "property_contract",
-              "ix_property_contract_office_status_start",
-              "CREATE INDEX ix_property_contract_office_status_start ON public.property_contract USING btree (office_id, status, contract_start_date DESC)"),
-          new NamedObject(
-              "property_contract",
-              "ix_property_contract_property_created",
-              "CREATE INDEX ix_property_contract_property_created ON public.property_contract USING btree (property_id, created_at DESC)"),
-          new NamedObject(
-              "property_contract",
-              "uq_property_contract_active",
-              "CREATE UNIQUE INDEX uq_property_contract_active ON public.property_contract USING btree (property_id) WHERE ((status)::text = 'ACTIVE'::text)"),
-          new NamedObject(
-              "property_contract",
-              "uq_property_contract_previous",
-              "CREATE UNIQUE INDEX uq_property_contract_previous ON public.property_contract USING btree (previous_contract_id) WHERE (previous_contract_id IS NOT NULL)"),
-          new NamedObject(
+              "property_status",
+              "character varying",
+              20,
+              false,
+              "'NO_CONTRACT'::character varying"),
+          new ColumnSpec("property_contract", "contract_end_date", "date", null, true, null),
+          new ColumnSpec("property_contract", "contract_start_date", "date", null, true, null),
+          new ColumnSpec(
+              "property_contract", "counterparty_name", "character varying", 50, true, null),
+          new ColumnSpec(
+              "property_contract", "counterparty_phone", "character varying", 30, true, null),
+          new ColumnSpec(
+              "property_contract", "created_at", "timestamp with time zone", null, false, "now()"),
+          new ColumnSpec("property_contract", "deal_type", "character varying", 10, false, null),
+          new ColumnSpec("property_contract", "deposit_amount", "bigint", null, true, null),
+          new ColumnSpec("property_contract", "end_reason", "text", null, true, null),
+          new ColumnSpec(
+              "property_contract", "ended_at", "timestamp with time zone", null, true, null),
+          new ColumnSpec("property_contract", "id", "bigint", null, false, null),
+          new ColumnSpec("property_contract", "monthly_rent_amount", "bigint", null, true, null),
+          new ColumnSpec("property_contract", "office_id", "bigint", null, false, null),
+          new ColumnSpec(
+              "property_contract", "owner_party_name", "character varying", 50, true, null),
+          new ColumnSpec(
+              "property_contract", "owner_party_phone", "character varying", 30, true, null),
+          new ColumnSpec("property_contract", "previous_contract_id", "bigint", null, true, null),
+          new ColumnSpec("property_contract", "property_id", "bigint", null, false, null),
+          new ColumnSpec("property_contract", "sale_price", "bigint", null, true, null),
+          new ColumnSpec("property_contract", "status", "character varying", 15, false, null),
+          new ColumnSpec("rate_limit_counter", "bucket_key", "text", null, false, null),
+          new ColumnSpec("rate_limit_counter", "request_count", "integer", null, false, null),
+          new ColumnSpec(
               "rate_limit_counter",
-              "ix_rate_limit_counter_window_started_at",
-              "CREATE INDEX ix_rate_limit_counter_window_started_at ON public.rate_limit_counter USING btree (window_started_at)"),
-          new NamedObject(
-              "terms_agreement",
-              "ix_terms_agreement_member_code",
-              "CREATE INDEX ix_terms_agreement_member_code ON public.terms_agreement USING btree (member_id, terms_code, recorded_at DESC, id DESC)"));
+              "window_started_at",
+              "timestamp with time zone",
+              null,
+              false,
+              null),
+          new ColumnSpec(
+              "shedlock", "lock_until", "timestamp without time zone", null, false, null),
+          new ColumnSpec("shedlock", "locked_at", "timestamp without time zone", null, false, null),
+          new ColumnSpec("shedlock", "locked_by", "character varying", 255, false, null),
+          new ColumnSpec("shedlock", "name", "character varying", 64, false, null),
+          new ColumnSpec("terms_agreement", "agreed", "boolean", null, false, null),
+          new ColumnSpec("terms_agreement", "id", "bigint", null, false, null),
+          new ColumnSpec(
+              "terms_agreement", "recorded_at", "timestamp with time zone", null, false, "now()"),
+          new ColumnSpec("terms_agreement", "terms_code", "character varying", 30, false, null),
+          new ColumnSpec("terms_agreement", "terms_version", "character varying", 20, false, null),
+          new ColumnSpec("terms_agreement", "user_id", "bigint", null, false, null),
+          new ColumnSpec("terms_catalog", "content_hash", "character", 64, false, null),
+          new ColumnSpec(
+              "terms_catalog", "effective_at", "timestamp with time zone", null, false, null),
+          new ColumnSpec("terms_catalog", "required", "boolean", null, false, null),
+          new ColumnSpec("terms_catalog", "terms_code", "character varying", 30, false, null),
+          new ColumnSpec("terms_catalog", "terms_version", "character varying", 20, false, null));
 
   @Test
-  void 참조_DDL의_명시적_제약_47개가_이름과_정의까지_전부_일치한다() throws Exception {
+  void 명시적_제약_11개가_이름과_정의까지_전부_일치한다() throws Exception {
     withRollback(
         conn -> {
           for (NamedObject c : NAMED_CONSTRAINTS) {
@@ -400,7 +598,7 @@ class SchemaMigrationTest extends AbstractSchemaTest {
   }
 
   @Test
-  void 참조_DDL의_명시적_인덱스_31개가_이름과_정의까지_전부_일치한다() throws Exception {
+  void 명시적_인덱스_11개가_이름과_정의까지_전부_일치한다() throws Exception {
     withRollback(
         conn -> {
           for (NamedObject i : NAMED_INDEXES) {
@@ -413,8 +611,12 @@ class SchemaMigrationTest extends AbstractSchemaTest {
       throws java.sql.SQLException {
     try (PreparedStatement ps =
         conn.prepareStatement(
-            "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = ?")) {
-      ps.setString(1, c.name());
+            "SELECT pg_get_constraintdef(pgc.oid) FROM pg_constraint pgc "
+                + "JOIN pg_class cls ON cls.oid = pgc.conrelid "
+                + "JOIN pg_namespace ns ON ns.oid = cls.relnamespace "
+                + "WHERE ns.nspname = 'public' AND cls.relname = ? AND pgc.conname = ?")) {
+      ps.setString(1, c.table());
+      ps.setString(2, c.name());
       try (ResultSet rs = ps.executeQuery()) {
         assertThat(rs.next()).as("제약 %s(%s 테이블)가 존재해야 함", c.name(), c.table()).isTrue();
         assertThat(rs.getString(1)).as("제약 %s의 정의", c.name()).isEqualTo(c.definition());
@@ -425,8 +627,9 @@ class SchemaMigrationTest extends AbstractSchemaTest {
   private void assertIndexMatches(Connection conn, NamedObject i) throws java.sql.SQLException {
     try (PreparedStatement ps =
         conn.prepareStatement(
-            "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname = ?")) {
-      ps.setString(1, i.name());
+            "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND tablename = ? AND indexname = ?")) {
+      ps.setString(1, i.table());
+      ps.setString(2, i.name());
       try (ResultSet rs = ps.executeQuery()) {
         assertThat(rs.next()).as("인덱스 %s(%s 테이블)가 존재해야 함", i.name(), i.table()).isTrue();
         assertThat(rs.getString(1)).as("인덱스 %s의 정의", i.name()).isEqualTo(i.definition());
@@ -434,16 +637,36 @@ class SchemaMigrationTest extends AbstractSchemaTest {
     }
   }
 
-  private int countTables(Connection conn) throws java.sql.SQLException {
-    return countIn(
-        conn,
-        "SELECT count(*) FROM information_schema.tables "
-            + "WHERE table_schema='public' AND table_name = ANY(?)");
+  private void assertColumnMatches(Connection conn, ColumnSpec c) throws java.sql.SQLException {
+    try (PreparedStatement ps =
+        conn.prepareStatement(
+            "SELECT data_type, character_maximum_length, is_nullable, column_default "
+                + "FROM information_schema.columns WHERE table_schema='public' AND table_name = ? AND column_name = ?")) {
+      ps.setString(1, c.table());
+      ps.setString(2, c.column());
+      try (ResultSet rs = ps.executeQuery()) {
+        assertThat(rs.next()).as("컬럼 %s.%s가 존재해야 함", c.table(), c.column()).isTrue();
+        assertThat(rs.getString("data_type"))
+            .as("%s.%s 타입", c.table(), c.column())
+            .isEqualTo(c.dataType());
+        Integer actualLength = (Integer) rs.getObject("character_maximum_length");
+        assertThat(actualLength).as("%s.%s 길이", c.table(), c.column()).isEqualTo(c.maxLength());
+        boolean actualNullable = "YES".equals(rs.getString("is_nullable"));
+        assertThat(actualNullable)
+            .as("%s.%s NULL 허용 여부", c.table(), c.column())
+            .isEqualTo(c.nullable());
+        assertThat(rs.getString("column_default"))
+            .as("%s.%s 기본값", c.table(), c.column())
+            .isEqualTo(c.defaultExpr());
+      }
+    }
   }
 
-  private int countIn(Connection conn, String sql) throws java.sql.SQLException {
-    try (PreparedStatement ps = conn.prepareStatement(sql)) {
-      ps.setArray(1, conn.createArrayOf("text", DOMAIN_TABLES.toArray()));
+  private int tableExists(Connection conn, String tableName) throws java.sql.SQLException {
+    try (PreparedStatement ps =
+        conn.prepareStatement(
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name = ?")) {
+      ps.setString(1, tableName);
       try (ResultSet rs = ps.executeQuery()) {
         rs.next();
         return rs.getInt(1);
@@ -452,4 +675,12 @@ class SchemaMigrationTest extends AbstractSchemaTest {
   }
 
   private record NamedObject(String table, String name, String definition) {}
+
+  private record ColumnSpec(
+      String table,
+      String column,
+      String dataType,
+      Integer maxLength,
+      boolean nullable,
+      String defaultExpr) {}
 }

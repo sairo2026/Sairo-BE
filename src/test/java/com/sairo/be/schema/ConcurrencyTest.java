@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 class ConcurrencyTest extends AbstractSchemaTest {
 
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
-  private Long createdMemberId;
+  private Long createdUserId;
   private Long createdOfficeId;
 
   @AfterEach
@@ -28,9 +28,9 @@ class ConcurrencyTest extends AbstractSchemaTest {
           ps.executeUpdate();
         }
       }
-      if (createdMemberId != null) {
-        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM member WHERE id = ?")) {
-          ps.setLong(1, createdMemberId);
+      if (createdUserId != null) {
+        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM app_user WHERE id = ?")) {
+          ps.setLong(1, createdUserId);
           ps.executeUpdate();
         }
       }
@@ -39,13 +39,13 @@ class ConcurrencyTest extends AbstractSchemaTest {
   }
 
   @Test
-  void 회원_행을_두_트랜잭션이_동시에_FOR_UPDATE로_잡으면_직렬화된다() throws Exception {
+  void 사용자_행을_두_트랜잭션이_동시에_FOR_UPDATE로_잡으면_직렬화된다() throws Exception {
     try (Connection setup = dataSource.getConnection()) {
-      createdMemberId = insertMember(setup, "회원", uniqueEmail("concurrency"));
+      createdUserId = insertUser(setup, "사용자", uniqueKakaoKey("concurrency"));
     }
 
     assertSecondBlocksUntilFirstCommits(
-        "SELECT id FROM member WHERE id = ? FOR UPDATE", createdMemberId);
+        "SELECT id FROM app_user WHERE id = ? FOR UPDATE", createdUserId);
   }
 
   @Test
