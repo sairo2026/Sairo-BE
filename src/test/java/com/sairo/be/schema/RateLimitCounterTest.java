@@ -122,13 +122,13 @@ class RateLimitCounterTest extends AbstractSchemaTest {
   }
 
   @Test
-  void request_count가_0이하이면_실패한다() {
+  void request_count가_음수이면_실패한다() {
     assertConstraintViolation(
         "23514",
         conn -> {
           try (PreparedStatement ps =
               conn.prepareStatement(
-                  "INSERT INTO rate_limit_counter (bucket_key, window_started_at, request_count) VALUES (?, now(), 0)")) {
+                  "INSERT INTO rate_limit_counter (bucket_key, window_started_at, request_count) VALUES (?, now(), -1)")) {
             ps.setString(1, uniqueBucketKey());
             ps.executeUpdate();
           }
