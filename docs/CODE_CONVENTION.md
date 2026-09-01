@@ -9,32 +9,78 @@
 - Controller는 HTTP 변환, Service는 유스케이스 조정, Entity는 상태와 불변식, Mapper는 객체 변환만 담당한다.
 - 필드 주입, 전역 가변 상태, 무분별한 setter, 범용 `RuntimeException`, 의미 없는 주석을 금지한다.
 - 중복 제거보다 명확한 책임과 낮은 결합도를 우선한다. 두 번 등장했다는 이유만으로 성급하게 추상화하지 않는다.
+- §1-12만이 최종 판단 기준이다. §13은 근거 기록일 뿐이며, 규칙을 바꿀 때는 원본이 아니라 이 문서를 PR로 고친다.
 
 ## 2. 패키지 구조와 의존 방향
 
-최상위는 기술 계층이 아니라 기능 도메인으로 나눈다.
+최상위는 기술 계층이 아니라 기능 도메인으로 나눈다. 여섯 업무 도메인(`auth`, `office`, `property`, `contract`, `coordination`, `task`)을 `domain` 패키지 아래에 모으고, 도메인에 속하지 않는 전역 설정·오류 처리·공통 유틸은 `global`에 둔다. 각 도메인 내부의 엔티티 계층 이름은 `entity`로 고정한다. 여섯 도메인 모두 구조를 동일하게 맞춘다.
 
 ```text
 com.sairo.be
-├─ auth
-│  ├─ controller
-│  ├─ service
-│  ├─ domain
-│  ├─ repository
-│  ├─ dto
-│  └─ mapper
-├─ office
-├─ property
-├─ contract
-├─ coordination
-├─ task
+├─ domain
+│  ├─ auth
+│  │  ├─ controller
+│  │  ├─ service
+│  │  ├─ entity
+│  │  ├─ repository
+│  │  ├─ dto
+│  │  │  ├─ request
+│  │  │  └─ response
+│  │  └─ mapper
+│  ├─ office
+│  │  ├─ controller
+│  │  ├─ service
+│  │  ├─ entity
+│  │  ├─ repository
+│  │  ├─ dto
+│  │  │  ├─ request
+│  │  │  └─ response
+│  │  └─ mapper
+│  ├─ property
+│  │  ├─ controller
+│  │  ├─ service
+│  │  ├─ entity
+│  │  ├─ repository
+│  │  ├─ dto
+│  │  │  ├─ request
+│  │  │  └─ response
+│  │  └─ mapper
+│  ├─ contract
+│  │  ├─ controller
+│  │  ├─ service
+│  │  ├─ entity
+│  │  ├─ repository
+│  │  ├─ dto
+│  │  │  ├─ request
+│  │  │  └─ response
+│  │  └─ mapper
+│  ├─ coordination
+│  │  ├─ controller
+│  │  ├─ service
+│  │  ├─ entity
+│  │  ├─ repository
+│  │  ├─ dto
+│  │  │  ├─ request
+│  │  │  └─ response
+│  │  └─ mapper
+│  └─ task
+│     ├─ controller
+│     ├─ service
+│     ├─ entity
+│     ├─ repository
+│     ├─ dto
+│     │  ├─ request
+│     │  └─ response
+│     └─ mapper
 └─ global
-   ├─ config
-   ├─ error
-   └─ support
+   ├─ config          — SecurityConfig, WebConfig 등 애플리케이션 전역 설정
+   ├─ error           — ErrorCode, BusinessException, GlobalExceptionHandler (§7)
+   └─ support         — 여러 도메인이 함께 쓰는 BaseTimeEntity, 공통 유틸
 ```
 
-의존 방향은 `controller → service → domain/repository`다. Controller가 Repository·Entity를 직접 참조하거나 Service가 Controller DTO에 의존하면 안 된다. 도메인 간 호출은 상대 도메인의 내부 구현이 아니라 공개 Service 또는 명시적인 포트를 통한다. 순환 의존은 허용하지 않는다.
+`dto`는 `request`/`response` 하위 패키지로 나누고 파일명은 `XxxRequest`, `XxxResponse`로 짓는다. 이 구조는 `domain` 아래 6개 도메인 전부에 예외 없이 동일하게 적용한다 — 도메인마다 다른 하위 구조를 쓰지 않는다.
+
+의존 방향은 `controller → service → entity/repository`다. Controller가 Repository·Entity를 직접 참조하거나 Service가 Controller DTO에 의존하면 안 된다. `domain` 아래 서로 다른 도메인 간 호출은 상대 도메인의 내부 구현이 아니라 공개 Service 또는 명시적인 포트를 통한다. 순환 의존은 허용하지 않는다.
 
 ## 3. 클래스별 책임
 
@@ -55,7 +101,7 @@ com.sairo.be
 
 ### Mapper
 
-- `XxxMapper`로 이름 짓고 `domain ↔ dto` 또는 조회 결과 조립을 담당한다.
+- `XxxMapper`로 이름 짓고 `entity ↔ dto` 또는 조회 결과 조립을 담당한다.
 - 단순 변환은 정적 메서드 또는 상태 없는 클래스로 구현한다. 협력 객체가 필요하면 `@Component`와 생성자 주입을 사용한다.
 - 조회·저장·권한 검사·시간 조회 같은 부수효과를 넣지 않는다.
 - 자동 매핑이 실제 중복을 줄일 때만 MapStruct 도입을 검토한다. 중요한 상태 전이는 자동 매핑에 숨기지 않는다.
@@ -164,10 +210,16 @@ PR에서는 다음을 확인한다.
 
 ## 13. 기준 자료
 
-- Google Java Style Guide: 포맷·명명·소스 구조
-- Spring Framework `ProblemDetail`: 표준 오류 응답
-- Spring Petclinic: 포맷·Checkstyle을 CI에서 강제하는 Spring 공식 예제
-- ArchUnit: 패키지 의존·계층·순환 구조 자동 검증
-- MapStruct: 반복 매핑이 충분할 때 검토할 컴파일 타임 매퍼
+아래 표는 규칙별 근거 기록이다. 재판단 출처가 아니므로 원본을 다시 찾아가지 않는다 — 판단 기준은 항상 본문 §1-12이며, 규칙을 바꿀 때만 원본을 인용해 이 문서를 고친다.
+
+| 규칙 | 문서 위치 | 근거 자료 |
+|---|---|---|
+| 단일 생성자를 통한 생성자 주입 | §4 | Spring Framework 공식 문서 |
+| 정적 팩터리·제한적 Builder를 이용한 객체 생성 | §5 | Effective Java — Joshua Bloch, iluwatar/java-design-patterns |
+| Entity와 DTO 사이의 변환을 전용 Mapper로 분리 | §3 Mapper | eugenp/tutorials — Baeldung의 Entity-to-DTO 매핑 예제 |
+| RFC 9457 오류 본문과 HTTP 상태 표현 | §7 | Spring Framework `ProblemDetail` |
+| 포맷 규칙: 들여쓰기·임포트 정리·줄바꿈 | 전체 | Google Java Style Guide |
+| 계층 의존 방향·순환 의존 금지 | §2, §12 | ArchUnit |
+| 반복 매핑이 실제로 클 때의 대안 | §3 Mapper | MapStruct |
 
 외부 기준을 그대로 복제하지 않고 SAIRO의 Java 21·Spring Boot·도메인 구조에 맞게 이 문서로 확정한다. 충돌 시 이 문서가 저장소의 기준이다.

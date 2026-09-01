@@ -21,7 +21,7 @@ class ArchitectureConventionTest {
   @Test
   void domainPackagesMustNotHaveCycles() {
     slices()
-        .matching("com.sairo.be.(*)..")
+        .matching("com.sairo.be.domain.(*)..")
         .should()
         .beFreeOfCycles()
         .allowEmptyShould(true)
@@ -35,7 +35,7 @@ class ArchitectureConventionTest {
         .resideInAPackage("..controller..")
         .should()
         .onlyDependOnClassesThat()
-        .resideOutsideOfPackages("..repository..", "..domain..")
+        .resideOutsideOfPackages("..repository..", "..entity..")
         .allowEmptyShould(true)
         .check(APPLICATION_CLASSES);
   }
