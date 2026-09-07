@@ -301,7 +301,7 @@ ALTER TABLE property_contract ADD CONSTRAINT ck_property_contract_status_by_deal
     deal_type <> 'SALE' OR status NOT IN ('RENEWED','TERMINATED')
 );
 
-COMMENT ON COLUMN member.email IS '향후 이메일 로그인·알림 확장을 위한 nullable 컬럼. MVP 가입(카카오 전용)은 이메일을 받지 않으므로 현재 API·화면에서는 사용하지 않는다';
+COMMENT ON COLUMN member.email IS '향후 이메일 로그인·알림 확장용 nullable 컬럼. 1차MVP(카카오 전용 가입)는 API·화면 미사용';
 COMMENT ON TABLE oauth_transaction IS '카카오 OAuth 인가~콜백 왕복 상태. state는 순수 난수이고 의미는 이 테이블에만 있다(LOGIN/STEP_UP 구분, STEP_UP 대상 회원 등)';
 COMMENT ON COLUMN oauth_transaction.purpose IS '목적: LOGIN 로그인/가입, STEP_UP 기존 회원의 재인증(사업자정보 변경·회원탈퇴)';
 COMMENT ON TABLE office_registration IS '신규 사무소 등록 신청. 신청자가 제출한 사무소 정보는 심사 대상 스냅샷으로 보관하고 승인 시 운영자가 확정한 값으로 office를 생성한다. 자동 승인 경로는 없다';
