@@ -1,6 +1,7 @@
 package com.sairo.be.domain.auth.controller;
 
 import com.sairo.be.domain.auth.service.AuthService;
+import com.sairo.be.domain.auth.service.OAuthStateService;
 import com.sairo.be.global.security.AbsoluteSessionTimeoutFilter;
 import com.sairo.be.global.security.StaffAuthentication;
 import com.sairo.be.global.security.StaffPrincipal;
@@ -28,25 +29,27 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth/kakao")
 public class AuthController {
 
-  private static final String STATE_SESSION_ATTRIBUTE = "KAKAO_OAUTH_STATE";
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   private final AuthService authService;
+  private final OAuthStateService oauthStateService;
   private final String frontendBaseUrl;
   private final SecurityContextRepository securityContextRepository =
       new HttpSessionSecurityContextRepository();
 
   public AuthController(
       AuthService authService,
+      OAuthStateService oauthStateService,
       @Value("${app.frontend-base-url:http://localhost:3000}") String frontendBaseUrl) {
     this.authService = authService;
+    this.oauthStateService = oauthStateService;
     this.frontendBaseUrl = frontendBaseUrl;
   }
 
   @GetMapping("/start")
   public void start(HttpServletRequest request, HttpServletResponse response) throws IOException {
     String state = generateState();
-    request.getSession(true).setAttribute(STATE_SESSION_ATTRIBUTE, state);
+    request.getSession(true).setAttribute(OAuthStateService.STATE_SESSION_ATTRIBUTE, state);
     response.sendRedirect(authService.buildAuthorizeUrl(state));
   }
 
@@ -58,7 +61,8 @@ public class AuthController {
       HttpServletRequest request,
       HttpServletResponse response)
       throws IOException {
-    if (error != null || code == null || !isValidState(request, state)) {
+    boolean validState = isValidState(request, state);
+    if (error != null || code == null || code.isBlank() || !validState) {
       response.sendRedirect(frontendBaseUrl + "/login?error=auth_failed");
       return;
     }
@@ -78,14 +82,18 @@ public class AuthController {
     if (session == null) {
       return false;
     }
-    Object expected = session.getAttribute(STATE_SESSION_ATTRIBUTE);
-    session.removeAttribute(STATE_SESSION_ATTRIBUTE);
-    return expected != null && expected.equals(state);
+    Object expected = session.getAttribute(OAuthStateService.STATE_SESSION_ATTRIBUTE);
+    return expected instanceof String expectedState
+        && oauthStateService.consume(session.getId(), expectedState, state);
   }
 
   private void establishSession(
       HttpServletRequest request, HttpServletResponse response, StaffPrincipal principal) {
-    request.changeSessionId();
+    HttpSession previousSession = request.getSession(false);
+    if (previousSession != null) {
+      previousSession.invalidate();
+    }
+    request.getSession(true);
 
     SecurityContext context = SecurityContextHolder.createEmptyContext();
     context.setAuthentication(new StaffAuthentication(principal));

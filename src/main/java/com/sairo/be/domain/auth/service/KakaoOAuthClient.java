@@ -22,8 +22,8 @@ public class KakaoOAuthClient {
   private final RestClient restClient;
   private final KakaoProperties properties;
 
-  public KakaoOAuthClient(KakaoProperties properties) {
-    this.restClient = RestClient.create();
+  public KakaoOAuthClient(KakaoProperties properties, RestClient.Builder restClientBuilder) {
+    this.restClient = restClientBuilder.build();
     this.properties = properties;
   }
 

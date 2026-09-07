@@ -55,3 +55,7 @@ logs/
 ### Deploy runtime artifacts ###
 /deploy/env/
 /deploy/last-good-tag
+
+### Python ###
+__pycache__/
+*.pyc
