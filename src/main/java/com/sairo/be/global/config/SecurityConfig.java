@@ -1,13 +1,15 @@
 package com.sairo.be.global.config;
 
+import com.sairo.be.global.error.ErrorCode;
+import com.sairo.be.global.error.ErrorResponseWriter;
 import com.sairo.be.global.security.AbsoluteSessionTimeoutFilter;
-import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 
 // Excluded from the "migrate" profile: that profile runs with
 // spring.main.web-application-type=none, so no HttpSecurity bean exists.
@@ -16,7 +18,8 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 public class SecurityConfig {
 
   @Bean
-  SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+  SecurityFilterChain securityFilterChain(
+      HttpSecurity http, ErrorResponseWriter errorResponseWriter) throws Exception {
     return http.authorizeHttpRequests(
             authorize ->
                 authorize
@@ -26,16 +29,20 @@ public class SecurityConfig {
                     .permitAll()
                     .anyRequest()
                     .authenticated())
+        // Session-cookie auth needs CSRF protection on state-changing requests. The token is
+        // exposed via a readable XSRF-TOKEN cookie so the frontend can echo it back as
+        // X-XSRF-TOKEN, since there's no server-rendered page to embed it in.
+        .csrf(csrf -> csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
         .addFilterBefore(new AbsoluteSessionTimeoutFilter(), AuthorizationFilter.class)
         .exceptionHandling(
             exceptionHandling ->
                 exceptionHandling
                     .authenticationEntryPoint(
                         (request, response, authException) ->
-                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED))
+                            errorResponseWriter.write(response, ErrorCode.UNAUTHENTICATED))
                     .accessDeniedHandler(
                         (request, response, accessDeniedException) ->
-                            response.sendError(HttpServletResponse.SC_FORBIDDEN)))
+                            errorResponseWriter.write(response, ErrorCode.FORBIDDEN)))
         .build();
   }
 }
