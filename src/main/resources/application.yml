@@ -11,6 +11,15 @@ spring:
     jdbc:
       initialize-schema: never
 
+kakao:
+  rest-api-key: ${KAKAO_REST_API_KEY:}
+  client-secret: ${KAKAO_CLIENT_SECRET:}
+
+server:
+  servlet:
+    session:
+      timeout: 14d
+
 management:
   endpoint:
     health:
