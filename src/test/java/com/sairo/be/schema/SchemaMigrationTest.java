@@ -49,7 +49,7 @@ class SchemaMigrationTest extends AbstractSchemaTest {
   }
 
   @Test
-  void V1부터_V10까지_열_마이그레이션이_모두_성공했다() throws Exception {
+  void V1부터_V11까지_열한_마이그레이션이_모두_성공했다() throws Exception {
     withRollback(
         conn -> {
           try (PreparedStatement ps =
@@ -64,7 +64,7 @@ class SchemaMigrationTest extends AbstractSchemaTest {
                 versions.add(rs.getString("version"));
               }
               assertThat(versions)
-                  .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+                  .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
             }
           }
         });
@@ -154,6 +154,14 @@ class SchemaMigrationTest extends AbstractSchemaTest {
               "coordination",
               "ck_coordination_cancelled",
               "CHECK ((((status)::text = 'CANCELLED'::text) = (cancelled_at IS NOT NULL)))"),
+          new NamedObject(
+              "coordination",
+              "ck_coordination_schedule_confirmed",
+              "CHECK ((((status)::text <> ALL ((ARRAY['SCHEDULE_CONFIRMED'::character varying, 'VISIT_COMPLETED'::character varying])::text[])) OR ((scheduled_at IS NOT NULL) AND (confirmed_at IS NOT NULL))))"),
+          new NamedObject(
+              "coordination_customer_response",
+              "ck_customer_response_tenant_identity",
+              "CHECK (((((role)::text = 'TENANT'::text) AND (customer_name IS NOT NULL) AND (customer_phone IS NOT NULL)) OR (((role)::text = 'BUYER'::text) AND (customer_name IS NULL) AND (customer_phone IS NULL))))"),
           new NamedObject(
               "coordination",
               "fk_selected_buyer",
@@ -271,14 +279,14 @@ class SchemaMigrationTest extends AbstractSchemaTest {
               "customer_name",
               "character varying",
               50,
-              false,
+              true,
               null),
           new ColumnSpec(
               "coordination_customer_response",
               "customer_phone",
               "character varying",
               30,
-              false,
+              true,
               null),
           new ColumnSpec("coordination_customer_response", "id", "bigint", null, false, null),
           new ColumnSpec(
@@ -588,11 +596,41 @@ class SchemaMigrationTest extends AbstractSchemaTest {
           new ColumnSpec("terms_catalog", "terms_version", "character varying", 20, false, null));
 
   @Test
-  void 명시적_제약_11개가_이름과_정의까지_전부_일치한다() throws Exception {
+  void 명시적_제약_13개가_이름과_정의까지_전부_일치한다() throws Exception {
     withRollback(
         conn -> {
           for (NamedObject c : NAMED_CONSTRAINTS) {
             assertConstraintMatches(conn, c);
+          }
+        });
+  }
+
+  @Test
+  void V11_적용_후_coordination_status_check와_to_status_check는_8종을_정확히_허용한다() throws Exception {
+    withRollback(
+        conn -> {
+          for (String conname :
+              List.of("coordination_status_check", "coordination_status_history_to_status_check")) {
+            try (PreparedStatement ps =
+                conn.prepareStatement(
+                    "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = ?")) {
+              ps.setString(1, conname);
+              try (ResultSet rs = ps.executeQuery()) {
+                assertThat(rs.next()).as("%s가 존재해야 함", conname).isTrue();
+                String column =
+                    conname.equals("coordination_status_check") ? "status" : "to_status";
+                assertThat(rs.getString(1))
+                    .as("%s 정의가 8종과 정확히 일치해야 함(추가·누락 없이)", conname)
+                    .isEqualTo(
+                        "CHECK ((("
+                            + column
+                            + ")::text = ANY ((ARRAY['TENANT_CHECKING'::character varying, "
+                            + "'BUYER_DELIVERY_REQUIRED'::character varying, 'BUYER_CHECKING'::character varying, "
+                            + "'FINAL_CONFIRMATION_REQUIRED'::character varying, 'COMPLETED'::character varying, "
+                            + "'CANCELLED'::character varying, 'SCHEDULE_CONFIRMED'::character varying, "
+                            + "'VISIT_COMPLETED'::character varying])::text[])))");
+              }
+            }
           }
         });
   }
