@@ -16,6 +16,10 @@ kakao:
   rest-api-key: ${KAKAO_REST_API_KEY:}
   client-secret: ${KAKAO_CLIENT_SECRET:}
 
+sairo:
+  public-link:
+    hmac-secret: ${PUBLIC_LINK_HMAC_SECRET:sairo-local-dev-hmac-secret-do-not-use-in-prod}
+
 server:
   servlet:
     session:

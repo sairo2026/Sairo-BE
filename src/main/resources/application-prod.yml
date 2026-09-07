@@ -11,5 +11,9 @@ spring:
 kakao:
   redirect-uri: ${KAKAO_REDIRECT_URI_PROD}
 
+sairo:
+  public-link:
+    hmac-secret: ${PUBLIC_LINK_HMAC_SECRET}
+
 app:
   frontend-base-url: ${FRONTEND_BASE_URL:https://app.sairo.agency}
