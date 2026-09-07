@@ -55,7 +55,7 @@ COMMENT ON COLUMN property.landlord_phone IS '임대인 연락처';
 COMMENT ON COLUMN property.current_occupant_name IS '현재 거주자 이름';
 COMMENT ON COLUMN property.current_occupant_phone IS '현재 거주자 연락처';
 COMMENT ON COLUMN property.created_at IS '매물 등록 일시';
-COMMENT ON COLUMN property.updated_at IS '마지막 수정 일시(애플리케이션 또는 트리거가 갱신 — DEFAULT로는 UPDATE 시 자동 갱신 안 됨)';
+COMMENT ON COLUMN property.updated_at IS '마지막 수정 일시. 애플리케이션 또는 트리거가 갱신, DEFAULT는 INSERT 시점만 적용';
 COMMENT ON COLUMN property.deleted_at IS '소프트 삭제 일시';
 COMMENT ON COLUMN property.deleted_by_member_id IS '소프트 삭제를 실행한 회원(해당 사무소 소속만 가능, 복합 FK로 검증)';
 

@@ -1,10 +1,8 @@
--- 계약을 매물과 독립된 이력 엔터티(property_contract)로 분리한다.
--- 배포 전 운영 DB 읽기 전용 사전 조회 결과 property·expiry_task 모두 0행이었으므로
--- 기존 데이터 보존·단계적 전환(expand/contract) 없이 옛 컬럼과 제약을 직접 교체하는
--- 클린 컷오버로 진행한다.
+-- 계약을 매물과 독립된 이력 엔터티(property_contract)로 분리.
+-- 배포 전 운영 DB 사전 조회: property·expiry_task 모두 0행.
+-- 클린 컷오버, 기존 데이터 보존·단계적 전환(expand/contract) 없음.
 
--- expiry_task는 새 구조에서 property_contract를 참조하도록 완전히 바뀌므로
--- 옛 테이블을 먼저 제거한다(운영 데이터 0행 확인됨).
+-- expiry_task 제거, 새 구조에서 property_contract 참조 테이블로 재생성.
 DROP TABLE expiry_task;
 
 -- property: 계약 기간·당사자·금액 컬럼을 제거하고 요약 상태만 남긴다.
