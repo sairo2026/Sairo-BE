@@ -35,6 +35,12 @@ public class CustomerResponseCandidate {
         new CustomerResponseCandidateId(responseId, candidateTimeId), coordinationId, true);
   }
 
+  public static CustomerResponseCandidate offered(
+      Long responseId, Long coordinationId, Long candidateTimeId) {
+    return new CustomerResponseCandidate(
+        new CustomerResponseCandidateId(responseId, candidateTimeId), coordinationId, false);
+  }
+
   public void markSelected() {
     this.selected = true;
   }

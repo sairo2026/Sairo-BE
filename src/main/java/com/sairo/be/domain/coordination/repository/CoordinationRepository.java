@@ -13,4 +13,9 @@ public interface CoordinationRepository extends JpaRepository<Coordination, Long
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select c from Coordination c where c.id = :id")
   Optional<Coordination> findByIdForUpdate(@Param("id") Long id);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select c from Coordination c where c.id = :id and c.officeId = :officeId")
+  Optional<Coordination> findByIdAndOfficeIdForUpdate(
+      @Param("id") Long id, @Param("officeId") Long officeId);
 }

@@ -77,4 +77,18 @@ public class CoordinationStatusHistory {
       CoordinationStatusSource source) {
     return new CoordinationStatusHistory(coordinationId, fromStatus, toStatus, null, source, null);
   }
+
+  public static CoordinationStatusHistory staffTransition(
+      Long coordinationId,
+      CoordinationStatus fromStatus,
+      CoordinationStatus toStatus,
+      Long actorMembershipId) {
+    return new CoordinationStatusHistory(
+        coordinationId,
+        fromStatus,
+        toStatus,
+        actorMembershipId,
+        CoordinationStatusSource.STAFF,
+        null);
+  }
 }

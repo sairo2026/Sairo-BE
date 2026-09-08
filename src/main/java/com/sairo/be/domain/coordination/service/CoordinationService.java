@@ -6,22 +6,18 @@ import com.sairo.be.domain.coordination.entity.Coordination;
 import com.sairo.be.domain.coordination.entity.CoordinationCandidateTime;
 import com.sairo.be.domain.coordination.entity.CoordinationCustomerResponse;
 import com.sairo.be.domain.coordination.entity.CoordinationStatusHistory;
-import com.sairo.be.domain.coordination.entity.CustomerResponseLink;
 import com.sairo.be.domain.coordination.mapper.CoordinationMapper;
 import com.sairo.be.domain.coordination.repository.CoordinationCandidateTimeRepository;
 import com.sairo.be.domain.coordination.repository.CoordinationCustomerResponseRepository;
 import com.sairo.be.domain.coordination.repository.CoordinationRepository;
 import com.sairo.be.domain.coordination.repository.CoordinationStatusHistoryRepository;
-import com.sairo.be.domain.coordination.repository.CustomerResponseLinkRepository;
 import com.sairo.be.domain.property.service.PropertyService;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,28 +30,22 @@ public class CoordinationService {
   private final CoordinationRepository coordinationRepository;
   private final CoordinationCandidateTimeRepository candidateTimeRepository;
   private final CoordinationCustomerResponseRepository customerResponseRepository;
-  private final CustomerResponseLinkRepository customerResponseLinkRepository;
   private final CoordinationStatusHistoryRepository statusHistoryRepository;
-  private final PublicLinkTokenGenerator tokenGenerator;
-  private final String frontendBaseUrl;
+  private final PublicLinkIssuer linkIssuer;
 
   public CoordinationService(
       PropertyService propertyService,
       CoordinationRepository coordinationRepository,
       CoordinationCandidateTimeRepository candidateTimeRepository,
       CoordinationCustomerResponseRepository customerResponseRepository,
-      CustomerResponseLinkRepository customerResponseLinkRepository,
       CoordinationStatusHistoryRepository statusHistoryRepository,
-      PublicLinkTokenGenerator tokenGenerator,
-      @Value("${app.frontend-base-url:http://localhost:3000}") String frontendBaseUrl) {
+      PublicLinkIssuer linkIssuer) {
     this.propertyService = propertyService;
     this.coordinationRepository = coordinationRepository;
     this.candidateTimeRepository = candidateTimeRepository;
     this.customerResponseRepository = customerResponseRepository;
-    this.customerResponseLinkRepository = customerResponseLinkRepository;
     this.statusHistoryRepository = statusHistoryRepository;
-    this.tokenGenerator = tokenGenerator;
-    this.frontendBaseUrl = frontendBaseUrl;
+    this.linkIssuer = linkIssuer;
   }
 
   @Transactional
@@ -78,7 +68,7 @@ public class CoordinationService {
             coordination.getId(), request.tenantName(), request.tenantPhone());
     customerResponseRepository.save(tenantResponse);
 
-    IssuedLink issuedLink = issueLink(tenantResponse.getId());
+    PublicLinkIssuer.IssuedLink issuedLink = linkIssuer.issue(tenantResponse.getId());
 
     statusHistoryRepository.save(
         CoordinationStatusHistory.initialTransition(
@@ -98,19 +88,4 @@ public class CoordinationService {
       throw new BusinessException(ErrorCode.INVALID_REQUEST);
     }
   }
-
-  private IssuedLink issueLink(Long responseId) {
-    Instant issuedAt = Instant.now();
-    String provisionalHash = tokenGenerator.hash(UUID.randomUUID().toString());
-    CustomerResponseLink link =
-        CustomerResponseLink.issueWithProvisionalHash(responseId, provisionalHash, issuedAt);
-    customerResponseLinkRepository.save(link);
-
-    String token = tokenGenerator.generate(link.getId(), link.getIssuedAt());
-    link.assignTokenHash(tokenGenerator.hash(token));
-
-    return new IssuedLink(link, frontendBaseUrl + "/visit-responses/" + token);
-  }
-
-  private record IssuedLink(CustomerResponseLink link, String customerLinkUrl) {}
 }

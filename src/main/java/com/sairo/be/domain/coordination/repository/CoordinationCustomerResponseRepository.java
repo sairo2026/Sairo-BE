@@ -1,6 +1,7 @@
 package com.sairo.be.domain.coordination.repository;
 
 import com.sairo.be.domain.coordination.entity.CoordinationCustomerResponse;
+import com.sairo.be.domain.coordination.entity.CustomerResponseRole;
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,4 +18,9 @@ public interface CoordinationCustomerResponseRepository
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select r from CoordinationCustomerResponse r where r.id = :id")
   Optional<CoordinationCustomerResponse> findByIdForUpdate(@Param("id") Long id);
+
+  Optional<CoordinationCustomerResponse> findByCoordinationIdAndRole(
+      Long coordinationId, CustomerResponseRole role);
+
+  boolean existsByCoordinationIdAndRole(Long coordinationId, CustomerResponseRole role);
 }
