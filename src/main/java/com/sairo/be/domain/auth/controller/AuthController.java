@@ -5,6 +5,9 @@ import com.sairo.be.domain.auth.service.OAuthStateService;
 import com.sairo.be.global.security.AbsoluteSessionTimeoutFilter;
 import com.sairo.be.global.security.StaffAuthentication;
 import com.sairo.be.global.security.StaffPrincipal;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -27,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Profile("!migrate")
 @RestController
 @RequestMapping("/api/auth/kakao")
+@Tag(name = "AUTH", description = "카카오 로그인으로 사무소 직원 세션을 발급한다.")
 public class AuthController {
 
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -46,6 +50,10 @@ public class AuthController {
     this.frontendBaseUrl = frontendBaseUrl;
   }
 
+  @Operation(
+      summary = "카카오 로그인 시작",
+      description = "카카오 로그인 페이지로 리다이렉트하며 CSRF 방지를 위한 state 값을 세션에 저장한다.")
+  @SecurityRequirements
   @GetMapping("/start")
   public void start(HttpServletRequest request, HttpServletResponse response) throws IOException {
     String state = generateState();
@@ -53,6 +61,8 @@ public class AuthController {
     response.sendRedirect(authService.buildAuthorizeUrl(state));
   }
 
+  @Operation(summary = "카카오 로그인 콜백", description = "카카오 인증 코드를 사무소 직원 세션으로 교환하고 프론트엔드로 리다이렉트한다.")
+  @SecurityRequirements
   @GetMapping("/callback")
   public void callback(
       @RequestParam(required = false) String code,
