@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.sairo.be.TestcontainersConfiguration;
@@ -117,6 +119,16 @@ class SessionSecurityIntegrationTest {
                 .cookie(cookie(secondSessionId)))
         .andExpect(status().isOk())
         .andExpect(content().string("9002"));
+  }
+
+  @Test
+  void 인증되지_않은_요청의_401_응답은_UTF_8로_한글_메시지를_전달한다() throws Exception {
+    mockMvc
+        .perform(get("/api/session-probe"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(header().string("Content-Type", "application/json;charset=UTF-8"))
+        .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+        .andExpect(jsonPath("$.message").value("로그인이 필요합니다."));
   }
 
   @Test
