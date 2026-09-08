@@ -9,9 +9,6 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
-// Spring Security's AuthenticationEntryPoint/AccessDeniedHandler run outside
-// DispatcherServlet, so they can't rely on @ExceptionHandler/ProblemDetail message
-// conversion. This writes the same {code, message, traceId} shape by hand.
 @Profile("!migrate")
 @Component
 public class ErrorResponseWriter {

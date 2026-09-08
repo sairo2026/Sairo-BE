@@ -12,10 +12,6 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-// Generates the public link token deterministically from a customer_response_link row's own
-// id and issued_at, signed with a server-side HMAC secret. The token itself is never persisted;
-// only its SHA-256 hash is stored, so the same URL can be reconstructed on demand (see
-// customer_response_link in 02-domain-and-data-contract §2.9) without ever storing plaintext.
 @Profile("!migrate")
 @Component
 public class PublicLinkTokenGenerator {

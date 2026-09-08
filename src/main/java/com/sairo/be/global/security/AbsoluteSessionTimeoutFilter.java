@@ -14,8 +14,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-// Spring Session은 미활동 만료만 처리하므로 발급 후 90일의 절대 만료는 별도로 검사한다.
-// 보안 필터 체인 안에서 한 번만 실행하도록 SecurityConfig에서 직접 등록한다.
 public class AbsoluteSessionTimeoutFilter extends OncePerRequestFilter {
 
   public static final String ISSUED_AT_ATTRIBUTE = "AUTH_SESSION_ISSUED_AT";

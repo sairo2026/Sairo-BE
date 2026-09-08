@@ -5,9 +5,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.session.web.http.DefaultCookieSerializer;
 
-// server.servlet.session.cookie.* only configures the servlet container's own session
-// cookie, not Spring Session's. Spring Session's SessionRepositoryFilter picks up a
-// user-defined DefaultCookieSerializer bean instead of building its own default one.
 @Profile("!migrate")
 @Configuration
 public class SessionCookieConfig {
