@@ -21,7 +21,7 @@ public class ErrorResponseWriter {
 
   public void write(HttpServletResponse response, ErrorCode errorCode) throws IOException {
     response.setStatus(errorCode.getStatus().value());
-    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+    response.setContentType(MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8");
     Map<String, String> body =
         Map.of(
             "code", errorCode.name(),
