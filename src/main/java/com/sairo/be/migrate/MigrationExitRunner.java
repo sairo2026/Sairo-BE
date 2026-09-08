@@ -7,9 +7,6 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-// Flyway migration runs during context startup (before any ApplicationRunner),
-// so reaching run() here means migration already succeeded. Explicitly exits 0
-// instead of relying on the JVM shutting itself down once main() returns.
 @Component
 @Profile("migrate")
 public class MigrationExitRunner implements ApplicationRunner {

@@ -14,8 +14,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
-// office_id is a plain foreign-key id, not a JPA association to domain.office.entity.Office:
-// see the same rationale documented on OfficeMembership.userId.
 @Entity
 @Table(name = "property")
 @Getter

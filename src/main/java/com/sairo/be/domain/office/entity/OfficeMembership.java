@@ -15,10 +15,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// user_id is stored as a plain foreign-key id rather than a JPA association to
-// domain.auth.entity.AppUser: office already depends on auth for that lookup,
-// and an AppUser -> office reference would create a domain package cycle that
-// ArchitectureConventionTest#domainPackagesMustNotHaveCycles forbids.
 @Entity
 @Table(name = "office_membership")
 @Getter
