@@ -163,7 +163,12 @@ class PublicVisitResponseControllerTest {
 
   private String issueActiveTenantLink(String result) {
     Long responseId = insertTenantResponse(result);
-    return issueLink(responseId, Instant.now(), Instant.now().plus(Duration.ofDays(7)));
+    return issueActiveLink(responseId);
+  }
+
+  private String issueActiveLink(Long responseId) {
+    Instant issuedAt = Instant.now();
+    return issueLink(responseId, issuedAt, issuedAt.plus(Duration.ofDays(7)));
   }
 
   @Test
@@ -316,7 +321,7 @@ class PublicVisitResponseControllerTest {
             + " WHERE id = ?",
         Timestamp.from(Instant.now().plus(Duration.ofDays(2))),
         COORDINATION_ID);
-    String token = issueLink(responseId, Instant.now(), Instant.now().plus(Duration.ofDays(7)));
+    String token = issueActiveLink(responseId);
 
     mockMvc
         .perform(get("/api/public/visit-responses/{token}", token))
@@ -333,7 +338,7 @@ class PublicVisitResponseControllerTest {
         "UPDATE coordination SET status = 'SCHEDULE_CONFIRMED',"
             + " scheduled_at = now() + interval '2 day', confirmed_at = now() WHERE id = ?",
         COORDINATION_ID);
-    String token = issueLink(responseId, Instant.now(), Instant.now().plus(Duration.ofDays(7)));
+    String token = issueActiveLink(responseId);
 
     mockMvc
         .perform(get("/api/public/visit-responses/{token}", token))
@@ -346,7 +351,7 @@ class PublicVisitResponseControllerTest {
   void 구매자는_세입자가_승인한_후보를_벗어나_제출하면_422를_반환한다() throws Exception {
     Long responseId = insertBuyerResponse("WAITING");
     offerCandidateToBuyer(responseId, candidateTimeIds.get(0));
-    String token = issueLink(responseId, Instant.now(), Instant.now().plus(Duration.ofDays(7)));
+    String token = issueActiveLink(responseId);
 
     mockMvc
         .perform(
@@ -363,7 +368,7 @@ class PublicVisitResponseControllerTest {
         "UPDATE coordination SET status = 'BUYER_CHECKING' WHERE id = ?", COORDINATION_ID);
     Long responseId = insertBuyerResponse("WAITING");
     offerCandidateToBuyer(responseId, candidateTimeIds.get(0));
-    String token = issueLink(responseId, Instant.now(), Instant.now().plus(Duration.ofDays(7)));
+    String token = issueActiveLink(responseId);
 
     mockMvc
         .perform(
