@@ -48,6 +48,8 @@ class CoordinationControllerTest {
 
   @BeforeEach
   void seed() {
+    jdbcTemplate.update(
+        "UPDATE coordination SET selected_buyer_response_id = NULL, confirmed_candidate_time_id = NULL");
     jdbcTemplate.update("DELETE FROM coordination_status_history");
     jdbcTemplate.update("DELETE FROM customer_response_link");
     jdbcTemplate.update("DELETE FROM coordination_customer_response");
