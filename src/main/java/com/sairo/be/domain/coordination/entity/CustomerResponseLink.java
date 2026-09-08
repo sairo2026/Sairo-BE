@@ -49,9 +49,6 @@ public class CustomerResponseLink {
     this.expiresAt = issuedAt.plus(VALIDITY);
   }
 
-  // token_hash is derived from this row's own id (see PublicLinkTokenGenerator), which the
-  // database only assigns on insert. Callers insert with a provisional placeholder and then
-  // call assignTokenHash once the real id is known, inside the same transaction.
   public static CustomerResponseLink issueWithProvisionalHash(
       Long responseId, String provisionalTokenHash, Instant issuedAt) {
     return new CustomerResponseLink(responseId, provisionalTokenHash, issuedAt);
@@ -59,5 +56,9 @@ public class CustomerResponseLink {
 
   public void assignTokenHash(String tokenHash) {
     this.tokenHash = tokenHash;
+  }
+
+  public boolean isActive(Instant now) {
+    return revokedAt == null && expiresAt.isAfter(now);
   }
 }
