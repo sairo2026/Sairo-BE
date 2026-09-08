@@ -74,6 +74,10 @@ public class Coordination {
     this.status = CoordinationStatus.BUYER_DELIVERY_REQUIRED;
   }
 
+  public void startBuyerChecking() {
+    this.status = CoordinationStatus.BUYER_CHECKING;
+  }
+
   public void receiveFirstBuyerAvailability() {
     this.status = CoordinationStatus.FINAL_CONFIRMATION_REQUIRED;
   }

@@ -67,6 +67,10 @@ public class CoordinationCustomerResponse {
         coordinationId, CustomerResponseRole.TENANT, customerName, customerPhone);
   }
 
+  public static CoordinationCustomerResponse waitingForBuyer(Long coordinationId) {
+    return new CoordinationCustomerResponse(coordinationId, CustomerResponseRole.BUYER, null, null);
+  }
+
   public boolean isWaiting() {
     return result == CustomerResponseResult.WAITING;
   }
