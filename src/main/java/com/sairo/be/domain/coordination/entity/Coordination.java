@@ -81,4 +81,8 @@ public class Coordination {
   public void receiveFirstBuyerAvailability() {
     this.status = CoordinationStatus.FINAL_CONFIRMATION_REQUIRED;
   }
+
+  public void completeVisit() {
+    this.status = CoordinationStatus.VISIT_COMPLETED;
+  }
 }
