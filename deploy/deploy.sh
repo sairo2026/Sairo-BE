@@ -36,11 +36,15 @@ echo "[deploy] logging in to ECR"
 aws ecr get-login-password --region "${AWS_REGION}" \
   | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
+KAKAO_REDIRECT_URI_PROD="https://app.sairo.agency/api/auth/kakao/callback"
+
 echo "[deploy] fetching secrets from Secrets Manager"
 APP_SECRET_JSON=$(aws secretsmanager get-secret-value --region "${AWS_REGION}" \
   --secret-id sairo/db/app --query SecretString --output text)
 MIGRATOR_SECRET_JSON=$(aws secretsmanager get-secret-value --region "${AWS_REGION}" \
   --secret-id sairo/db/migrator --query SecretString --output text)
+APP_SECRETS_JSON=$(aws secretsmanager get-secret-value --region "${AWS_REGION}" \
+  --secret-id sairo/be/app-secrets --query SecretString --output text)
 
 validate_secret_shape() {
   local json="$1"
@@ -64,6 +68,20 @@ validate_secret_shape() {
 validate_secret_shape "${APP_SECRET_JSON}" "app"
 validate_secret_shape "${MIGRATOR_SECRET_JSON}" "migrator"
 
+validate_app_secrets_shape() {
+  local json="$1"
+  jq -e '
+    (.restApiKey | type == "string" and length > 0) and
+    (.clientSecret | type == "string" and length > 0) and
+    (.hmacSecret | type == "string" and length > 0)
+  ' >/dev/null <<<"${json}" || {
+    echo "[deploy] invalid sairo/be/app-secrets structure" >&2
+    exit 1
+  }
+}
+
+validate_app_secrets_shape "${APP_SECRETS_JSON}"
+
 for key in host port dbname; do
   app_value=$(jq -r --arg key "${key}" '.[$key]' <<<"${APP_SECRET_JSON}")
   migrator_value=$(jq -r --arg key "${key}" '.[$key]' <<<"${MIGRATOR_SECRET_JSON}")
@@ -82,6 +100,10 @@ DB_APP_PASSWORD=$(jq -r .password <<<"${APP_SECRET_JSON}")
 DB_MIGRATOR_USERNAME=$(jq -r .username <<<"${MIGRATOR_SECRET_JSON}")
 DB_MIGRATOR_PASSWORD=$(jq -r .password <<<"${MIGRATOR_SECRET_JSON}")
 
+KAKAO_REST_API_KEY=$(jq -r .restApiKey <<<"${APP_SECRETS_JSON}")
+KAKAO_CLIENT_SECRET=$(jq -r .clientSecret <<<"${APP_SECRETS_JSON}")
+PUBLIC_LINK_HMAC_SECRET=$(jq -r .hmacSecret <<<"${APP_SECRETS_JSON}")
+
 umask 077
 {
   echo "DB_HOST=${DB_HOST}"
@@ -89,6 +111,10 @@ umask 077
   echo "DB_NAME=${DB_NAME}"
   echo "DB_APP_USERNAME=${DB_APP_USERNAME}"
   echo "DB_APP_PASSWORD=${DB_APP_PASSWORD}"
+  echo "KAKAO_REST_API_KEY=${KAKAO_REST_API_KEY}"
+  echo "KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET}"
+  echo "KAKAO_REDIRECT_URI_PROD=${KAKAO_REDIRECT_URI_PROD}"
+  echo "PUBLIC_LINK_HMAC_SECRET=${PUBLIC_LINK_HMAC_SECRET}"
 } > "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
@@ -102,7 +128,8 @@ umask 077
 } > "${MIGRATE_ENV_FILE}"
 chmod 600 "${MIGRATE_ENV_FILE}"
 
-unset APP_SECRET_JSON MIGRATOR_SECRET_JSON DB_APP_PASSWORD DB_MIGRATOR_PASSWORD
+unset APP_SECRET_JSON MIGRATOR_SECRET_JSON APP_SECRETS_JSON DB_APP_PASSWORD DB_MIGRATOR_PASSWORD \
+  KAKAO_REST_API_KEY KAKAO_CLIENT_SECRET PUBLIC_LINK_HMAC_SECRET
 
 PREVIOUS_TAG=""
 if [ -f "${LAST_GOOD_FILE}" ]; then
