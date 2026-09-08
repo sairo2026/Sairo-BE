@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -142,13 +143,14 @@ class PublicVisitResponseControllerTest {
   }
 
   private String issueLink(Long responseId, Instant issuedAt, Instant expiresAt) {
+    String provisionalHash = tokenGenerator.hash(UUID.randomUUID().toString());
     Long linkId =
         jdbcTemplate.queryForObject(
             "INSERT INTO customer_response_link (response_id, token_hash, issued_at, expires_at)"
-                + " VALUES (?, 'placeholder-0000000000000000000000000000000000000000000000000000',"
-                + " ?, ?) RETURNING id",
+                + " VALUES (?, ?, ?, ?) RETURNING id",
             Long.class,
             responseId,
+            provisionalHash,
             Timestamp.from(issuedAt),
             Timestamp.from(expiresAt));
     String token = tokenGenerator.generate(linkId, issuedAt);
