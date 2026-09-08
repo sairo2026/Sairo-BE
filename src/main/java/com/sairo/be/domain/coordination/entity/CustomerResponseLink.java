@@ -61,4 +61,8 @@ public class CustomerResponseLink {
   public boolean isActive(Instant now) {
     return revokedAt == null && expiresAt.isAfter(now);
   }
+
+  public void revoke(Instant revokedAt) {
+    this.revokedAt = revokedAt;
+  }
 }

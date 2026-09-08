@@ -6,11 +6,13 @@ import com.sairo.be.domain.coordination.entity.Coordination;
 import com.sairo.be.domain.coordination.entity.CoordinationCandidateTime;
 import com.sairo.be.domain.coordination.entity.CoordinationCustomerResponse;
 import com.sairo.be.domain.coordination.entity.CoordinationStatusHistory;
+import com.sairo.be.domain.coordination.entity.CustomerResponseCandidate;
 import com.sairo.be.domain.coordination.mapper.CoordinationMapper;
 import com.sairo.be.domain.coordination.repository.CoordinationCandidateTimeRepository;
 import com.sairo.be.domain.coordination.repository.CoordinationCustomerResponseRepository;
 import com.sairo.be.domain.coordination.repository.CoordinationRepository;
 import com.sairo.be.domain.coordination.repository.CoordinationStatusHistoryRepository;
+import com.sairo.be.domain.coordination.repository.CustomerResponseCandidateRepository;
 import com.sairo.be.domain.property.service.PropertyService;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
@@ -30,6 +32,7 @@ public class CoordinationService {
   private final CoordinationRepository coordinationRepository;
   private final CoordinationCandidateTimeRepository candidateTimeRepository;
   private final CoordinationCustomerResponseRepository customerResponseRepository;
+  private final CustomerResponseCandidateRepository responseCandidateRepository;
   private final CoordinationStatusHistoryRepository statusHistoryRepository;
   private final PublicLinkIssuer linkIssuer;
 
@@ -38,12 +41,14 @@ public class CoordinationService {
       CoordinationRepository coordinationRepository,
       CoordinationCandidateTimeRepository candidateTimeRepository,
       CoordinationCustomerResponseRepository customerResponseRepository,
+      CustomerResponseCandidateRepository responseCandidateRepository,
       CoordinationStatusHistoryRepository statusHistoryRepository,
       PublicLinkIssuer linkIssuer) {
     this.propertyService = propertyService;
     this.coordinationRepository = coordinationRepository;
     this.candidateTimeRepository = candidateTimeRepository;
     this.customerResponseRepository = customerResponseRepository;
+    this.responseCandidateRepository = responseCandidateRepository;
     this.statusHistoryRepository = statusHistoryRepository;
     this.linkIssuer = linkIssuer;
   }
@@ -67,6 +72,14 @@ public class CoordinationService {
         CoordinationCustomerResponse.waitingForTenant(
             coordination.getId(), request.tenantName(), request.tenantPhone());
     customerResponseRepository.save(tenantResponse);
+
+    responseCandidateRepository.saveAll(
+        candidateTimes.stream()
+            .map(
+                candidate ->
+                    CustomerResponseCandidate.offered(
+                        tenantResponse.getId(), coordination.getId(), candidate.getId()))
+            .toList());
 
     PublicLinkIssuer.IssuedLink issuedLink = linkIssuer.issue(tenantResponse.getId());
 

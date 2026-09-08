@@ -3,6 +3,7 @@ package com.sairo.be.domain.coordination.service;
 import com.sairo.be.domain.coordination.entity.CustomerResponseLink;
 import com.sairo.be.domain.coordination.repository.CustomerResponseLinkRepository;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
@@ -26,7 +27,7 @@ public class PublicLinkIssuer {
   }
 
   public IssuedLink issue(Long responseId) {
-    Instant issuedAt = Instant.now();
+    Instant issuedAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
     String provisionalHash = tokenGenerator.hash(UUID.randomUUID().toString());
     CustomerResponseLink link =
         CustomerResponseLink.issueWithProvisionalHash(responseId, provisionalHash, issuedAt);
@@ -36,6 +37,11 @@ public class PublicLinkIssuer {
     link.assignTokenHash(tokenGenerator.hash(token));
 
     return new IssuedLink(link, frontendBaseUrl + "/visit-responses/" + token);
+  }
+
+  public String reconstructUrl(CustomerResponseLink link) {
+    String token = tokenGenerator.generate(link.getId(), link.getIssuedAt());
+    return frontendBaseUrl + "/visit-responses/" + token;
   }
 
   public record IssuedLink(CustomerResponseLink link, String customerLinkUrl) {}
