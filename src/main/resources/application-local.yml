@@ -11,3 +11,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+
+kakao:
+  redirect-uri: ${KAKAO_REDIRECT_URI_LOCAL}
+
+app:
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
