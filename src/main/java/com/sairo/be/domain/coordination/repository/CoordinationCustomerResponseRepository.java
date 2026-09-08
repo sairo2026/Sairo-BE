@@ -3,6 +3,7 @@ package com.sairo.be.domain.coordination.repository;
 import com.sairo.be.domain.coordination.entity.CoordinationCustomerResponse;
 import com.sairo.be.domain.coordination.entity.CustomerResponseRole;
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,6 +23,11 @@ public interface CoordinationCustomerResponseRepository
 
   Optional<CoordinationCustomerResponse> findByCoordinationIdAndRole(
       Long coordinationId, CustomerResponseRole role);
+
+  List<CoordinationCustomerResponse> findByCoordinationIdInOrderByIdAsc(
+      Collection<Long> coordinationIds);
+
+  List<CoordinationCustomerResponse> findByCoordinationIdOrderByIdAsc(Long coordinationId);
 
   boolean existsByCoordinationIdAndRole(Long coordinationId, CustomerResponseRole role);
 

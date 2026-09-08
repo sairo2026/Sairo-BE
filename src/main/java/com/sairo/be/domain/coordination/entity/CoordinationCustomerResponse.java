@@ -97,4 +97,10 @@ public class CoordinationCustomerResponse {
   public void markNotSelected() {
     this.result = CustomerResponseResult.NOT_SELECTED;
   }
+
+  public void restart() {
+    this.result = CustomerResponseResult.WAITING;
+    this.submittedAt = null;
+    this.resetCount++;
+  }
 }
