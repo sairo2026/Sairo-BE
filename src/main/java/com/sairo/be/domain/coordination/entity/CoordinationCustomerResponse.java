@@ -89,4 +89,12 @@ public class CoordinationCustomerResponse {
     this.result = CustomerResponseResult.NONE_AVAILABLE;
     this.submittedAt = submittedAt;
   }
+
+  public void confirmSelection() {
+    this.result = CustomerResponseResult.CONFIRMED;
+  }
+
+  public void markNotSelected() {
+    this.result = CustomerResponseResult.NOT_SELECTED;
+  }
 }

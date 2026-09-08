@@ -78,6 +78,18 @@ public class Coordination {
     this.status = CoordinationStatus.BUYER_CHECKING;
   }
 
+  public void confirmSchedule(
+      Long selectedBuyerResponseId,
+      Long confirmedCandidateTimeId,
+      Instant scheduledAt,
+      Instant confirmedAt) {
+    this.status = CoordinationStatus.SCHEDULE_CONFIRMED;
+    this.selectedBuyerResponseId = selectedBuyerResponseId;
+    this.confirmedCandidateTimeId = confirmedCandidateTimeId;
+    this.scheduledAt = scheduledAt;
+    this.confirmedAt = confirmedAt;
+  }
+
   public void receiveFirstBuyerAvailability() {
     this.status = CoordinationStatus.FINAL_CONFIRMATION_REQUIRED;
   }
