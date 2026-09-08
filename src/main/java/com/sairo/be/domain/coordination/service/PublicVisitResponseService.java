@@ -143,8 +143,6 @@ public class PublicVisitResponseService {
             CoordinationStatusSource.BUYER));
   }
 
-  // The current selection must exactly equal the latest submission, not the union of every
-  // submission ever made, so a candidate dropped from a resubmission has to be unmarked here.
   private void applySelection(Long responseId, Long coordinationId, Set<Long> submittedIds) {
     List<CustomerResponseCandidate> existing =
         responseCandidateRepository.findById_ResponseId(responseId);
@@ -170,7 +168,6 @@ public class PublicVisitResponseService {
     }
   }
 
-  // 세입자의 제공 후보는 조율 건 전체 후보이고 구매자의 제공 후보는 응답별로 복사된 후보만이다.
   private Set<Long> resolveOfferedCandidateIds(CoordinationCustomerResponse response) {
     if (response.getRole() == CustomerResponseRole.TENANT) {
       return candidateTimeRepository
@@ -215,7 +212,6 @@ public class PublicVisitResponseService {
         link.getExpiresAt());
   }
 
-  // 세입자는 최종 방문 일시를 항상 보고 구매자는 자신이 확정된 경우에만 본다.
   private Instant resolveScheduledAt(
       CoordinationCustomerResponse response, Coordination coordination) {
     if (coordination.getScheduledAt() == null) {

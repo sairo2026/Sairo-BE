@@ -13,8 +13,6 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.header.writers.DelegatingRequestMatcherHeaderWriter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
-// Excluded from the "migrate" profile: that profile runs with
-// spring.main.web-application-type=none, so no HttpSecurity bean exists.
 @Profile("!migrate")
 @Configuration
 public class SecurityConfig {
@@ -33,16 +31,10 @@ public class SecurityConfig {
                     .permitAll()
                     .anyRequest()
                     .authenticated())
-        // Session-cookie auth needs CSRF protection on state-changing requests. The token is
-        // exposed via a readable XSRF-TOKEN cookie so the frontend can echo it back as
-        // X-XSRF-TOKEN, since there's no server-rendered page to embed it in. Public link APIs
-        // authenticate with a URL token instead of a session cookie, so CSRF doesn't apply
-        // there.
         .csrf(
             csrf ->
                 csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                     .ignoringRequestMatchers("/api/public/**"))
-        // Public link screens must not be cached and must not leak the link in a Referer header.
         .headers(
             headers ->
                 headers.addHeaderWriter(

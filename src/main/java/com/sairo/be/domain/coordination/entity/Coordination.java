@@ -15,9 +15,6 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-// office_id, property_id, selected_buyer_response_id, confirmed_candidate_time_id and
-// created_by_membership_id are plain foreign-key ids, not JPA associations: see the same
-// rationale documented on Property.officeId.
 @Entity
 @Table(name = "coordination")
 @Getter
