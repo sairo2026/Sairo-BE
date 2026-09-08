@@ -66,4 +66,23 @@ public class CoordinationCustomerResponse {
     return new CoordinationCustomerResponse(
         coordinationId, CustomerResponseRole.TENANT, customerName, customerPhone);
   }
+
+  public boolean isWaiting() {
+    return result == CustomerResponseResult.WAITING;
+  }
+
+  public boolean isAvailableTimesSubmittable() {
+    return result == CustomerResponseResult.WAITING
+        || result == CustomerResponseResult.AVAILABLE_SUBMITTED;
+  }
+
+  public void submitAvailability(Instant submittedAt) {
+    this.result = CustomerResponseResult.AVAILABLE_SUBMITTED;
+    this.submittedAt = submittedAt;
+  }
+
+  public void submitNoAvailability(Instant submittedAt) {
+    this.result = CustomerResponseResult.NONE_AVAILABLE;
+    this.submittedAt = submittedAt;
+  }
 }

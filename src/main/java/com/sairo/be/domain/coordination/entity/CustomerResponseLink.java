@@ -60,4 +60,8 @@ public class CustomerResponseLink {
   public void assignTokenHash(String tokenHash) {
     this.tokenHash = tokenHash;
   }
+
+  public boolean isActive(Instant now) {
+    return revokedAt == null && expiresAt.isAfter(now);
+  }
 }

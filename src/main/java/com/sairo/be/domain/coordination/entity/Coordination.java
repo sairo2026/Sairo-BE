@@ -72,4 +72,12 @@ public class Coordination {
       Long officeId, Long propertyId, Long createdByMembershipId) {
     return new Coordination(officeId, propertyId, createdByMembershipId);
   }
+
+  public void receiveTenantAvailability() {
+    this.status = CoordinationStatus.BUYER_DELIVERY_REQUIRED;
+  }
+
+  public void receiveFirstBuyerAvailability() {
+    this.status = CoordinationStatus.FINAL_CONFIRMATION_REQUIRED;
+  }
 }
