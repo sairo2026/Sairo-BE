@@ -146,6 +146,15 @@ class PropertyControllerTest {
   }
 
   @Test
+  void 중복확인시_주소_파라미터가_없으면_표준_형식으로_400을_반환한다() throws Exception {
+    mockMvc
+        .perform(get("/api/properties/duplicate-check").with(authentication(staffAuthentication)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.fieldErrors[0].field").value("address"));
+  }
+
+  @Test
   void 같은_주소가_있어도_등록은_허용된다() throws Exception {
     registerProperty(staffAuthentication, "서울시 송파구 올림픽로 1", "SALE").andExpect(status().isCreated());
 
