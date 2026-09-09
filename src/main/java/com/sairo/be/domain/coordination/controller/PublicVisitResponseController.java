@@ -3,7 +3,11 @@ package com.sairo.be.domain.coordination.controller;
 import com.sairo.be.domain.coordination.dto.request.AvailableTimesSubmitRequest;
 import com.sairo.be.domain.coordination.dto.response.PublicVisitResponse;
 import com.sairo.be.domain.coordination.service.PublicVisitResponseService;
+import com.sairo.be.global.error.ErrorResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -29,6 +33,14 @@ public class PublicVisitResponseController {
       summary = "공개 응답 조회",
       description = "세입자 또는 구매희망자가 URL 토큰으로 자신의 임장 조율 응답 상태와 후보 시간을 조회한다.")
   @SecurityRequirements
+  @ApiResponse(
+      responseCode = "200",
+      description = "조회 성공",
+      content = @Content(schema = @Schema(implementation = PublicVisitResponse.class)))
+  @ApiResponse(
+      responseCode = "404",
+      description = "유효하지 않거나 만료된 링크다.",
+      content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
   @GetMapping
   public PublicVisitResponse get(@PathVariable String token) {
     return publicVisitResponseService.getByToken(token);
@@ -36,6 +48,26 @@ public class PublicVisitResponseController {
 
   @Operation(summary = "가능한 시간 제출", description = "제공된 후보 시간 중 응답자가 가능한 시간을 선택해 제출한다.")
   @SecurityRequirements
+  @ApiResponse(
+      responseCode = "200",
+      description = "제출 성공",
+      content = @Content(schema = @Schema(implementation = PublicVisitResponse.class)))
+  @ApiResponse(
+      responseCode = "400",
+      description = "candidateTimeIds가 비어 있거나 요청 본문 검증에 실패했다.",
+      content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+  @ApiResponse(
+      responseCode = "404",
+      description = "유효하지 않거나 만료된 링크다.",
+      content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+  @ApiResponse(
+      responseCode = "409",
+      description = "이미 응답을 제출했거나 현재 조율현황에서는 가능한 시간을 제출할 수 없는 상태다.",
+      content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+  @ApiResponse(
+      responseCode = "422",
+      description = "제공된 후보 시간 범위 밖의 candidateTimeId를 선택했다.",
+      content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
   @PostMapping("/available-times")
   public PublicVisitResponse submitAvailableTimes(
       @PathVariable String token, @Valid @RequestBody AvailableTimesSubmitRequest request) {
@@ -44,6 +76,18 @@ public class PublicVisitResponseController {
 
   @Operation(summary = "가능한 시간 없음 제출", description = "제공된 후보 시간 중 가능한 시간이 없음을 제출한다.")
   @SecurityRequirements
+  @ApiResponse(
+      responseCode = "200",
+      description = "제출 성공",
+      content = @Content(schema = @Schema(implementation = PublicVisitResponse.class)))
+  @ApiResponse(
+      responseCode = "404",
+      description = "유효하지 않거나 만료된 링크다.",
+      content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+  @ApiResponse(
+      responseCode = "409",
+      description = "이미 응답을 제출해 가능한 시간 없음으로 다시 제출할 수 없는 상태다.",
+      content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
   @PostMapping("/no-availability")
   public PublicVisitResponse submitNoAvailability(@PathVariable String token) {
     return publicVisitResponseService.submitNoAvailability(token);
