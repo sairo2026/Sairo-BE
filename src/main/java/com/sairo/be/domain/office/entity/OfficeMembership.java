@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -39,4 +40,17 @@ public class OfficeMembership {
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 10)
   private OfficeMembershipStatus status;
+
+  @Column(name = "reviewed_at")
+  private Instant reviewedAt;
+
+  public static OfficeMembership approve(Long userId, Office office, OfficeMembershipRole role) {
+    OfficeMembership membership = new OfficeMembership();
+    membership.userId = userId;
+    membership.office = office;
+    membership.role = role;
+    membership.status = OfficeMembershipStatus.APPROVED;
+    membership.reviewedAt = Instant.now();
+    return membership;
+  }
 }

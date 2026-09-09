@@ -73,7 +73,8 @@ validate_app_secrets_shape() {
   jq -e '
     (.restApiKey | type == "string" and length > 0) and
     (.clientSecret | type == "string" and length > 0) and
-    (.hmacSecret | type == "string" and length > 0)
+    (.hmacSecret | type == "string" and length > 0) and
+    (.authAutoApproveStaff | type == "string" and test("^(true|false)$"))
   ' >/dev/null <<<"${json}" || {
     echo "[deploy] invalid sairo/be/app-secrets structure" >&2
     exit 1
@@ -103,6 +104,7 @@ DB_MIGRATOR_PASSWORD=$(jq -r .password <<<"${MIGRATOR_SECRET_JSON}")
 KAKAO_REST_API_KEY=$(jq -r .restApiKey <<<"${APP_SECRETS_JSON}")
 KAKAO_CLIENT_SECRET=$(jq -r .clientSecret <<<"${APP_SECRETS_JSON}")
 PUBLIC_LINK_HMAC_SECRET=$(jq -r .hmacSecret <<<"${APP_SECRETS_JSON}")
+AUTH_AUTO_APPROVE_STAFF=$(jq -r .authAutoApproveStaff <<<"${APP_SECRETS_JSON}")
 
 umask 077
 {
@@ -115,6 +117,7 @@ umask 077
   echo "KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET}"
   echo "KAKAO_REDIRECT_URI_PROD=${KAKAO_REDIRECT_URI_PROD}"
   echo "PUBLIC_LINK_HMAC_SECRET=${PUBLIC_LINK_HMAC_SECRET}"
+  echo "AUTH_AUTO_APPROVE_STAFF=${AUTH_AUTO_APPROVE_STAFF}"
 } > "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
