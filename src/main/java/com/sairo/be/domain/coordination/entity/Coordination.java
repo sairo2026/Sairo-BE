@@ -47,6 +47,9 @@ public class Coordination {
   @Column(name = "confirmed_at")
   private Instant confirmedAt;
 
+  @Column(name = "cancelled_at")
+  private Instant cancelledAt;
+
   @Column(name = "created_by_membership_id", nullable = false)
   private Long createdByMembershipId;
 
@@ -96,5 +99,10 @@ public class Coordination {
 
   public void completeVisit() {
     this.status = CoordinationStatus.VISIT_COMPLETED;
+  }
+
+  public void cancel(Instant cancelledAt) {
+    this.status = CoordinationStatus.CANCELLED;
+    this.cancelledAt = cancelledAt;
   }
 }

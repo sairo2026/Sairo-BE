@@ -12,6 +12,7 @@ public enum ErrorCode {
   PUBLIC_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "유효하지 않거나 만료된 링크입니다."),
   INVALID_TRANSITION(HttpStatus.CONFLICT, "현재 상태에서는 처리할 수 없습니다."),
   RESPONSE_NOT_RESTARTABLE(HttpStatus.CONFLICT, "재시작할 수 없는 고객 응답입니다."),
+  BUYER_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 구매희망자가 등록된 조율 건입니다."),
   CANDIDATE_NOT_ALLOWED(HttpStatus.UNPROCESSABLE_CONTENT, "선택할 수 없는 후보 시간입니다.");
 
   private final HttpStatus status;
