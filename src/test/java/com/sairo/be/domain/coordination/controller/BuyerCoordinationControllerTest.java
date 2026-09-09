@@ -290,6 +290,40 @@ class BuyerCoordinationControllerTest {
   }
 
   @Test
+  void 이미_확정된_조율_건에는_구매희망자를_추가할_수_없다() throws Exception {
+    jdbcTemplate.update(
+        "UPDATE coordination SET status = 'SCHEDULE_CONFIRMED', scheduled_at = now(),"
+            + " confirmed_at = now() WHERE id = ?",
+        COORDINATION_ID);
+    insertTenantResponse(COORDINATION_ID, "AVAILABLE_SUBMITTED");
+
+    mockMvc
+        .perform(
+            post("/api/coordinations/{coordinationId}/buyers", COORDINATION_ID)
+                .with(authentication(staffAuthentication))
+                .with(csrf()))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("INVALID_TRANSITION"));
+  }
+
+  @Test
+  void 임장_완료된_조율_건에는_구매희망자를_추가할_수_없다() throws Exception {
+    jdbcTemplate.update(
+        "UPDATE coordination SET status = 'VISIT_COMPLETED', scheduled_at = now(),"
+            + " confirmed_at = now() WHERE id = ?",
+        COORDINATION_ID);
+    insertTenantResponse(COORDINATION_ID, "AVAILABLE_SUBMITTED");
+
+    mockMvc
+        .perform(
+            post("/api/coordinations/{coordinationId}/buyers", COORDINATION_ID)
+                .with(authentication(staffAuthentication))
+                .with(csrf()))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("INVALID_TRANSITION"));
+  }
+
+  @Test
   void 다른_사무소_조율_건이면_404를_반환한다() throws Exception {
     mockMvc
         .perform(
