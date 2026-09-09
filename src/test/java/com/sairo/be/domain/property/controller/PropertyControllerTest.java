@@ -140,7 +140,9 @@ class PropertyControllerTest {
                     {"address":"서울시 마포구 월드컵로 1","dealType":"NOT_A_TYPE"}
                     """))
         .andExpect(status().isBadRequest())
-        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.fieldErrors[0].field").value("dealType"))
+        .andExpect(jsonPath("$.fieldErrors[0].message").value("허용되지 않는 값입니다: NOT_A_TYPE"));
   }
 
   @Test

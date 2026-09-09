@@ -140,6 +140,23 @@ class SessionSecurityIntegrationTest {
         .andExpect(status().isForbidden());
   }
 
+  @Test
+  void 브라우저가_XSRF_TOKEN_쿠키값을_그대로_헤더로_보내면_변경요청이_성공한다() throws Exception {
+    String sessionId = createSession(Instant.now(), Instant.now(), 9001L);
+
+    var firstAttempt =
+        mockMvc.perform(post("/api/session-probe").cookie(cookie(sessionId))).andReturn();
+    String csrfToken = extractCookieValue(firstAttempt.getResponse(), "XSRF-TOKEN");
+    assertThat(csrfToken).isNotNull();
+
+    mockMvc
+        .perform(
+            post("/api/session-probe")
+                .cookie(cookie(sessionId), new Cookie("XSRF-TOKEN", csrfToken))
+                .header("X-XSRF-TOKEN", csrfToken))
+        .andExpect(status().isOk());
+  }
+
   private String createSession(Instant issuedAt, Instant lastAccess, Long officeId) {
     var session = sessions.createSession();
     var context = SecurityContextHolder.createEmptyContext();
@@ -159,6 +176,19 @@ class SessionSecurityIntegrationTest {
     return new Cookie(
         "__Host-sairo_session",
         Base64.getEncoder().encodeToString(sessionId.getBytes(StandardCharsets.UTF_8)));
+  }
+
+  private String extractCookieValue(
+      org.springframework.mock.web.MockHttpServletResponse response, String name) {
+    String prefix = name + "=";
+    for (String header : response.getHeaders("Set-Cookie")) {
+      if (header.startsWith(prefix)) {
+        String value = header.substring(prefix.length());
+        int semicolon = value.indexOf(';');
+        return semicolon >= 0 ? value.substring(0, semicolon) : value;
+      }
+    }
+    return null;
   }
 
   private void assertSessionDeleted(String sessionId) {

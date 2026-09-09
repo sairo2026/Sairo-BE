@@ -1,5 +1,7 @@
 package com.sairo.be.global.error;
 
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -14,6 +16,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.exc.InvalidFormatException;
+import tools.jackson.databind.exc.MismatchedInputException;
 
 @Slf4j
 @RestControllerAdvice
@@ -55,8 +60,30 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       HttpHeaders headers,
       HttpStatusCode status,
       WebRequest request) {
-    return ResponseEntity.status(ErrorCode.INVALID_REQUEST.getStatus())
-        .body(buildBody(ErrorCode.INVALID_REQUEST, ErrorCode.INVALID_REQUEST.getMessage()));
+    ProblemDetail problem =
+        buildBody(ErrorCode.INVALID_REQUEST, ErrorCode.INVALID_REQUEST.getMessage());
+    extractFieldError(ex.getCause())
+        .ifPresent(fieldError -> problem.setProperty("fieldErrors", List.of(fieldError)));
+    return ResponseEntity.status(ErrorCode.INVALID_REQUEST.getStatus()).body(problem);
+  }
+
+  private Optional<FieldErrorItem> extractFieldError(Throwable cause) {
+    if (!(cause instanceof MismatchedInputException mismatchedInputException)) {
+      return Optional.empty();
+    }
+    List<JacksonException.Reference> path = mismatchedInputException.getPath();
+    if (path.isEmpty()) {
+      return Optional.empty();
+    }
+    String field = path.get(path.size() - 1).getPropertyName();
+    if (field == null) {
+      return Optional.empty();
+    }
+    String message =
+        cause instanceof InvalidFormatException invalidFormatException
+            ? "허용되지 않는 값입니다: " + invalidFormatException.getValue()
+            : "요청 형식이 올바르지 않습니다.";
+    return Optional.of(new FieldErrorItem(field, message));
   }
 
   private FieldErrorItem toFieldError(FieldError fieldError) {

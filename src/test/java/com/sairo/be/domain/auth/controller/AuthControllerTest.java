@@ -121,10 +121,17 @@ class AuthControllerTest {
     assertThat(authenticatedCookie).isNotNull();
     assertThat(authenticatedCookie.getValue()).isNotEqualTo(preAuthCookie.getValue());
 
-    String setCookieHeader = callbackResult.getResponse().getHeader("Set-Cookie");
-    assertThat(setCookieHeader).contains("HttpOnly");
-    assertThat(setCookieHeader).contains("Secure");
-    assertThat(setCookieHeader).containsIgnoringCase("SameSite=Lax");
+    String sessionSetCookieHeader =
+        callbackResult.getResponse().getHeaders("Set-Cookie").stream()
+            .filter(header -> header.startsWith(SESSION_COOKIE_NAME + "="))
+            .findFirst()
+            .orElseThrow();
+    assertThat(sessionSetCookieHeader).contains("HttpOnly");
+    assertThat(sessionSetCookieHeader).contains("Secure");
+    assertThat(sessionSetCookieHeader).containsIgnoringCase("SameSite=Lax");
+
+    assertThat(callbackResult.getResponse().getHeaders("Set-Cookie"))
+        .anyMatch(header -> header.startsWith("XSRF-TOKEN="));
 
     mockMvc
         .perform(get("/api/unmapped-protected-path").cookie(authenticatedCookie))
