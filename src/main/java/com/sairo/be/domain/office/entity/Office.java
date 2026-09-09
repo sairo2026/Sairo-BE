@@ -41,4 +41,22 @@ public class Office {
 
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
+
+  public static Office register(
+      String name,
+      String representativeName,
+      String businessRegistrationNumber,
+      String realEstateLicenseNumber,
+      String phone,
+      String address) {
+    Office office = new Office();
+    office.name = name;
+    office.representativeName = representativeName;
+    office.businessRegistrationNumber = businessRegistrationNumber;
+    office.realEstateLicenseNumber = realEstateLicenseNumber;
+    office.phone = phone;
+    office.address = address;
+    office.createdAt = Instant.now();
+    return office;
+  }
 }
