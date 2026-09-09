@@ -23,6 +23,7 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -121,6 +122,15 @@ public class AuthController {
     request
         .getSession(true)
         .setAttribute(AbsoluteSessionTimeoutFilter.ISSUED_AT_ATTRIBUTE, Instant.now());
+
+    issueCsrfCookie(request);
+  }
+
+  private void issueCsrfCookie(HttpServletRequest request) {
+    Object csrfToken = request.getAttribute(CsrfToken.class.getName());
+    if (csrfToken instanceof CsrfToken token) {
+      token.getToken();
+    }
   }
 
   private String generateState() {
