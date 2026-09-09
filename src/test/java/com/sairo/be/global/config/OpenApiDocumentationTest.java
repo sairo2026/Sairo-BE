@@ -81,7 +81,7 @@ class OpenApiDocumentationTest {
             Map.entry("GET /api/auth/kakao/callback", Set.of("200")),
             Map.entry("GET /api/home", Set.of("200", "401")),
             Map.entry("GET /api/properties", Set.of("200", "401")),
-            Map.entry("GET /api/properties/duplicate-check", Set.of("200", "401")),
+            Map.entry("GET /api/properties/duplicate-check", Set.of("200", "400", "401")),
             Map.entry("POST /api/properties", Set.of("201", "400", "401", "403")),
             Map.entry("GET /api/properties/{propertyId}", Set.of("200", "401", "404")),
             Map.entry(
