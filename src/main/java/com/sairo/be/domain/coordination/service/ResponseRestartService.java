@@ -56,7 +56,8 @@ public class ResponseRestartService {
       Long officeId, Long coordinationId, Long responseId, ResponseRestartRequest request) {
     Coordination coordination = getLockedCoordination(officeId, coordinationId);
     if (coordination.getStatus() == CoordinationStatus.SCHEDULE_CONFIRMED
-        || coordination.getStatus() == CoordinationStatus.VISIT_COMPLETED) {
+        || coordination.getStatus() == CoordinationStatus.VISIT_COMPLETED
+        || coordination.getStatus() == CoordinationStatus.CANCELLED) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
     CoordinationCustomerResponse response = getLockedResponse(coordinationId, responseId);

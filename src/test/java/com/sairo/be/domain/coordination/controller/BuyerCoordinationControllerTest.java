@@ -242,7 +242,7 @@ class BuyerCoordinationControllerTest {
   }
 
   @Test
-  void 구매자를_두번째로_추가하면_상태는_유지되고_새_응답만_추가된다() throws Exception {
+  void 구매희망자를_두번째로_추가하려하면_409를_반환한다() throws Exception {
     seedApprovedTenant();
 
     mockMvc
@@ -257,15 +257,15 @@ class BuyerCoordinationControllerTest {
             post("/api/coordinations/{coordinationId}/buyers", COORDINATION_ID)
                 .with(authentication(staffAuthentication))
                 .with(csrf()))
-        .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.coordinationStatus").value("BUYER_CHECKING"));
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("BUYER_ALREADY_EXISTS"));
 
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM coordination_customer_response WHERE coordination_id = ? AND role = 'BUYER'",
                 Integer.class,
                 COORDINATION_ID))
-        .isEqualTo(2);
+        .isEqualTo(1);
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM coordination_status_history WHERE coordination_id = ?",
@@ -311,6 +311,22 @@ class BuyerCoordinationControllerTest {
     jdbcTemplate.update(
         "UPDATE coordination SET status = 'VISIT_COMPLETED', scheduled_at = now(),"
             + " confirmed_at = now() WHERE id = ?",
+        COORDINATION_ID);
+    insertTenantResponse(COORDINATION_ID, "AVAILABLE_SUBMITTED");
+
+    mockMvc
+        .perform(
+            post("/api/coordinations/{coordinationId}/buyers", COORDINATION_ID)
+                .with(authentication(staffAuthentication))
+                .with(csrf()))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("INVALID_TRANSITION"));
+  }
+
+  @Test
+  void 취소된_조율_건에는_구매희망자를_추가할_수_없다() throws Exception {
+    jdbcTemplate.update(
+        "UPDATE coordination SET status = 'CANCELLED', cancelled_at = now() WHERE id = ?",
         COORDINATION_ID);
     insertTenantResponse(COORDINATION_ID, "AVAILABLE_SUBMITTED");
 

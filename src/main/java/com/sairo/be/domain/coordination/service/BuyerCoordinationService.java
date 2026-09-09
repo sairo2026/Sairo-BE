@@ -49,18 +49,20 @@ public class BuyerCoordinationService {
 
     if (coordination.getStatus() == CoordinationStatus.TENANT_CHECKING
         || coordination.getStatus() == CoordinationStatus.SCHEDULE_CONFIRMED
-        || coordination.getStatus() == CoordinationStatus.VISIT_COMPLETED) {
+        || coordination.getStatus() == CoordinationStatus.VISIT_COMPLETED
+        || coordination.getStatus() == CoordinationStatus.CANCELLED) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+
+    if (responseRepository.existsByCoordinationIdAndRole(
+        coordinationId, CustomerResponseRole.BUYER)) {
+      throw new BusinessException(ErrorCode.BUYER_ALREADY_EXISTS);
     }
 
     CoordinationCustomerResponse tenantResponse =
         responseRepository
             .findByCoordinationIdAndRole(coordinationId, CustomerResponseRole.TENANT)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
-
-    boolean isFirstBuyer =
-        !responseRepository.existsByCoordinationIdAndRole(
-            coordinationId, CustomerResponseRole.BUYER);
 
     CoordinationCustomerResponse buyerResponse =
         CoordinationCustomerResponse.waitingForBuyer(coordinationId);
@@ -79,7 +81,7 @@ public class BuyerCoordinationService {
 
     PublicLinkIssuer.IssuedLink issuedLink = linkIssuer.issue(buyerResponse.getId());
 
-    if (isFirstBuyer && coordination.getStatus() == CoordinationStatus.BUYER_DELIVERY_REQUIRED) {
+    if (coordination.getStatus() == CoordinationStatus.BUYER_DELIVERY_REQUIRED) {
       CoordinationStatus previousStatus = coordination.getStatus();
       coordination.startBuyerChecking();
       statusHistoryRepository.save(
