@@ -28,7 +28,7 @@ class OpenApiDocumentationTest {
   @Autowired private MockMvc mockMvc;
 
   @Test
-  void 인증_없이_api_docs에_접근할_수_있고_18개_api가_전부_문서화돼_있다() throws Exception {
+  void 인증_없이_api_docs에_접근할_수_있고_19개_api가_전부_문서화돼_있다() throws Exception {
     String body =
         mockMvc
             .perform(get("/v3/api-docs"))
@@ -52,7 +52,7 @@ class OpenApiDocumentationTest {
         }
       }
     }
-    assertThat(operationCount).isEqualTo(18);
+    assertThat(operationCount).isEqualTo(19);
 
     JsonNode servers = root.get("servers");
     assertThat(servers).hasSize(1);
@@ -102,6 +102,9 @@ class OpenApiDocumentationTest {
                 Set.of("200", "400", "401", "403", "404", "409", "422")),
             Map.entry(
                 "POST /api/coordinations/{coordinationId}/visit-complete",
+                Set.of("200", "401", "403", "404", "409")),
+            Map.entry(
+                "POST /api/coordinations/{coordinationId}/cancel",
                 Set.of("200", "401", "403", "404", "409")),
             Map.entry("GET /api/public/visit-responses/{token}", Set.of("200", "404")),
             Map.entry(
