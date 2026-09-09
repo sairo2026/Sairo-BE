@@ -16,6 +16,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Optional;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.core.context.SecurityContext;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Slf4j
 @Profile("!migrate")
 @RestController
 @RequestMapping("/api/auth/kakao")
@@ -73,12 +75,18 @@ public class AuthController {
       throws IOException {
     boolean validState = isValidState(request, state);
     if (error != null || code == null || code.isBlank() || !validState) {
+      log.warn(
+          "카카오 로그인 콜백이 인가 단계에서 실패했습니다. error={}, codePresent={}, validState={}",
+          error,
+          code != null && !code.isBlank(),
+          validState);
       response.sendRedirect(frontendBaseUrl + "/login?error=auth_failed");
       return;
     }
 
     Optional<StaffPrincipal> principal = authService.authenticate(code);
     if (principal.isEmpty()) {
+      log.warn("카카오 로그인 콜백이 인증 단계에서 실패했습니다.");
       response.sendRedirect(frontendBaseUrl + "/login?error=auth_failed");
       return;
     }
