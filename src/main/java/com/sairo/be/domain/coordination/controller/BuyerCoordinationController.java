@@ -46,7 +46,8 @@ public class BuyerCoordinationController {
       content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
   @ApiResponse(
       responseCode = "409",
-      description = "세입자 응답 제출 전(TENANT_CHECKING)이라 구매희망자를 추가할 수 없다.",
+      description =
+          "세입자 응답 제출 전(TENANT_CHECKING)이거나 이미 확정·완료된(SCHEDULE_CONFIRMED, VISIT_COMPLETED) 조율 건이라 구매희망자를 추가할 수 없다.",
       content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
   @PostMapping
   @ResponseStatus(HttpStatus.CREATED)

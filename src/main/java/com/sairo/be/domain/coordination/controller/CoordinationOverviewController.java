@@ -91,7 +91,8 @@ public class CoordinationOverviewController {
       content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
   @ApiResponse(
       responseCode = "409",
-      description = "가능한 시간 없음이나 만료 상태가 아니라서 재시작할 수 없는 고객 응답이다.",
+      description =
+          "가능한 시간 없음이나 만료 상태가 아니라서 재시작할 수 없는 고객 응답이거나, 이미 확정·완료된(SCHEDULE_CONFIRMED, VISIT_COMPLETED) 조율 건이다.",
       content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
   @ApiResponse(
       responseCode = "422",

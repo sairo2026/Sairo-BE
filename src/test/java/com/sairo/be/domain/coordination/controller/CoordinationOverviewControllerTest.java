@@ -189,6 +189,42 @@ class CoordinationOverviewControllerTest {
   }
 
   @Test
+  void 이미_확정된_조율_건의_응답은_재시작할_수_없다() throws Exception {
+    Long tenantResponseId = tenantResponseId(COORDINATION_ID);
+    Long buyerResponseId = insertBuyerResponse(COORDINATION_ID, "NONE_AVAILABLE");
+    jdbcTemplate.update(
+        "UPDATE coordination SET status = 'SCHEDULE_CONFIRMED', scheduled_at = now(),"
+            + " confirmed_at = now() WHERE id = ?",
+        COORDINATION_ID);
+
+    mockMvc
+        .perform(
+            post(
+                    "/api/coordinations/{coordinationId}/responses/{responseId}/restart",
+                    COORDINATION_ID,
+                    buyerResponseId)
+                .with(authentication(staffAuthentication))
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"candidateTimeIds\":[" + candidateTimeIds.get(0) + "]}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("INVALID_TRANSITION"));
+
+    mockMvc
+        .perform(
+            post(
+                    "/api/coordinations/{coordinationId}/responses/{responseId}/restart",
+                    COORDINATION_ID,
+                    tenantResponseId)
+                .with(authentication(staffAuthentication))
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"candidateTimeIds\":[" + candidateTimeIds.get(0) + "]}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("INVALID_TRANSITION"));
+  }
+
+  @Test
   void 구매자_재시작_후보는_세입자_승인_후보로_제한한다() throws Exception {
     Long tenantResponseId = tenantResponseId(COORDINATION_ID);
     jdbcTemplate.update(

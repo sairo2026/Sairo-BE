@@ -5,6 +5,7 @@ import com.sairo.be.domain.coordination.dto.response.ResponseRestartResponse;
 import com.sairo.be.domain.coordination.entity.Coordination;
 import com.sairo.be.domain.coordination.entity.CoordinationCandidateTime;
 import com.sairo.be.domain.coordination.entity.CoordinationCustomerResponse;
+import com.sairo.be.domain.coordination.entity.CoordinationStatus;
 import com.sairo.be.domain.coordination.entity.CustomerResponseCandidate;
 import com.sairo.be.domain.coordination.entity.CustomerResponseLink;
 import com.sairo.be.domain.coordination.entity.CustomerResponseResult;
@@ -54,6 +55,10 @@ public class ResponseRestartService {
   public ResponseRestartResponse restart(
       Long officeId, Long coordinationId, Long responseId, ResponseRestartRequest request) {
     Coordination coordination = getLockedCoordination(officeId, coordinationId);
+    if (coordination.getStatus() == CoordinationStatus.SCHEDULE_CONFIRMED
+        || coordination.getStatus() == CoordinationStatus.VISIT_COMPLETED) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
     CoordinationCustomerResponse response = getLockedResponse(coordinationId, responseId);
     CustomerResponseLink currentLink =
         linkRepository.findByResponseIdAndRevokedAtIsNull(responseId).orElse(null);

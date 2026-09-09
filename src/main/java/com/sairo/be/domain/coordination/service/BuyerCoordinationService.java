@@ -47,7 +47,9 @@ public class BuyerCoordinationService {
             .findByIdAndOfficeIdForUpdate(coordinationId, officeId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
 
-    if (coordination.getStatus() == CoordinationStatus.TENANT_CHECKING) {
+    if (coordination.getStatus() == CoordinationStatus.TENANT_CHECKING
+        || coordination.getStatus() == CoordinationStatus.SCHEDULE_CONFIRMED
+        || coordination.getStatus() == CoordinationStatus.VISIT_COMPLETED) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
 
