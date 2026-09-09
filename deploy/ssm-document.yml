@@ -1,0 +1,33 @@
+schemaVersion: "2.2"
+description: Deploy SAIRO backend with repository-managed runtime assets
+parameters:
+  imageTag:
+    type: String
+    allowedPattern: "^[0-9a-f]{40}$"
+  deployScriptGzipBase64:
+    type: String
+    allowedPattern: "^[A-Za-z0-9+/=]+$"
+  composeGzipBase64:
+    type: String
+    allowedPattern: "^[A-Za-z0-9+/=]+$"
+mainSteps:
+  - action: aws:runShellScript
+    name: installAndDeploy
+    inputs:
+      runCommand:
+        - set -eu
+        - install_dir=/opt/sairo
+        - deploy_temp="$(mktemp "${install_dir}/deploy.sh.XXXXXX")"
+        - compose_temp="$(mktemp "${install_dir}/docker-compose.prod.yml.XXXXXX")"
+        - cleanup() { rm -f "${deploy_temp}" "${compose_temp}"; }
+        - trap cleanup EXIT
+        - printf '%s' '{{ deployScriptGzipBase64 }}' | base64 -d | gzip -dc > "${deploy_temp}"
+        - printf '%s' '{{ composeGzipBase64 }}' | base64 -d | gzip -dc > "${compose_temp}"
+        - bash -n "${deploy_temp}"
+        - ECR_REPOSITORY_URI=validation.invalid/sairo-be IMAGE_TAG=validation docker compose -f "${compose_temp}" config --quiet
+        - chmod 700 "${deploy_temp}"
+        - chmod 600 "${compose_temp}"
+        - mv -f "${deploy_temp}" "${install_dir}/deploy.sh"
+        - mv -f "${compose_temp}" "${install_dir}/docker-compose.prod.yml"
+        - trap - EXIT
+        - exec "${install_dir}/deploy.sh" '{{ imageTag }}'

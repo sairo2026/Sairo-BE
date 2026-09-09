@@ -87,11 +87,15 @@ jobs:
         run: |
           set -euo pipefail
 
+          deploy_script_gzip_base64="$(gzip -9c deploy/deploy.sh | base64 -w0)"
+          compose_gzip_base64="$(gzip -9c deploy/docker-compose.prod.yml | base64 -w0)"
+
           command_id="$(
             aws ssm send-command \
               --document-name "${SSM_DOCUMENT}" \
               --instance-ids "${EC2_INSTANCE_ID}" \
-              --parameters "imageTag=${IMAGE_TAG}" \
+              --parameters \
+                "imageTag=${IMAGE_TAG},deployScriptGzipBase64=${deploy_script_gzip_base64},composeGzipBase64=${compose_gzip_base64}" \
               --comment "GitHub Actions run ${GITHUB_RUN_ID}" \
               --query "Command.CommandId" \
               --output text
