@@ -59,14 +59,17 @@ public final class CoordinationMapper {
   public static CoordinationListResponse.CoordinationItem toListItem(
       Coordination coordination,
       PropertyListResponse.PropertyItem property,
-      CoordinationCustomerResponse tenantResponse) {
+      CoordinationCustomerResponse tenantResponse,
+      List<CustomerResponseResult> buyerResults) {
     return new CoordinationListResponse.CoordinationItem(
         coordination.getId(),
         property.address(),
         tenantResponse.getCustomerName(),
         tenantResponse.getCustomerPhone(),
         coordination.getScheduledAt(),
-        coordination.getStatus());
+        coordination.getStatus(),
+        tenantResponse.getResult(),
+        buyerResults);
   }
 
   public static CoordinationDetailResponse toDetailResponse(

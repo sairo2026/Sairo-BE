@@ -274,7 +274,9 @@ class CoordinationOverviewControllerTest {
         .andExpect(jsonPath("$.coordinations.length()").value(1))
         .andExpect(jsonPath("$.coordinations[0].coordinationId").value(COORDINATION_ID))
         .andExpect(jsonPath("$.coordinations[0].propertyAddress").value("서울시 강남구 테헤란로 10"))
-        .andExpect(jsonPath("$.coordinations[0].tenantName").value("김세입자"));
+        .andExpect(jsonPath("$.coordinations[0].tenantName").value("김세입자"))
+        .andExpect(jsonPath("$.coordinations[0].tenantResult").value("WAITING"))
+        .andExpect(jsonPath("$.coordinations[0].buyerResults").isEmpty());
 
     mockMvc
         .perform(
@@ -288,6 +290,21 @@ class CoordinationOverviewControllerTest {
         .andExpect(jsonPath("$.tenantResponse.offeredCandidateIds.length()").value(2))
         .andExpect(jsonPath("$.tenantResponse.customerLinkUrl").isString())
         .andExpect(jsonPath("$.buyerResponses.length()").value(0));
+  }
+
+  @Test
+  void 목록은_구매희망자_응답_결과를_배열로_반환한다() throws Exception {
+    insertBuyerResponse(COORDINATION_ID, "NONE_AVAILABLE");
+    insertBuyerResponse(COORDINATION_ID, "WAITING");
+
+    mockMvc
+        .perform(get("/api/coordinations").with(authentication(staffAuthentication)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.coordinations[0].tenantResult").value("NONE_AVAILABLE"))
+        .andExpect(jsonPath("$.coordinations[0].buyerResults.length()").value(2))
+        .andExpect(
+            jsonPath("$.coordinations[0].buyerResults")
+                .value(org.hamcrest.Matchers.containsInAnyOrder("NONE_AVAILABLE", "WAITING")));
   }
 
   @Test

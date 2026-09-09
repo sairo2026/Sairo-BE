@@ -1,6 +1,7 @@
 package com.sairo.be.domain.coordination.dto.response;
 
 import com.sairo.be.domain.coordination.entity.CoordinationStatus;
+import com.sairo.be.domain.coordination.entity.CustomerResponseResult;
 import java.time.Instant;
 import java.util.List;
 
@@ -21,5 +22,7 @@ public record CoordinationListResponse(
       String tenantName,
       String tenantPhone,
       Instant visitScheduledAt,
-      CoordinationStatus status) {}
+      CoordinationStatus status,
+      CustomerResponseResult tenantResult,
+      List<CustomerResponseResult> buyerResults) {}
 }

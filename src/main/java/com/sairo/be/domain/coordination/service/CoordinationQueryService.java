@@ -70,14 +70,24 @@ public class CoordinationQueryService {
                 Collectors.toMap(
                     PropertyListResponse.PropertyItem::propertyId, Function.identity()));
     List<Long> coordinationIds = coordinations.stream().map(Coordination::getId).toList();
-    Map<Long, CoordinationCustomerResponse> tenantsByCoordinationId =
+    List<CoordinationCustomerResponse> responses =
         coordinationIds.isEmpty()
-            ? Collections.emptyMap()
-            : responseRepository.findByCoordinationIdInOrderByIdAsc(coordinationIds).stream()
-                .filter(response -> response.getRole() == CustomerResponseRole.TENANT)
-                .collect(
-                    Collectors.toMap(
-                        CoordinationCustomerResponse::getCoordinationId, Function.identity()));
+            ? List.of()
+            : responseRepository.findByCoordinationIdInOrderByIdAsc(coordinationIds);
+    Map<Long, CoordinationCustomerResponse> tenantsByCoordinationId =
+        responses.stream()
+            .filter(response -> response.getRole() == CustomerResponseRole.TENANT)
+            .collect(
+                Collectors.toMap(
+                    CoordinationCustomerResponse::getCoordinationId, Function.identity()));
+    Map<Long, List<CustomerResponseResult>> buyerResultsByCoordinationId =
+        responses.stream()
+            .filter(response -> response.getRole() == CustomerResponseRole.BUYER)
+            .collect(
+                Collectors.groupingBy(
+                    CoordinationCustomerResponse::getCoordinationId,
+                    Collectors.mapping(
+                        CoordinationCustomerResponse::getResult, Collectors.toList())));
 
     List<CoordinationListResponse.CoordinationItem> items =
         coordinations.stream()
@@ -86,7 +96,8 @@ public class CoordinationQueryService {
                     CoordinationMapper.toListItem(
                         coordination,
                         requiredProperty(propertiesById, coordination.getPropertyId()),
-                        requiredTenant(tenantsByCoordinationId, coordination.getId())))
+                        requiredTenant(tenantsByCoordinationId, coordination.getId()),
+                        buyerResultsByCoordinationId.getOrDefault(coordination.getId(), List.of())))
             .toList();
     return new CoordinationListResponse(statusCounts(officeId), items);
   }
