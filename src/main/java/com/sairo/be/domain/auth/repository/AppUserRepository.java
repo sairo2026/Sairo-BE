@@ -13,4 +13,6 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
           "SELECT * FROM app_user WHERE kakao_provider_key = :providerKey AND account_status = 'ACTIVE'",
       nativeQuery = true)
   Optional<AppUser> findActiveByKakaoProviderKey(@Param("providerKey") String kakaoProviderKey);
+
+  Optional<AppUser> findByKakaoProviderKey(String kakaoProviderKey);
 }

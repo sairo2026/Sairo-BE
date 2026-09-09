@@ -19,6 +19,8 @@ kakao:
 sairo:
   public-link:
     hmac-secret: ${PUBLIC_LINK_HMAC_SECRET:sairo-local-dev-hmac-secret-do-not-use-in-prod}
+  auth:
+    auto-approve-staff: ${AUTH_AUTO_APPROVE_STAFF:false}
 
 server:
   servlet:

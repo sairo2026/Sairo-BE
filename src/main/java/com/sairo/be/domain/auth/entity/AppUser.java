@@ -29,4 +29,12 @@ public class AppUser {
 
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
+
+  public static AppUser register(String kakaoProviderKey, String name) {
+    AppUser user = new AppUser();
+    user.kakaoProviderKey = kakaoProviderKey;
+    user.name = name;
+    user.createdAt = Instant.now();
+    return user;
+  }
 }

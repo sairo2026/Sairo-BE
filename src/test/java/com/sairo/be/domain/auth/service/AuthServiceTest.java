@@ -3,7 +3,9 @@ package com.sairo.be.domain.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
+import com.sairo.be.global.security.StaffPrincipal;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -23,7 +25,9 @@ class AuthServiceTest {
     when(client.exchangeToken("test-code"))
         .thenThrow(new RestClientException("sensitive-response-marker"));
 
-    assertThat(new AuthService(client, principals).authenticate("test-code")).isEmpty();
+    var autoApproval = mock(PilotStaffAutoApprovalService.class);
+    assertThat(new AuthService(client, principals, autoApproval, false).authenticate("test-code"))
+        .isEmpty();
     assertThat(output.getAll())
         .contains("카카오 인증 요청이 실패했습니다.")
         .doesNotContain("sensitive-response-marker", "RestClientException");
@@ -43,11 +47,57 @@ class AuthServiceTest {
                 "sensitive-response-marker".getBytes(StandardCharsets.UTF_8),
                 StandardCharsets.UTF_8));
 
-    assertThat(new AuthService(client, principals).authenticate("test-code")).isEmpty();
+    var autoApproval = mock(PilotStaffAutoApprovalService.class);
+    assertThat(new AuthService(client, principals, autoApproval, false).authenticate("test-code"))
+        .isEmpty();
     assertThat(output.getAll())
         .contains("카카오 인증 요청이 실패했습니다.")
         .contains("400")
         .doesNotContain("sensitive-response-marker");
     verifyNoInteractions(principals);
+  }
+
+  @Test
+  void 자동승인이_꺼져있으면_미등록_직원은_자동승인을_시도하지_않는다() {
+    var client = mock(KakaoOAuthClient.class);
+    var principals = mock(StaffPrincipalQueryService.class);
+    var autoApproval = mock(PilotStaffAutoApprovalService.class);
+    when(client.exchangeToken("test-code")).thenReturn("token");
+    when(client.fetchUserId("token")).thenReturn(1001L);
+    when(principals.findByKakaoUserId(1001L)).thenReturn(Optional.empty());
+
+    assertThat(new AuthService(client, principals, autoApproval, false).authenticate("test-code"))
+        .isEmpty();
+    verifyNoInteractions(autoApproval);
+  }
+
+  @Test
+  void 자동승인이_켜져있으면_미등록_직원을_자동승인한다() {
+    var client = mock(KakaoOAuthClient.class);
+    var principals = mock(StaffPrincipalQueryService.class);
+    var autoApproval = mock(PilotStaffAutoApprovalService.class);
+    var approved = new StaffPrincipal(1L, 2L, 3L, "파일럿 사용자");
+    when(client.exchangeToken("test-code")).thenReturn("token");
+    when(client.fetchUserId("token")).thenReturn(1001L);
+    when(principals.findByKakaoUserId(1001L)).thenReturn(Optional.empty());
+    when(autoApproval.autoApprove(1001L)).thenReturn(Optional.of(approved));
+
+    assertThat(new AuthService(client, principals, autoApproval, true).authenticate("test-code"))
+        .contains(approved);
+  }
+
+  @Test
+  void 자동승인이_켜져있어도_이미_등록된_직원이_있으면_자동승인을_시도하지_않는다() {
+    var client = mock(KakaoOAuthClient.class);
+    var principals = mock(StaffPrincipalQueryService.class);
+    var autoApproval = mock(PilotStaffAutoApprovalService.class);
+    var existing = new StaffPrincipal(1L, 2L, 3L, "박직원");
+    when(client.exchangeToken("test-code")).thenReturn("token");
+    when(client.fetchUserId("token")).thenReturn(1001L);
+    when(principals.findByKakaoUserId(1001L)).thenReturn(Optional.of(existing));
+
+    assertThat(new AuthService(client, principals, autoApproval, true).authenticate("test-code"))
+        .contains(existing);
+    verifyNoInteractions(autoApproval);
   }
 }
