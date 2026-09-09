@@ -58,6 +58,10 @@ public class PropertyController {
       description = "조회 성공",
       content = @Content(schema = @Schema(implementation = PropertyDuplicateCheckResponse.class)))
   @ApiResponse(
+      responseCode = "400",
+      description = "필수 쿼리 파라미터 address가 없다.",
+      content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+  @ApiResponse(
       responseCode = "401",
       description = "세션이 없거나 만료되어 로그인이 필요하다.",
       content = @Content(schema = @Schema(implementation = SecurityErrorResponse.class)))
