@@ -27,6 +27,7 @@ ENV_DIR="${COMPOSE_DIR}/env"
 ENV_FILE="${ENV_DIR}/app.env"
 MIGRATE_ENV_FILE="${ENV_DIR}/migrate.env"
 LAST_GOOD_FILE="${COMPOSE_DIR}/last-good-tag"
+API_DISABLED_FILE="${COMPOSE_DIR}/api-deploy-disabled"
 HEALTH_URL="http://127.0.0.1:8080/actuator/health"
 
 mkdir -p "${ENV_DIR}"
@@ -172,6 +173,14 @@ wait_for_healthy() {
 if ! run_migration "${IMAGE_TAG}"; then
   echo "[deploy] migration failed for ${IMAGE_TAG}, leaving current api container untouched" >&2
   exit 1
+fi
+
+if [ -f "${API_DISABLED_FILE}" ]; then
+  echo "[deploy] migration applied, api deployment is disabled by ${API_DISABLED_FILE}"
+  IMAGE_TAG="${IMAGE_TAG}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
+    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" stop api
+  echo "[deploy] api stopped, remove ${API_DISABLED_FILE} and redeploy to resume api deployment"
+  exit 0
 fi
 
 deploy_tag "${IMAGE_TAG}"
