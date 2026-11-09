@@ -113,7 +113,7 @@ class AuthPolicyConstraintTest extends AbstractPostgresSchemaTest {
       throws java.sql.SQLException {
     try (PreparedStatement ps =
         conn.prepareStatement(
-            "INSERT INTO terms_agreement (user_id, terms_code, terms_version, agreed) VALUES (?, ?, ?, ?)")) {
+            "INSERT INTO terms_agreement (user_id, terms_code, terms_version, agreed, consent_path) VALUES (?, ?, ?, ?, 'SIGNUP_KAKAO')")) {
       ps.setLong(1, userId);
       ps.setString(2, code);
       ps.setString(3, version);
