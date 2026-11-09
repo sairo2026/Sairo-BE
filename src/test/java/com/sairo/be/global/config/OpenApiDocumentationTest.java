@@ -22,7 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 @AutoConfigureMockMvc
-@Disabled("완전출시 스키마 V12 적용으로 MVP 도메인 코드와 DB 구조가 맞지 않는 상태이며 완전출시 백엔드 구현 시 재작성한다")
+@Disabled("BE-00b 단계에서 완전출시 오류 응답 문서 기준으로 재작성한다")
 class OpenApiDocumentationTest {
 
   private static final Set<String> HTTP_METHODS = Set.of("get", "post", "put", "patch", "delete");

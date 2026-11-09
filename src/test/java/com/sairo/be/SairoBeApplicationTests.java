@@ -1,15 +1,26 @@
 package com.sairo.be;
 
-import org.junit.jupiter.api.Disabled;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
-@Disabled("완전출시 스키마 V12 적용으로 MVP 도메인 코드와 DB 구조가 맞지 않는 상태이며 완전출시 백엔드 구현 시 재작성한다")
 class SairoBeApplicationTests {
 
+  @Autowired private DataSource dataSource;
+
   @Test
-  void contextLoads() {}
+  void 마이그레이션을_적용한_스키마에서_validate로_컨텍스트가_기동된다() {
+    Integer applied =
+        new JdbcTemplate(dataSource)
+            .queryForObject(
+                "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
+    assertThat(applied).isEqualTo(13);
+  }
 }
