@@ -13,6 +13,9 @@ public final class LogMasking {
   private static final Pattern SECRET_PARAMETER_PATTERN =
       Pattern.compile("(?i)(token|ticket|code|password|newPassword|secret)=([^&\\s\"]+)");
 
+  private static final Pattern LINK_PATH_TOKEN_PATTERN =
+      Pattern.compile("(?i)(/api/public/[a-z-]+-visit-links/)[^/\\s?\"]+");
+
   private LogMasking() {}
 
   public static String email(String email) {
@@ -50,6 +53,7 @@ public final class LogMasking {
     }
     String masked = EMAIL_PATTERN.matcher(text).replaceAll("$1" + MASK + "$2");
     masked = PHONE_PATTERN.matcher(masked).replaceAll(MASK + "$1");
+    masked = LINK_PATH_TOKEN_PATTERN.matcher(masked).replaceAll("$1" + MASK);
     return SECRET_PARAMETER_PATTERN.matcher(masked).replaceAll("$1=" + MASK);
   }
 }

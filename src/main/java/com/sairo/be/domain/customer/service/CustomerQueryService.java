@@ -10,6 +10,7 @@ import com.sairo.be.domain.customer.repository.CustomerReadRepository;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
+import com.sairo.be.global.port.AssistantAssignments;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StaffRole;
 import com.sairo.be.global.support.InputRules;
@@ -35,16 +36,19 @@ public class CustomerQueryService {
   private final CustomerGuard guard;
   private final CustomerReadRepository readRepository;
   private final CustomerDetailAssembler assembler;
+  private final AssistantAssignments assistantAssignments;
   private final Clock clock;
 
   public CustomerQueryService(
       CustomerGuard guard,
       CustomerReadRepository readRepository,
       CustomerDetailAssembler assembler,
+      AssistantAssignments assistantAssignments,
       Clock clock) {
     this.guard = guard;
     this.readRepository = readRepository;
     this.assembler = assembler;
+    this.assistantAssignments = assistantAssignments;
     this.clock = clock;
   }
 
@@ -123,7 +127,9 @@ public class CustomerQueryService {
 
   public CustomerAssistantViewResponse assistantView(StaffPrincipal principal, Long customerId) {
     Customer customer = guard.find(principal.officeId(), customerId);
-    if (principal.role() == StaffRole.DEPUTY) {
+    if (principal.role() == StaffRole.DEPUTY
+        && !assistantAssignments.isAssignedCustomer(
+            principal.officeId(), principal.membershipId(), customerId)) {
       throw new BusinessException(ErrorCode.FORBIDDEN);
     }
     return new CustomerAssistantViewResponse(
