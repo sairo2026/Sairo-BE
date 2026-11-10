@@ -11,13 +11,17 @@ import org.springframework.stereotype.Component;
 public class MembershipExpiryScheduler {
 
   private final MembershipExpiryService expiryService;
+  private final OwnerTransferService transferService;
 
-  public MembershipExpiryScheduler(MembershipExpiryService expiryService) {
+  public MembershipExpiryScheduler(
+      MembershipExpiryService expiryService, OwnerTransferService transferService) {
     this.expiryService = expiryService;
+    this.transferService = transferService;
   }
 
   @Scheduled(cron = "0 5 * * * *", zone = "Asia/Seoul")
   public void run() {
     expiryService.expireOverdue();
+    transferService.expireOverdue();
   }
 }
