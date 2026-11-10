@@ -122,7 +122,24 @@ class OpenApiDocumentationTest {
           Map.entry(
               "POST /api/subscriptions/price-change-notices/{noticeId}/decline", Set.of("200")),
           Map.entry("GET /api/billing/tax-recipient", Set.of("200")),
-          Map.entry("PUT /api/billing/tax-recipient", Set.of("200")));
+          Map.entry("PUT /api/billing/tax-recipient", Set.of("200")),
+          Map.entry("GET /api/properties", Set.of("200")),
+          Map.entry("POST /api/properties", Set.of("201")),
+          Map.entry("GET /api/properties/duplicate-check", Set.of("200")),
+          Map.entry("GET /api/properties/{propertyId}", Set.of("200")),
+          Map.entry("PATCH /api/properties/{propertyId}", Set.of("200")),
+          Map.entry("POST /api/properties/{propertyId}/photos", Set.of("201")),
+          Map.entry("PATCH /api/properties/{propertyId}/photos/{photoId}", Set.of("200")),
+          Map.entry("DELETE /api/properties/{propertyId}/photos/{photoId}", Set.of("204")),
+          Map.entry("PUT /api/properties/{propertyId}/fields/{fieldDefinitionId}", Set.of("200")),
+          Map.entry("GET /api/property-categories", Set.of("200")),
+          Map.entry("POST /api/property-categories", Set.of("201")),
+          Map.entry("PATCH /api/property-categories/{categoryId}", Set.of("200")),
+          Map.entry("GET /api/property-categories/{categoryId}/fields", Set.of("200")),
+          Map.entry("POST /api/property-categories/{categoryId}/fields", Set.of("201")),
+          Map.entry(
+              "PATCH /api/property-categories/{categoryId}/fields/{fieldDefinitionId}",
+              Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 
