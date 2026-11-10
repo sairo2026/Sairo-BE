@@ -110,6 +110,41 @@ public class EntityLifecycleEvent {
     return event;
   }
 
+  public static EntityLifecycleEvent customerCreated(
+      Long officeId, Long customerId, Instant effectiveAt, Long recordedByMembershipId) {
+    return customerEvent(
+        LifecycleEventType.CREATED, officeId, customerId, effectiveAt, recordedByMembershipId);
+  }
+
+  public static EntityLifecycleEvent customerArchived(
+      Long officeId, Long customerId, Instant effectiveAt, Long recordedByMembershipId) {
+    return customerEvent(
+        LifecycleEventType.ARCHIVED, officeId, customerId, effectiveAt, recordedByMembershipId);
+  }
+
+  public static EntityLifecycleEvent customerRestored(
+      Long officeId, Long customerId, Instant effectiveAt, Long recordedByMembershipId) {
+    return customerEvent(
+        LifecycleEventType.RESTORED, officeId, customerId, effectiveAt, recordedByMembershipId);
+  }
+
+  private static EntityLifecycleEvent customerEvent(
+      LifecycleEventType type,
+      Long officeId,
+      Long customerId,
+      Instant effectiveAt,
+      Long recordedByMembershipId) {
+    EntityLifecycleEvent event = new EntityLifecycleEvent();
+    event.officeId = officeId;
+    event.entityType = LifecycleEntityType.CUSTOMER;
+    event.customerId = customerId;
+    event.eventType = type;
+    event.creationSource = LifecycleCreationSource.MANUAL;
+    event.effectiveAt = effectiveAt;
+    event.recordedByMembershipId = recordedByMembershipId;
+    return event;
+  }
+
   private static EntityLifecycleEvent propertyEvent(
       LifecycleEventType type,
       Long officeId,
