@@ -11,4 +11,14 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
       String kakaoProviderKey, AccountStatus accountStatus);
 
   Optional<AppUser> findByKakaoProviderKey(String kakaoProviderKey);
+
+  Optional<AppUser> findByEmail(String email);
+
+  boolean existsByEmail(String email);
+
+  boolean existsByPhoneAndPhoneVerifiedAtIsNotNullAndAccountStatus(
+      String phone, AccountStatus accountStatus);
+
+  Optional<AppUser> findFirstByPhoneAndPhoneVerifiedAtIsNotNullAndAccountStatus(
+      String phone, AccountStatus accountStatus);
 }

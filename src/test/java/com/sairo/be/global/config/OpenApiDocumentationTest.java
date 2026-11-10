@@ -26,9 +26,25 @@ class OpenApiDocumentationTest {
   private static final Set<String> HTTP_METHODS = Set.of("get", "post", "put", "patch", "delete");
 
   private static final Map<String, Set<String>> EXPECTED_RESPONSES =
-      Map.of(
-          "GET /api/auth/kakao/start", Set.of("200"),
-          "GET /api/auth/kakao/callback", Set.of("200"));
+      Map.ofEntries(
+          Map.entry("GET /api/auth/kakao/start", Set.of("200")),
+          Map.entry("GET /api/auth/kakao/callback", Set.of("200")),
+          Map.entry("GET /api/auth/context", Set.of("200")),
+          Map.entry("POST /api/auth/login", Set.of("200")),
+          Map.entry("POST /api/auth/logout", Set.of("204")),
+          Map.entry("POST /api/auth/signup/email/verification", Set.of("202")),
+          Map.entry("POST /api/auth/signup/email/verify", Set.of("200")),
+          Map.entry("POST /api/auth/phone-verification", Set.of("202")),
+          Map.entry("POST /api/auth/phone-verification/verify", Set.of("200")),
+          Map.entry("POST /api/auth/signup/email", Set.of("201")),
+          Map.entry("GET /api/auth/recovery-options", Set.of("200")),
+          Map.entry("GET /api/terms", Set.of("200")),
+          Map.entry("POST /api/me/terms-agreements", Set.of("204")),
+          Map.entry("GET /api/me/terms-reconsent", Set.of("200")),
+          Map.entry("POST /api/public/marketing-unsubscribe", Set.of("200")),
+          Map.entry("GET /api/me", Set.of("200")),
+          Map.entry("GET /api/me/session", Set.of("200")),
+          Map.entry("GET /api/me/login-history", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 
