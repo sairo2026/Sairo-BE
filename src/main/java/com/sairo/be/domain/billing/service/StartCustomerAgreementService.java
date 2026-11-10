@@ -13,6 +13,7 @@ import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.AdvisoryLock;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,7 +59,8 @@ public class StartCustomerAgreementService {
             .findByOfficeIdAndStatus(officeId, AgreementStatus.APPROVED)
             .orElseThrow(() -> missingApprovedAgreement(officeId));
     if (!agreement.isAcknowledged()) {
-      agreement.acknowledge(principal.membershipId(), clock.instant());
+      agreement.acknowledge(
+          principal.membershipId(), clock.instant().truncatedTo(ChronoUnit.MICROS));
       agreementRepository.saveAndFlush(agreement);
     }
     return toResponse(agreement);

@@ -62,7 +62,7 @@ class PriceChangeNoticeIntegrationTest extends BillingIntegrationTestBase {
         fixtures
             .notice(owner.office().getId(), subscriptionId, fromPrice, other)
             .nonIncrease()
-            .dueAt(Instant.now().plus(40, ChronoUnit.DAYS))
+            .dueAt(Instant.now().plus(5, ChronoUnit.DAYS))
             .insert();
     TestData.Staff stranger = owner();
     long strangerSubscription =
