@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.security.StepUpState;
+import com.sairo.be.global.support.TextCipher;
 import com.sairo.be.support.AuthFlowSupport;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.fixture.BillingFixtures;
@@ -20,12 +21,17 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 @IntegrationTest
 class BillingKeyIntegrationTest extends BillingIntegrationTestBase {
 
   private static final String SESSION_URL = "/api/subscriptions/billing-key/session";
   private static final String KEY_URL = "/api/subscriptions/billing-key";
+
+  @Autowired
+  @Qualifier("billingKeyCipher") private TextCipher billingKeyCipher;
 
   @BeforeEach
   void seedTerms() {
@@ -290,6 +296,20 @@ class BillingKeyIntegrationTest extends BillingIntegrationTestBase {
         .perform(getRequest("/api/subscriptions/current").apply(cookieOf(owner)))
         .andExpect(jsonPath("$.paymentMethod").value(nullValue()))
         .andExpect(jsonPath("$.readiness.hasBillingKey").value(false));
+  }
+
+  @Test
+  void 카드_해제는_결제대행사의_빌링키도_삭제한다() throws Exception {
+    TestData.Staff owner = ownerWithSubscription();
+    fixtures.billingCustomerWithKey(
+        owner.office().getId(),
+        "stable-customer-key",
+        billingKeyCipher.encrypt("plain-billing-key"));
+    Cookie cookie = cookieWithStepUp(owner);
+
+    mockMvc.perform(deleteRequest(KEY_URL).apply(cookie)).andExpect(status().isNoContent());
+
+    assertThat(paymentGateway.deletedBillingKeys()).containsExactly("plain-billing-key");
   }
 
   @Test

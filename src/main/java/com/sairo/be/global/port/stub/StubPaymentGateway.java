@@ -7,10 +7,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Profile("!prod & !migrate")
+@ConditionalOnExpression("'${sairo.toss.secret-key:}'.trim() == ''")
 @Component
 public class StubPaymentGateway implements PaymentGateway {
 
@@ -20,6 +22,7 @@ public class StubPaymentGateway implements PaymentGateway {
 
   private final AtomicBoolean failNextIssue = new AtomicBoolean(false);
   private final List<String> issuedCustomerKeys = new CopyOnWriteArrayList<>();
+  private final List<String> deletedBillingKeys = new CopyOnWriteArrayList<>();
   private final Map<String, PaymentResult> orders = new ConcurrentHashMap<>();
   private final AtomicReference<RuntimeException> chargeFailure = new AtomicReference<>();
   private final AtomicReference<String> failureCode = new AtomicReference<>("STUB_DECLINED");
@@ -53,6 +56,10 @@ public class StubPaymentGateway implements PaymentGateway {
     return List.copyOf(issuedCustomerKeys);
   }
 
+  public List<String> deletedBillingKeys() {
+    return List.copyOf(deletedBillingKeys);
+  }
+
   public List<ChargeCommand> charges() {
     return List.copyOf(charges);
   }
@@ -60,6 +67,7 @@ public class StubPaymentGateway implements PaymentGateway {
   public void reset() {
     charges.clear();
     issuedCustomerKeys.clear();
+    deletedBillingKeys.clear();
     orders.clear();
     chargeFailure.set(null);
     failureCode.set("STUB_DECLINED");
@@ -74,6 +82,11 @@ public class StubPaymentGateway implements PaymentGateway {
     }
     issuedCustomerKeys.add(customerKey);
     return new BillingKeyResult("stub-billing-" + customerKey, "STUB", "1234-****-****-5678");
+  }
+
+  @Override
+  public void deleteBillingKey(String billingKey) {
+    deletedBillingKeys.add(billingKey);
   }
 
   @Override
