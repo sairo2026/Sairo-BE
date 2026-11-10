@@ -44,7 +44,20 @@ class OpenApiDocumentationTest {
           Map.entry("POST /api/public/marketing-unsubscribe", Set.of("200")),
           Map.entry("GET /api/me", Set.of("200")),
           Map.entry("GET /api/me/session", Set.of("200")),
-          Map.entry("GET /api/me/login-history", Set.of("200")));
+          Map.entry("GET /api/me/login-history", Set.of("200")),
+          Map.entry("POST /api/auth/signup/kakao", Set.of("201")),
+          Map.entry("POST /api/auth/password/reset-request", Set.of("200")),
+          Map.entry("POST /api/auth/password/reset", Set.of("204")),
+          Map.entry("POST /api/auth/step-up/password", Set.of("200")),
+          Map.entry("GET /api/auth/step-up/kakao/start", Set.of("200")),
+          Map.entry("GET /api/auth/step-up/kakao/callback", Set.of("200")),
+          Map.entry("POST /api/me/login-methods/email/verification", Set.of("202")),
+          Map.entry("POST /api/me/login-methods/email/verify", Set.of("200")),
+          Map.entry("POST /api/me/login-methods/email", Set.of("200")),
+          Map.entry("GET /api/me/login-methods/kakao/start", Set.of("200")),
+          Map.entry("POST /api/me/login-methods/kakao", Set.of("200")),
+          Map.entry("DELETE /api/me/login-methods/{method}", Set.of("204")),
+          Map.entry("POST /api/webhooks/kakao/unlink", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 

@@ -27,6 +27,10 @@ public final class AuthRateLimits {
       RateLimitRule.of("auth-login-failure", 5, Duration.ofMinutes(15));
   public static final RateLimitRule LOGIN_LOCK =
       RateLimitRule.of("auth-login-lock", 1, Duration.ofMinutes(15));
+  public static final RateLimitRule STEP_UP_FAILURE =
+      RateLimitRule.of("auth-step-up-failure", 5, Duration.ofMinutes(15));
+  public static final RateLimitRule STEP_UP_LOCK =
+      RateLimitRule.of("auth-step-up-lock", 1, Duration.ofMinutes(15));
   public static final RateLimitRule LOGIN_IP =
       RateLimitRule.of("auth-login-ip", 60, Duration.ofSeconds(60));
 

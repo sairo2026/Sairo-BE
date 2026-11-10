@@ -1,6 +1,7 @@
 package com.sairo.be.domain.auth.service;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.sairo.be.global.port.KakaoFlow;
 import com.sairo.be.global.port.KakaoOAuthPort;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
@@ -35,9 +36,19 @@ public class KakaoOAuthClient implements KakaoOAuthPort {
 
   @Override
   public String buildAuthorizeUrl(String state) {
+    return buildAuthorizeUrl(state, KakaoFlow.LOGIN);
+  }
+
+  @Override
+  public String exchangeToken(String code) {
+    return exchangeToken(code, KakaoFlow.LOGIN);
+  }
+
+  @Override
+  public String buildAuthorizeUrl(String state, KakaoFlow flow) {
     return UriComponentsBuilder.fromUriString(AUTHORIZE_URI)
         .queryParam("client_id", properties.restApiKey())
-        .queryParam("redirect_uri", properties.redirectUri())
+        .queryParam("redirect_uri", properties.redirectUriFor(flow))
         .queryParam("response_type", "code")
         .queryParam("state", state)
         .build()
@@ -45,12 +56,12 @@ public class KakaoOAuthClient implements KakaoOAuthPort {
   }
 
   @Override
-  public String exchangeToken(String code) {
+  public String exchangeToken(String code, KakaoFlow flow) {
     MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
     form.add("grant_type", "authorization_code");
     form.add("client_id", properties.restApiKey());
     form.add("client_secret", properties.clientSecret());
-    form.add("redirect_uri", properties.redirectUri());
+    form.add("redirect_uri", properties.redirectUriFor(flow));
     form.add("code", code);
 
     TokenResponse response =

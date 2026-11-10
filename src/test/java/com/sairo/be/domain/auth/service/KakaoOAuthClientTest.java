@@ -58,6 +58,12 @@ class KakaoOAuthClientTest {
 
   private KakaoProperties properties() {
     return new KakaoProperties(
-        "test-client", "test-secret", "https://api.example.com/api/auth/kakao/callback");
+        "test-client",
+        "test-secret",
+        "https://api.example.com/api/auth/kakao/callback",
+        "https://api.example.com/api/auth/step-up/kakao/callback",
+        null,
+        null,
+        null);
   }
 }

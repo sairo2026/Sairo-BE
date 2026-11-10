@@ -27,6 +27,10 @@ spring:
 kakao:
   rest-api-key: ${KAKAO_REST_API_KEY:}
   client-secret: ${KAKAO_CLIENT_SECRET:}
+  admin-key: ${KAKAO_ADMIN_KEY:}
+  app-id: ${KAKAO_APP_ID:}
+  step-up-redirect-uri: ${KAKAO_STEP_UP_REDIRECT_URI:}
+  link-redirect-uri: ${KAKAO_LINK_REDIRECT_URI:}
 
 sairo:
   public-link:
@@ -37,6 +41,7 @@ sairo:
     kakao-key-hmac-secret: ${AUTH_KAKAO_KEY_HMAC_SECRET:sairo-local-dev-kakao-key-secret-do-not-use-in-prod}
     kakao-key-hmac-version: 1
     unsubscribe-secret: ${AUTH_UNSUBSCRIBE_SECRET:sairo-local-dev-unsubscribe-secret-do-not-use-in-prod}
+    kakao-key-encryption-secret: ${AUTH_KAKAO_KEY_ENCRYPTION_SECRET:sairo-local-dev-kakao-key-encryption-do-not-use-in-prod}
 
 management:
   endpoint:

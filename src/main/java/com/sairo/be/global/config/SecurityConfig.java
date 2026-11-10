@@ -4,7 +4,9 @@ import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.ErrorResponseWriter;
 import com.sairo.be.global.security.AbsoluteSessionTimeoutFilter;
 import com.sairo.be.global.security.CsrfCookieFilter;
+import com.sairo.be.global.security.ExternalWebhookAuthenticationFilter;
 import java.time.Clock;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -23,7 +25,11 @@ public class SecurityConfig {
 
   @Bean
   SecurityFilterChain securityFilterChain(
-      HttpSecurity http, ErrorResponseWriter errorResponseWriter, Clock clock) throws Exception {
+      HttpSecurity http,
+      ErrorResponseWriter errorResponseWriter,
+      Clock clock,
+      @Value("${kakao.admin-key:}") String kakaoAdminKey)
+      throws Exception {
     return http.authorizeHttpRequests(
             authorize ->
                 authorize
@@ -52,6 +58,8 @@ public class SecurityConfig {
                         })))
         .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
         .addFilterBefore(new AbsoluteSessionTimeoutFilter(clock), AuthorizationFilter.class)
+        .addFilterBefore(
+            new ExternalWebhookAuthenticationFilter(() -> kakaoAdminKey), AuthorizationFilter.class)
         .exceptionHandling(
             exceptionHandling ->
                 exceptionHandling

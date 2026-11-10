@@ -136,4 +136,24 @@ public final class AuthFlowSupport {
   public MvcResult getTerms() throws Exception {
     return mockMvc.perform(get("/api/terms")).andReturn();
   }
+
+  public record KakaoStart(Cookie cookie, String state, String location) {}
+
+  public KakaoStart startKakao(String url, Cookie existing) throws Exception {
+    MockHttpServletRequestBuilder builder = get(url);
+    if (existing != null) {
+      builder.cookie(existing);
+    }
+    MvcResult result = mockMvc.perform(builder).andReturn();
+    String location = result.getResponse().getHeader("Location");
+    Cookie issued = sessionCookie(result);
+    String state = null;
+    if (location != null) {
+      Matcher matcher = Pattern.compile("state=([A-Za-z0-9_-]+)").matcher(location);
+      if (matcher.find()) {
+        state = matcher.group(1);
+      }
+    }
+    return new KakaoStart(issued != null ? issued : existing, state, location);
+  }
 }
