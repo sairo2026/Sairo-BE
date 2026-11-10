@@ -3,6 +3,7 @@ package com.sairo.be.domain.property.service;
 import com.sairo.be.domain.property.dto.response.PropertyCreateResponse;
 import com.sairo.be.domain.property.dto.response.PropertyUpdateResponse;
 import com.sairo.be.domain.property.entity.EntityLifecycleEvent;
+import com.sairo.be.domain.property.entity.LifecycleCreationSource;
 import com.sairo.be.domain.property.entity.Property;
 import com.sairo.be.domain.property.entity.PropertyAttributes;
 import com.sairo.be.domain.property.entity.PropertyCategory;
@@ -16,6 +17,7 @@ import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.error.FieldErrorItem;
 import com.sairo.be.global.security.StaffPrincipal;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,8 @@ import tools.jackson.databind.JsonNode;
 @Profile("!migrate")
 @Service
 public class PropertyCommandService {
+
+  public static final String IMPORT_DUPLICATE_REASON = "데이터 이전으로 등록한 매물";
 
   private final PropertyRepository propertyRepository;
   private final EntityLifecycleEventRepository lifecycleEventRepository;
@@ -47,13 +51,27 @@ public class PropertyCommandService {
 
   @Transactional
   public PropertyCreateResponse create(StaffPrincipal principal, JsonNode body) {
+    return register(principal, body, LifecycleCreationSource.MANUAL);
+  }
+
+  @Transactional
+  public PropertyCreateResponse createImported(StaffPrincipal principal, JsonNode body) {
+    return register(principal, body, LifecycleCreationSource.IMPORT);
+  }
+
+  private PropertyCreateResponse register(
+      StaffPrincipal principal, JsonNode body, LifecycleCreationSource creationSource) {
     PropertyInputParser.Parsed parsed = PropertyInputParser.parseCreate(body);
     PropertyAttributes attributes = PropertyInputParser.initial(parsed.values());
     PropertyInputParser.validateCombination(attributes);
     PropertyCategory category =
         guard.requireUsableCategory(principal.officeId(), parsed.categoryId());
     guard.validateManagingMember(principal.officeId(), attributes.managingMembershipId());
-    requireDuplicateReason(principal.officeId(), attributes, null);
+    if (creationSource == LifecycleCreationSource.IMPORT) {
+      attributes = withImportDuplicateReason(principal.officeId(), attributes);
+    } else {
+      requireDuplicateReason(principal.officeId(), attributes, null);
+    }
     Property property =
         propertyRepository.saveAndFlush(
             Property.draft(principal.officeId(), category.getId(), attributes));
@@ -62,8 +80,25 @@ public class PropertyCommandService {
             principal.officeId(),
             property.getId(),
             property.getCreatedAt(),
-            principal.membershipId()));
+            principal.membershipId(),
+            creationSource));
     return PropertyMapper.toCreateResponse(property);
+  }
+
+  private PropertyAttributes withImportDuplicateReason(
+      Long officeId, PropertyAttributes attributes) {
+    if (attributes.address() == null || attributes.duplicateOverrideReason() != null) {
+      return attributes;
+    }
+    boolean duplicated =
+        !readRepository
+            .findDuplicates(officeId, attributes.address(), attributes.addressDetail(), null, true)
+            .isEmpty();
+    if (!duplicated) {
+      return attributes;
+    }
+    return PropertyInputParser.merge(
+        attributes, Map.of("duplicateOverrideReason", IMPORT_DUPLICATE_REASON));
   }
 
   @Transactional
