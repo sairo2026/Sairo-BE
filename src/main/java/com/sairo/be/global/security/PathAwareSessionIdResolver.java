@@ -10,6 +10,7 @@ import org.springframework.session.web.http.HttpSessionIdResolver;
 public class PathAwareSessionIdResolver implements HttpSessionIdResolver {
 
   public static final String OPERATOR_PATH_PREFIX = "/api/ops/";
+  public static final String OPERATOR_ARCHIVE_GRANT_PATH = "/api/archive-grants";
 
   private final CookieHttpSessionIdResolver memberResolver = new CookieHttpSessionIdResolver();
   private final CookieHttpSessionIdResolver operatorResolver = new CookieHttpSessionIdResolver();
@@ -37,8 +38,12 @@ public class PathAwareSessionIdResolver implements HttpSessionIdResolver {
   }
 
   private CookieHttpSessionIdResolver pick(HttpServletRequest request) {
-    return request.getRequestURI().startsWith(OPERATOR_PATH_PREFIX)
-        ? operatorResolver
-        : memberResolver;
+    return isOperatorRequest(request) ? operatorResolver : memberResolver;
+  }
+
+  private static boolean isOperatorRequest(HttpServletRequest request) {
+    String uri = request.getRequestURI();
+    return uri.startsWith(OPERATOR_PATH_PREFIX)
+        || ("POST".equals(request.getMethod()) && OPERATOR_ARCHIVE_GRANT_PATH.equals(uri));
   }
 }

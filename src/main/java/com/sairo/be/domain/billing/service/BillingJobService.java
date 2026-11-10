@@ -43,6 +43,7 @@ public class BillingJobService {
   private final SystemJobRunService jobRunService;
   private final AdvisoryLock advisoryLock;
   private final TransactionTemplate transactionTemplate;
+  private final AuthSuspensionService authSuspensionService;
 
   public BillingJobService(
       SubscriptionRepository subscriptionRepository,
@@ -56,7 +57,8 @@ public class BillingJobService {
       BillingChargeService chargeService,
       SystemJobRunService jobRunService,
       AdvisoryLock advisoryLock,
-      TransactionTemplate transactionTemplate) {
+      TransactionTemplate transactionTemplate,
+      AuthSuspensionService authSuspensionService) {
     this.subscriptionRepository = subscriptionRepository;
     this.invoiceRepository = invoiceRepository;
     this.customerRepository = customerRepository;
@@ -69,6 +71,7 @@ public class BillingJobService {
     this.jobRunService = jobRunService;
     this.advisoryLock = advisoryLock;
     this.transactionTemplate = transactionTemplate;
+    this.authSuspensionService = authSuspensionService;
   }
 
   public void runAll(Instant now) {
@@ -78,6 +81,7 @@ public class BillingJobService {
     runDelinquency(now);
     runPrePaymentExpiry(now);
     runReconciliation();
+    authSuspensionService.expireSuspensions(now);
   }
 
   public void runFirstCharges(Instant now) {

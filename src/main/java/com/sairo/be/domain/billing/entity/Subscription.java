@@ -144,6 +144,28 @@ public class Subscription {
     this.pastDueSince = null;
   }
 
+  public void suspend(Instant now, Long remainingTrialSeconds) {
+    this.status = SubscriptionStatus.SUSPENDED;
+    this.suspendedAt = now;
+    this.trialRemainingSeconds = remainingTrialSeconds;
+  }
+
+  public void resumeTrial(Instant newTrialEnd) {
+    this.status = SubscriptionStatus.TRIAL;
+    this.trialEndsAt = newTrialEnd;
+    this.firstBillingScheduledAt = newTrialEnd;
+    this.suspendedAt = null;
+    this.trialRemainingSeconds = null;
+    this.prePaymentSince = null;
+  }
+
+  public void resumeToPrePayment(Instant since) {
+    this.status = SubscriptionStatus.PRE_PAYMENT;
+    this.prePaymentSince = since;
+    this.suspendedAt = null;
+    this.trialRemainingSeconds = null;
+  }
+
   public void enterPrePayment(Instant since) {
     this.status = SubscriptionStatus.PRE_PAYMENT;
     this.prePaymentSince = since;

@@ -117,6 +117,11 @@ public class RefundRequest {
     this.refundAmount = refundAmount;
   }
 
+  public void recordImmediateEnd(long remainingSeconds, Instant effectiveEndAt) {
+    this.remainingPeriodSeconds = remainingSeconds;
+    this.effectiveEndAt = effectiveEndAt;
+  }
+
   public boolean hasCalculation() {
     return originalApprovedAmount != null;
   }
