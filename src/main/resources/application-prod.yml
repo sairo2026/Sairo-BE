@@ -25,6 +25,8 @@ sairo:
     kakao-key-hmac-secret: ${AUTH_KAKAO_KEY_HMAC_SECRET}
     unsubscribe-secret: ${AUTH_UNSUBSCRIBE_SECRET}
     kakao-key-encryption-secret: ${AUTH_KAKAO_KEY_ENCRYPTION_SECRET}
+  billing:
+    key-encryption-secret: ${BILLING_KEY_ENCRYPTION_SECRET}
 
 app:
   frontend-base-url: ${FRONTEND_BASE_URL:https://app.sairo.agency}

@@ -102,7 +102,20 @@ class OpenApiDocumentationTest {
           Map.entry("POST /api/ops/offices/{officeId}/revoke", Set.of("200")),
           Map.entry("GET /api/ops/office-change-requests", Set.of("200")),
           Map.entry("POST /api/ops/office-change-requests/{requestId}/approve", Set.of("200")),
-          Map.entry("POST /api/ops/office-change-requests/{requestId}/reject", Set.of("200")));
+          Map.entry("POST /api/ops/office-change-requests/{requestId}/reject", Set.of("200")),
+          Map.entry("GET /api/public/pricing", Set.of("200")),
+          Map.entry("GET /api/billing/plans", Set.of("200")),
+          Map.entry("GET /api/subscriptions/current", Set.of("200")),
+          Map.entry("POST /api/subscriptions/billing-key/session", Set.of("200")),
+          Map.entry("POST /api/subscriptions/billing-key", Set.of("200")),
+          Map.entry("DELETE /api/subscriptions/billing-key", Set.of("204")),
+          Map.entry("GET /api/subscriptions/purchase-consent/preview", Set.of("200")),
+          Map.entry("POST /api/subscriptions/purchase-consent", Set.of("200")),
+          Map.entry("GET /api/billing/invoices", Set.of("200")),
+          Map.entry("GET /api/billing/invoices/{invoiceId}", Set.of("200")),
+          Map.entry("POST /api/refund-requests", Set.of("200", "201")),
+          Map.entry("GET /api/refund-requests", Set.of("200")),
+          Map.entry("GET /api/refund-requests/{refundId}", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 

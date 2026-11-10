@@ -42,6 +42,9 @@ public class TermsAgreement {
   @Column(name = "consent_path", nullable = false, length = 20)
   private ConsentPath consentPath;
 
+  @Column(name = "office_id", updatable = false)
+  private Long officeId;
+
   public static TermsAgreement record(
       Long userId,
       String termsCode,
@@ -56,6 +59,20 @@ public class TermsAgreement {
     agreement.agreed = agreed;
     agreement.consentPath = consentPath;
     agreement.recordedAt = recordedAt;
+    return agreement;
+  }
+
+  public static TermsAgreement recordForOffice(
+      Long userId,
+      Long officeId,
+      String termsCode,
+      String termsVersion,
+      boolean agreed,
+      ConsentPath consentPath,
+      Instant recordedAt) {
+    TermsAgreement agreement =
+        record(userId, termsCode, termsVersion, agreed, consentPath, recordedAt);
+    agreement.officeId = officeId;
     return agreement;
   }
 }
