@@ -105,4 +105,32 @@ public class LegalKakaoUnlinkEvent {
     event.completedAt = now;
     return event;
   }
+
+  public void markSucceeded(Instant now) {
+    this.attemptCount += 1;
+    this.status = KakaoUnlinkStatus.SUCCEEDED;
+    this.nextAttemptAt = null;
+    this.lastErrorCode = null;
+    this.completedAt = now;
+    wipeKey(now);
+  }
+
+  public void markFailed(Instant now, String errorCode, Instant nextAttempt) {
+    this.attemptCount += 1;
+    this.status = KakaoUnlinkStatus.FAILED_RETRYING;
+    this.lastErrorCode = errorCode;
+    this.nextAttemptAt = nextAttempt;
+  }
+
+  public void abandon(Instant now) {
+    this.status = KakaoUnlinkStatus.ABANDONED;
+    this.nextAttemptAt = null;
+    this.completedAt = now;
+    wipeKey(now);
+  }
+
+  private void wipeKey(Instant now) {
+    this.targetKeyEncrypted = null;
+    this.keyWipedAt = now;
+  }
 }

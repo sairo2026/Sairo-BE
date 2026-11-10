@@ -1,6 +1,8 @@
 package com.sairo.be.domain.auth.repository;
 
+import com.sairo.be.domain.auth.entity.ConsentPath;
 import com.sairo.be.domain.auth.entity.TermsAgreement;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -24,7 +26,9 @@ public interface TermsAgreementRepository extends JpaRepository<TermsAgreement, 
   Optional<TermsAgreement> findFirstByUserIdAndTermsCodeOrderByIdDesc(
       Long userId, String termsCode);
 
-  Page<TermsAgreement> findByUserId(Long userId, Pageable pageable);
+  Page<TermsAgreement> findByUserIdAndConsentPathNotIn(
+      Long userId, Collection<ConsentPath> excluded, Pageable pageable);
 
-  Page<TermsAgreement> findByUserIdAndTermsCode(Long userId, String termsCode, Pageable pageable);
+  Page<TermsAgreement> findByUserIdAndTermsCodeAndConsentPathNotIn(
+      Long userId, String termsCode, Collection<ConsentPath> excluded, Pageable pageable);
 }

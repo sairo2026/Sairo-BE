@@ -196,4 +196,9 @@ public class AppUser {
     user.createdAt = createdAt;
     return user;
   }
+
+  public void withdraw(Instant at) {
+    this.accountStatus = AccountStatus.WITHDRAWN;
+    this.withdrawnAt = at;
+  }
 }

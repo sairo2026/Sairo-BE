@@ -57,7 +57,15 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/me/login-methods/kakao/start", Set.of("200")),
           Map.entry("POST /api/me/login-methods/kakao", Set.of("200")),
           Map.entry("DELETE /api/me/login-methods/{method}", Set.of("204")),
-          Map.entry("POST /api/webhooks/kakao/unlink", Set.of("200")));
+          Map.entry("POST /api/webhooks/kakao/unlink", Set.of("200")),
+          Map.entry("PATCH /api/me", Set.of("200")),
+          Map.entry("PATCH /api/me/notification-preferences", Set.of("200")),
+          Map.entry("POST /api/me/contact/email/verification", Set.of("202")),
+          Map.entry("POST /api/me/contact/email/verify", Set.of("200")),
+          Map.entry("PATCH /api/me/contact", Set.of("200")),
+          Map.entry("GET /api/me/terms-agreements", Set.of("200")),
+          Map.entry("GET /api/me/withdrawal-preview", Set.of("200")),
+          Map.entry("DELETE /api/me", Set.of("204")));
 
   @Autowired private MockMvc mockMvc;
 
