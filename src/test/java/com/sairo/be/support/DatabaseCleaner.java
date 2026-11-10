@@ -6,7 +6,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public final class DatabaseCleaner {
 
   private static final String TRUNCATE =
-      "TRUNCATE TABLE app_user, office, terms_catalog, rate_limit_counter"
+      "TRUNCATE TABLE app_user, office, terms_catalog, rate_limit_counter,"
+          + " legal_kakao_unlink_event, legal_retention_rule, deletion_queue"
           + " RESTART IDENTITY CASCADE";
 
   private final JdbcTemplate jdbcTemplate;
