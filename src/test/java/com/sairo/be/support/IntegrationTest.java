@@ -21,6 +21,7 @@ import org.springframework.test.context.TestPropertySource;
     properties = {
       "sairo.integrations.kakao-oauth=stub",
       "kakao.admin-key=test-admin-key",
-      "kakao.app-id=1234567"
+      "kakao.app-id=1234567",
+      "sairo.migration.import-executor=sync"
     })
 public @interface IntegrationTest {}

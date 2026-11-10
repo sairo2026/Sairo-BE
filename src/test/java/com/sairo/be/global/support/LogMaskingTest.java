@@ -38,6 +38,7 @@ class LogMaskingTest {
         "발송 대상 01012345678 입니다|발송 대상 ***5678 입니다",
         "GET /api/auth?token=abc123def&x=1|GET /api/auth?token=***&x=1",
         "verifiedPhoneTicket=aaa.bbb~ccc 요청|verifiedPhoneTicket=*** 요청",
+        "GET /api/public/customer-visit-links/abc.def-123?x=1|GET /api/public/customer-visit-links/***?x=1",
         "password=hunter2|password=***",
         "code=123456 확인|code=*** 확인"
       })

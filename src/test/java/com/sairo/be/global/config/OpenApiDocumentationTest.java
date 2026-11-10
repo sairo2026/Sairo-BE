@@ -175,6 +175,20 @@ class OpenApiDocumentationTest {
           Map.entry("DELETE /api/customers/{customerId}", Set.of("204")),
           Map.entry("POST /api/customers/{customerId}/restore", Set.of("200")),
           Map.entry("GET /api/customers/{customerId}/assistant-view", Set.of("200")),
+          Map.entry("POST /api/visit-coordinations", Set.of("201")),
+          Map.entry("GET /api/visit-coordinations", Set.of("200")),
+          Map.entry("GET /api/visit-coordinations/{coordinationId}", Set.of("200")),
+          Map.entry(
+              "POST /api/visit-coordinations/{coordinationId}/candidate-properties", Set.of("201")),
+          Map.entry(
+              "DELETE /api/visit-coordinations/{coordinationId}/candidate-properties/{candidateId}",
+              Set.of("204")),
+          Map.entry("POST /api/visit-coordinations/{coordinationId}/customer-link", Set.of("201")),
+          Map.entry(
+              "POST /api/visit-coordinations/{coordinationId}/customer-link/reissue",
+              Set.of("200")),
+          Map.entry("GET /api/public/customer-visit-links/{token}", Set.of("200")),
+          Map.entry("POST /api/public/customer-visit-links/{token}/available-times", Set.of("200")),
           Map.entry("POST /api/properties/{propertyId}/owner-occupants", Set.of("201")),
           Map.entry("PATCH /api/owner-occupants/{linkId}", Set.of("200")),
           Map.entry("POST /api/customers/{customerId}/property-interests", Set.of("201")),
@@ -206,7 +220,17 @@ class OpenApiDocumentationTest {
           Map.entry("POST /api/return-grants/{grantId}/export", Set.of("200")),
           Map.entry("GET /api/return-grants/{grantId}/exports/{exportId}", Set.of("200")),
           Map.entry("POST /api/archive-grants", Set.of("201")),
-          Map.entry("GET /api/archive-grants/current", Set.of("200")));
+          Map.entry("GET /api/archive-grants/current", Set.of("200")),
+          Map.entry("POST /api/import-batches", Set.of("200")),
+          Map.entry("GET /api/import-batches", Set.of("200")),
+          Map.entry("GET /api/import-batches/{batchId}", Set.of("200")),
+          Map.entry("PUT /api/import-batches/{batchId}/sheet", Set.of("200")),
+          Map.entry("GET /api/import-batches/{batchId}/mapping-suggestion", Set.of("200")),
+          Map.entry("PUT /api/import-batches/{batchId}/mapping", Set.of("200")),
+          Map.entry("GET /api/import-batches/{batchId}/preview", Set.of("200")),
+          Map.entry("POST /api/import-batches/{batchId}/execute", Set.of("200")),
+          Map.entry("POST /api/import-batches/{batchId}/cancel", Set.of("200")),
+          Map.entry("POST /api/import-batches/{batchId}/retry-failed", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 
