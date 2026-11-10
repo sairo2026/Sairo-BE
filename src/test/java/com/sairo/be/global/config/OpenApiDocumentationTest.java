@@ -178,6 +178,28 @@ class OpenApiDocumentationTest {
               Set.of("200")),
           Map.entry("GET /api/public/customer-visit-links/{token}", Set.of("200")),
           Map.entry("POST /api/public/customer-visit-links/{token}/available-times", Set.of("200")),
+          Map.entry("POST /api/properties/{propertyId}/access-approvals", Set.of("201")),
+          Map.entry("GET /api/properties/{propertyId}/access-approvals", Set.of("200")),
+          Map.entry(
+              "POST /api/properties/{propertyId}/access-approvals/{approvalId}/approver-property-link",
+              Set.of("201")),
+          Map.entry(
+              "GET /api/properties/{propertyId}/access-approvals/{approvalId}/approver-property-link",
+              Set.of("200")),
+          Map.entry(
+              "DELETE /api/properties/{propertyId}/access-approvals/{approvalId}/approver-property-link",
+              Set.of("204")),
+          Map.entry(
+              "GET /api/properties/{propertyId}/access-approvals/{approvalId}/approver-conditions",
+              Set.of("200")),
+          Map.entry(
+              "PUT /api/properties/{propertyId}/access-approvals/{approvalId}/approver-conditions/proxy",
+              Set.of("200")),
+          Map.entry("GET /api/public/approver-property-links/{token}/conditions", Set.of("200")),
+          Map.entry("PUT /api/public/approver-property-links/{token}/conditions", Set.of("200")),
+          Map.entry(
+              "POST /api/public/approver-property-links/{token}/conditions/impact-preview",
+              Set.of("200")),
           Map.entry("POST /api/properties/{propertyId}/owner-occupants", Set.of("201")),
           Map.entry("PATCH /api/owner-occupants/{linkId}", Set.of("200")),
           Map.entry("POST /api/customers/{customerId}/property-interests", Set.of("201")),
