@@ -104,6 +104,7 @@ class OpenApiDocumentationTest {
           Map.entry("POST /api/ops/office-change-requests/{requestId}/approve", Set.of("200")),
           Map.entry("POST /api/ops/office-change-requests/{requestId}/reject", Set.of("200")),
           Map.entry("GET /api/public/pricing", Set.of("200")),
+          Map.entry("GET /api/public/company-info", Set.of("200")),
           Map.entry("GET /api/billing/plans", Set.of("200")),
           Map.entry("GET /api/subscriptions/current", Set.of("200")),
           Map.entry("POST /api/subscriptions/billing-key/session", Set.of("200")),
