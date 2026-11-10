@@ -54,4 +54,42 @@ public class BillingChargeAttempt {
 
   @Column(name = "resolved_at")
   private Instant resolvedAt;
+
+  public static BillingChargeAttempt begin(
+      Long invoiceId, int attemptNo, String pgOrderId, String idempotencyKey, Instant now) {
+    BillingChargeAttempt attempt = new BillingChargeAttempt();
+    attempt.invoiceId = invoiceId;
+    attempt.attemptNo = attemptNo;
+    attempt.pgOrderId = pgOrderId;
+    attempt.idempotencyKey = idempotencyKey;
+    attempt.attemptedAt = now;
+    attempt.result = AttemptResult.PROCESSING;
+    return attempt;
+  }
+
+  public void markSuccess(String paymentKey, Instant now) {
+    this.result = AttemptResult.SUCCESS;
+    this.pgTransactionId = paymentKey;
+    this.resolvedAt = now;
+    this.failureCategory = null;
+    this.failureReason = null;
+  }
+
+  public void markFailed(FailureCategory category, String reason, Instant now) {
+    this.result = AttemptResult.FAILED;
+    this.failureCategory = category;
+    this.failureReason = reason;
+    this.resolvedAt = now;
+  }
+
+  public void markVerifying(String paymentKey) {
+    this.result = AttemptResult.VERIFYING;
+    if (paymentKey != null) {
+      this.pgTransactionId = paymentKey;
+    }
+  }
+
+  public boolean isInFlight() {
+    return result == AttemptResult.PROCESSING || result == AttemptResult.VERIFYING;
+  }
 }

@@ -100,6 +100,11 @@ public class PriceChangeNotice {
     this.purchaseConsentId = consentId;
   }
 
+  public void endWithoutConsent(Instant now) {
+    this.decision = PriceChangeDecision.ENDED_NO_CONSENT;
+    this.decidedAt = now;
+  }
+
   public void decline(Long membershipId, Instant now) {
     requireOpen(now);
     this.decision = PriceChangeDecision.DECLINED;

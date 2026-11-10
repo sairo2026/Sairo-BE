@@ -94,9 +94,81 @@ public class BillingInvoice {
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
 
+  public static BillingInvoice issue(IssueCommand command) {
+    BillingInvoice invoice = new BillingInvoice();
+    invoice.officeId = command.officeId();
+    invoice.invoiceKind = "SUBSCRIPTION";
+    invoice.subscriptionId = command.subscriptionId();
+    invoice.billingPeriodStart = command.periodStart();
+    invoice.billingPeriodEnd = command.periodEnd();
+    invoice.amount = command.amount();
+    invoice.memberCountSnapshot = command.memberCount();
+    invoice.unitPriceSnapshot = command.amount();
+    invoice.vatIncludedAmount = command.amount();
+    invoice.priceVersion = command.priceVersion();
+    invoice.consentVersion = command.consentVersion();
+    invoice.consentAmountLimit = command.consentAmountLimit();
+    invoice.consentedAt = command.consentedAt();
+    invoice.purchaseConsentId = command.purchaseConsentId();
+    invoice.status = InvoiceStatus.UNBILLED;
+    invoice.dueAt = command.dueAt();
+    invoice.supplyAmount = command.supplyAmount();
+    invoice.vatAmount = command.vatAmount();
+    invoice.vatRateBpSnapshot = command.vatRateBp();
+    invoice.supplierInfoVersion = command.supplierInfoVersion();
+    return invoice;
+  }
+
+  public void markProcessing() {
+    this.status = InvoiceStatus.PROCESSING;
+    this.nextRetryAt = null;
+  }
+
+  public void markVerifying() {
+    this.status = InvoiceStatus.VERIFYING;
+  }
+
+  public void markPaid(Instant now) {
+    this.status = InvoiceStatus.PAID;
+    this.paidAt = now;
+    this.nextRetryAt = null;
+  }
+
+  public void markFailed(Instant retryAt) {
+    this.status = InvoiceStatus.FAILED;
+    this.nextRetryAt = retryAt;
+  }
+
+  public void markCancelled() {
+    this.status = InvoiceStatus.CANCELLED;
+    this.nextRetryAt = null;
+  }
+
+  public boolean isUnpaid() {
+    return status == InvoiceStatus.UNBILLED || status == InvoiceStatus.FAILED;
+  }
+
   public boolean isRefundableStatus() {
     return status == InvoiceStatus.PAID || status == InvoiceStatus.PARTIALLY_REFUNDED;
   }
+
+  public record IssueCommand(
+      Long officeId,
+      Long subscriptionId,
+      Instant periodStart,
+      Instant periodEnd,
+      long amount,
+      int memberCount,
+      String priceVersion,
+      String consentVersion,
+      long consentAmountLimit,
+      Instant consentedAt,
+      Long purchaseConsentId,
+      Instant dueAt,
+      long supplyAmount,
+      long vatAmount,
+      int vatRateBp,
+      Integer supplierInfoVersion) {}
 
   @PrePersist
   void onCreate() {
