@@ -53,6 +53,16 @@ sairo:
     customer-key-ttl: PT15M
     charging-started: false
     key-encryption-secret: ${BILLING_KEY_ENCRYPTION_SECRET:sairo-local-dev-billing-key-encryption-do-not-use-in-prod}
+  company:
+    business-name: ${COMPANY_BUSINESS_NAME:사이로(SAIRO)}
+    representative-name: ${COMPANY_REPRESENTATIVE_NAME:김태환}
+    business-number: ${COMPANY_BUSINESS_NUMBER:704-16-02872}
+    address: ${COMPANY_ADDRESS:경기도 고양시 덕양구 백양로 51, 902호 A-5(화정동, 네이버타운)}
+    contact-phone: ${COMPANY_CONTACT_PHONE:}
+    ecommerce-notice: ${COMPANY_ECOMMERCE_NOTICE:}
+    support-email: ${COMPANY_SUPPORT_EMAIL:}
+    privacy-contact: ${COMPANY_PRIVACY_CONTACT:}
+    privacy-request-path: ${COMPANY_PRIVACY_REQUEST_PATH:}
 
 management:
   endpoint:
