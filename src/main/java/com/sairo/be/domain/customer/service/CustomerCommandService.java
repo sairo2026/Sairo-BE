@@ -10,6 +10,7 @@ import com.sairo.be.domain.customer.entity.ProcessingBasis;
 import com.sairo.be.domain.customer.repository.CustomerReadRepository;
 import com.sairo.be.domain.customer.repository.CustomerRepository;
 import com.sairo.be.domain.property.entity.EntityLifecycleEvent;
+import com.sairo.be.domain.property.entity.LifecycleCreationSource;
 import com.sairo.be.domain.property.repository.EntityLifecycleEventRepository;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
@@ -83,6 +84,16 @@ public class CustomerCommandService {
 
   @Transactional
   public CustomerCreateResponse create(StaffPrincipal principal, JsonNode body) {
+    return register(principal, body, LifecycleCreationSource.MANUAL);
+  }
+
+  @Transactional
+  public CustomerCreateResponse createImported(StaffPrincipal principal, JsonNode body) {
+    return register(principal, body, LifecycleCreationSource.IMPORT);
+  }
+
+  private CustomerCreateResponse register(
+      StaffPrincipal principal, JsonNode body, LifecycleCreationSource creationSource) {
     CustomerInput.requireObject(body, CREATE_KEYS);
     boolean corporation = CustomerInput.requiredBoolean(body, "isCorporation");
     String name = CustomerInput.requiredText(body, "name", 100, true);
@@ -111,7 +122,11 @@ public class CustomerCommandService {
     Customer saved = customerRepository.saveAndFlush(customer);
     lifecycleEventRepository.save(
         EntityLifecycleEvent.customerCreated(
-            principal.officeId(), saved.getId(), saved.getCreatedAt(), principal.membershipId()));
+            principal.officeId(),
+            saved.getId(),
+            saved.getCreatedAt(),
+            principal.membershipId(),
+            creationSource));
     return new CustomerCreateResponse(
         saved.getId(),
         null,
