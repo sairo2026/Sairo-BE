@@ -16,6 +16,11 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
+  servlet:
+    multipart:
+      max-file-size: 11MB
+      max-request-size: 60MB
+
   session:
     timeout: 12h
     data:

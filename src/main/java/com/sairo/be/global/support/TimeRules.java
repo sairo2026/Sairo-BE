@@ -17,6 +17,10 @@ public final class TimeRules {
     return instant.atZone(DISPLAY_ZONE);
   }
 
+  public static java.time.OffsetDateTime toDisplayOffset(Instant instant) {
+    return instant == null ? null : toDisplay(instant).toOffsetDateTime();
+  }
+
   public static LocalDate displayDate(Instant instant) {
     return toDisplay(instant).toLocalDate();
   }
