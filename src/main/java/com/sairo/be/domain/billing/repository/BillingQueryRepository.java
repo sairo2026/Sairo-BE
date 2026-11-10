@@ -114,6 +114,23 @@ public class BillingQueryRepository {
         .optional();
   }
 
+  public Optional<Long> findInvoiceSubscriptionId(long invoiceId) {
+    return jdbcClient
+        .sql("SELECT subscription_id FROM billing_invoice WHERE id = :id")
+        .param("id", invoiceId)
+        .query(Long.class)
+        .optional();
+  }
+
+  public Optional<Integer> findPublishedSupplierVersion() {
+    return jdbcClient
+        .sql(
+            "SELECT version_no FROM company_service_info WHERE published_at IS NOT NULL"
+                + " ORDER BY version_no DESC LIMIT 1")
+        .query(Integer.class)
+        .optional();
+  }
+
   public int countInvoices(long subscriptionId) {
     Integer count =
         jdbcClient
@@ -235,7 +252,8 @@ public class BillingQueryRepository {
     return jdbcClient
         .sql(
             "SELECT effective_at FROM subscription_cancellation WHERE subscription_id ="
-                + " :subscriptionId AND revoked_at IS NULL ORDER BY id DESC LIMIT 1")
+                + " :subscriptionId AND revoked_at IS NULL AND effective_at > now()"
+                + " ORDER BY id DESC LIMIT 1")
         .param("subscriptionId", subscriptionId)
         .query((rs, n) -> rs.getTimestamp(1).toInstant())
         .optional();

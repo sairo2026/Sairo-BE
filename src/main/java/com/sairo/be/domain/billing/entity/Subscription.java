@@ -117,6 +117,38 @@ public class Subscription {
     this.firstBillingScheduledAt = endsAt;
   }
 
+  public void activate(Instant periodStart, Instant periodEnd, Instant anchor) {
+    this.status = SubscriptionStatus.ACTIVE;
+    this.currentPeriodStart = periodStart;
+    this.currentPeriodEnd = periodEnd;
+    if (anchor != null) {
+      this.cycleAnchorAt = anchor;
+    }
+    this.pastDueSince = null;
+    this.endedAt = null;
+    this.prePaymentSince = null;
+  }
+
+  public void startPastDue(Instant since) {
+    this.status = SubscriptionStatus.PAST_DUE_GRACE;
+    this.pastDueSince = since;
+  }
+
+  public void restrictPastDue() {
+    this.status = SubscriptionStatus.PAST_DUE_RESTRICTED;
+  }
+
+  public void end(Instant endedAt) {
+    this.status = SubscriptionStatus.ENDED;
+    this.endedAt = endedAt;
+    this.pastDueSince = null;
+  }
+
+  public void enterPrePayment(Instant since) {
+    this.status = SubscriptionStatus.PRE_PAYMENT;
+    this.prePaymentSince = since;
+  }
+
   public void markEventRecorded(Instant now) {
     this.updatedAt = now;
   }
