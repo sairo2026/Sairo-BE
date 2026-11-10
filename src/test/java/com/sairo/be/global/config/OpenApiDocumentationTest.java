@@ -195,7 +195,17 @@ class OpenApiDocumentationTest {
           Map.entry("POST /api/return-grants/{grantId}/export", Set.of("200")),
           Map.entry("GET /api/return-grants/{grantId}/exports/{exportId}", Set.of("200")),
           Map.entry("POST /api/archive-grants", Set.of("201")),
-          Map.entry("GET /api/archive-grants/current", Set.of("200")));
+          Map.entry("GET /api/archive-grants/current", Set.of("200")),
+          Map.entry("POST /api/import-batches", Set.of("200")),
+          Map.entry("GET /api/import-batches", Set.of("200")),
+          Map.entry("GET /api/import-batches/{batchId}", Set.of("200")),
+          Map.entry("PUT /api/import-batches/{batchId}/sheet", Set.of("200")),
+          Map.entry("GET /api/import-batches/{batchId}/mapping-suggestion", Set.of("200")),
+          Map.entry("PUT /api/import-batches/{batchId}/mapping", Set.of("200")),
+          Map.entry("GET /api/import-batches/{batchId}/preview", Set.of("200")),
+          Map.entry("POST /api/import-batches/{batchId}/execute", Set.of("200")),
+          Map.entry("POST /api/import-batches/{batchId}/cancel", Set.of("200")),
+          Map.entry("POST /api/import-batches/{batchId}/retry-failed", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 
