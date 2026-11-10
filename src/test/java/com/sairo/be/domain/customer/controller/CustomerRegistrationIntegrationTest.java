@@ -426,7 +426,8 @@ class CustomerRegistrationIntegrationTest extends CustomerIntegrationTestBase {
     long property = createProperty(cookie, "연결 매물", categoryIdOf("OFFICETEL"));
     linkOwnerOccupant(officeId, property, b, "OWNER", "2024-01-01");
     jdbcTemplate.update(
-        "UPDATE property_owner_occupant SET confirmed_at = now(), confirmed_by_membership_id = ?", m);
+        "UPDATE property_owner_occupant SET confirmed_at = now(), confirmed_by_membership_id = ?",
+        m);
     createConsultationRow(b, m, "FIRST_INQUIRY");
     jdbcTemplate.update(
         "INSERT INTO customer_demand_condition (customer_id, deal_type) VALUES (?, 'MONTHLY')", b);
