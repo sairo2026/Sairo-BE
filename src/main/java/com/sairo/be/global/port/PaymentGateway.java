@@ -8,6 +8,12 @@ public interface PaymentGateway {
 
   PaymentResult cancel(String paymentKey, String reason);
 
+  default PaymentResult cancel(CancelCommand command) {
+    return cancel(command.paymentKey(), command.reason());
+  }
+
+  default void deleteBillingKey(String billingKey) {}
+
   PaymentResult inquire(String orderId);
 
   class BillingKeyIssueException extends RuntimeException {
@@ -32,6 +38,8 @@ public interface PaymentGateway {
       long amount,
       String orderName,
       String idempotencyKey) {}
+
+  record CancelCommand(String paymentKey, String reason, Long amount, String idempotencyKey) {}
 
   record PaymentResult(PaymentStatus status, String paymentKey, String failureCode) {}
 }
