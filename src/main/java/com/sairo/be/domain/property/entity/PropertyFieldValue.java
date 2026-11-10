@@ -79,6 +79,10 @@ public class PropertyFieldValue {
     this.archived = true;
   }
 
+  public void unarchive() {
+    this.archived = false;
+  }
+
   private void clear() {
     this.valueText = null;
     this.valueNumber = null;

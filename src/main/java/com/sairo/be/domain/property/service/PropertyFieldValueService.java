@@ -78,17 +78,25 @@ public class PropertyFieldValueService {
     Object apiValue;
     boolean changed;
     if (value.isNull()) {
-      changed = existing.isPresent();
-      existing.ifPresent(fieldValueRepository::delete);
+      boolean current = existing.filter(found -> !found.isArchived()).isPresent();
+      changed = current;
+      if (current) {
+        fieldValueRepository.delete(existing.get());
+      }
       apiValue = null;
     } else {
       PropertyFieldValue target =
           existing.orElseGet(() -> PropertyFieldValue.of(propertyId, fieldDefinitionId));
+      boolean wasArchived = target.isArchived();
       Object before =
-          existing.map(found -> PropertyViewAssembler.apiValue(definition, found)).orElse(null);
+          existing
+              .filter(found -> !found.isArchived())
+              .map(found -> PropertyViewAssembler.apiValue(definition, found))
+              .orElse(null);
       assign(definition, target, value);
+      target.unarchive();
       apiValue = PropertyViewAssembler.apiValue(definition, target);
-      changed = !Objects.equals(before, apiValue);
+      changed = wasArchived || !Objects.equals(before, apiValue);
       fieldValueRepository.save(target);
     }
     if (changed) {

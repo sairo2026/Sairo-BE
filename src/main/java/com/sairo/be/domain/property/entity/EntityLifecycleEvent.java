@@ -79,6 +79,54 @@ public class EntityLifecycleEvent {
     return event;
   }
 
+  public static EntityLifecycleEvent propertyArchived(
+      Long officeId, Long propertyId, Instant effectiveAt, Long recordedByMembershipId) {
+    return propertyEvent(
+        LifecycleEventType.ARCHIVED, officeId, propertyId, effectiveAt, recordedByMembershipId);
+  }
+
+  public static EntityLifecycleEvent propertyRestored(
+      Long officeId, Long propertyId, Instant effectiveAt, Long recordedByMembershipId) {
+    return propertyEvent(
+        LifecycleEventType.RESTORED, officeId, propertyId, effectiveAt, recordedByMembershipId);
+  }
+
+  public static EntityLifecycleEvent categoryChanged(
+      Long officeId,
+      Long propertyId,
+      Long previousCategoryId,
+      Long newCategoryId,
+      Instant effectiveAt,
+      Long recordedByMembershipId) {
+    EntityLifecycleEvent event =
+        propertyEvent(
+            LifecycleEventType.CATEGORY_CHANGED,
+            officeId,
+            propertyId,
+            effectiveAt,
+            recordedByMembershipId);
+    event.previousCategoryId = previousCategoryId;
+    event.newCategoryId = newCategoryId;
+    return event;
+  }
+
+  private static EntityLifecycleEvent propertyEvent(
+      LifecycleEventType type,
+      Long officeId,
+      Long propertyId,
+      Instant effectiveAt,
+      Long recordedByMembershipId) {
+    EntityLifecycleEvent event = new EntityLifecycleEvent();
+    event.officeId = officeId;
+    event.entityType = LifecycleEntityType.PROPERTY;
+    event.propertyId = propertyId;
+    event.eventType = type;
+    event.creationSource = LifecycleCreationSource.MANUAL;
+    event.effectiveAt = effectiveAt;
+    event.recordedByMembershipId = recordedByMembershipId;
+    return event;
+  }
+
   @PrePersist
   void onCreate() {
     recordedAt = Instant.now();
