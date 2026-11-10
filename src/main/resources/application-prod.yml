@@ -4,6 +4,11 @@ spring:
     username: ${DB_APP_USERNAME}
     password: ${DB_APP_PASSWORD}
 
+  session:
+    data:
+      redis:
+        configure-action: none
+
   # Flyway runs separately via the "migrate" profile (see application-migrate.yml).
   flyway:
     enabled: false

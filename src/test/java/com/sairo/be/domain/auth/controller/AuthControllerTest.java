@@ -32,7 +32,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.session.Session;
-import org.springframework.session.jdbc.JdbcIndexedSessionRepository;
+import org.springframework.session.SessionRepository;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -43,6 +43,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @SpringBootTest
 @AutoConfigureMockMvc
 @Disabled("BE-01 단계에서 이메일·카카오 인증 기준으로 재작성한다")
+@SuppressWarnings({"rawtypes", "unchecked"})
 class AuthControllerTest {
 
   private static final String SESSION_COOKIE_NAME = "__Host-sairo_session";
@@ -54,7 +55,7 @@ class AuthControllerTest {
   @Autowired private JdbcTemplate jdbcTemplate;
   @MockitoBean private KakaoOAuthClient kakaoOAuthClient;
   @MockitoSpyBean private OAuthStateService oauthStateService;
-  @Autowired private JdbcIndexedSessionRepository sessionRepository;
+  @Autowired private SessionRepository sessionRepository;
 
   @BeforeEach
   void seed() {
@@ -262,7 +263,7 @@ class AuthControllerTest {
               return invocation.callRealMethod();
             })
         .when(oauthStateService)
-        .consume(anyString(), anyString(), anyString());
+        .consume(anyString(), anyString());
     when(kakaoOAuthClient.exchangeToken("valid-code"))
         .thenAnswer(
             invocation -> {
@@ -288,7 +289,7 @@ class AuthControllerTest {
             jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM SPRING_SESSION_ATTRIBUTES WHERE ATTRIBUTE_NAME = ? AND ATTRIBUTE_BYTES = ?",
                 Integer.class,
-                OAuthStateService.STATE_SESSION_ATTRIBUTE,
+                "KAKAO_OAUTH_STATE",
                 org.springframework.util.SerializationUtils.serialize(start.state())))
         .isZero();
   }
@@ -299,17 +300,16 @@ class AuthControllerTest {
     var stale = sessionRepository.findById(sessionId(start.cookie()));
     assertThat(stale).isNotNull();
     String staleId = ((Session) stale).getId();
-    assertThat(oauthStateService.consume(staleId, start.state(), start.state())).isTrue();
+    assertThat(oauthStateService.consume(staleId, start.state())).isTrue();
     ((Session) stale).setLastAccessedTime(java.time.Instant.now());
     sessionRepository.save(stale);
-    assertThat(oauthStateService.consume(staleId, start.state(), start.state())).isFalse();
+    assertThat(oauthStateService.consume(staleId, start.state())).isFalse();
 
     var current = sessionRepository.findById(staleId);
-    ((Session) current).setAttribute(OAuthStateService.STATE_SESSION_ATTRIBUTE, "new-state");
+    ((Session) current).setAttribute("KAKAO_OAUTH_STATE", "new-state");
     sessionRepository.save(current);
-    assertThat(oauthStateService.consume(staleId, start.state(), start.state())).isFalse();
-    assertThat(oauthStateService.consume(((Session) current).getId(), "new-state", "new-state"))
-        .isTrue();
+    assertThat(oauthStateService.consume(staleId, start.state())).isFalse();
+    assertThat(oauthStateService.consume(((Session) current).getId(), "new-state")).isTrue();
   }
 
   private LoginStart startLogin() throws Exception {

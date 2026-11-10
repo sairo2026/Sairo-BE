@@ -2,8 +2,6 @@ package com.sairo.be.global.error;
 
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.Map;
-import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -20,13 +18,17 @@ public class ErrorResponseWriter {
   }
 
   public void write(HttpServletResponse response, ErrorCode errorCode) throws IOException {
-    response.setStatus(errorCode.getStatus().value());
+    write(response, new BusinessException(errorCode));
+  }
+
+  public void write(HttpServletResponse response, BusinessException exception) throws IOException {
+    ErrorResponse body = ErrorResponse.of(exception, TraceIds.currentOrNew());
+    response.setStatus(exception.getErrorCode().getStatus().value());
     response.setContentType(MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8");
-    Map<String, String> body =
-        Map.of(
-            "code", errorCode.name(),
-            "message", errorCode.getMessage(),
-            "traceId", UUID.randomUUID().toString());
+    Object retryAfter = body.details().get("retryAfterSeconds");
+    if (retryAfter != null) {
+      response.setHeader("Retry-After", String.valueOf(retryAfter));
+    }
     objectMapper.writeValue(response.getWriter(), body);
   }
 }

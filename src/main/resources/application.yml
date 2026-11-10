@@ -6,11 +6,23 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
   session:
-    timeout: 14d
-    jdbc:
-      initialize-schema: never
+    timeout: 12h
+    data:
+      redis:
+        namespace: sairo:session
+        repository-type: indexed
+        flush-mode: immediate
 
 kakao:
   rest-api-key: ${KAKAO_REST_API_KEY:}
@@ -19,11 +31,6 @@ kakao:
 sairo:
   public-link:
     hmac-secret: ${PUBLIC_LINK_HMAC_SECRET:sairo-local-dev-hmac-secret-do-not-use-in-prod}
-
-server:
-  servlet:
-    session:
-      timeout: 14d
 
 management:
   endpoint:
@@ -34,3 +41,5 @@ management:
     web:
       exposure:
         include: health
+springdoc:
+  remove-broken-reference-definitions: false

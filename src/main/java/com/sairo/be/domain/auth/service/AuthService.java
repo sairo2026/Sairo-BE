@@ -1,5 +1,6 @@
 package com.sairo.be.domain.auth.service;
 
+import com.sairo.be.global.port.KakaoOAuthPort;
 import com.sairo.be.global.security.StaffPrincipal;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
@@ -13,11 +14,11 @@ import org.springframework.web.client.RestClientResponseException;
 @Service
 public class AuthService {
 
-  private final KakaoOAuthClient kakaoOAuthClient;
+  private final KakaoOAuthPort kakaoOAuthClient;
   private final StaffPrincipalQueryService staffPrincipalQueryService;
 
   public AuthService(
-      KakaoOAuthClient kakaoOAuthClient, StaffPrincipalQueryService staffPrincipalQueryService) {
+      KakaoOAuthPort kakaoOAuthClient, StaffPrincipalQueryService staffPrincipalQueryService) {
     this.kakaoOAuthClient = kakaoOAuthClient;
     this.staffPrincipalQueryService = staffPrincipalQueryService;
   }

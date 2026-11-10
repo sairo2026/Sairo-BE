@@ -6,14 +6,41 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      REDIS_HOST: redis
     env_file:
       - path: ./env/app.env
         format: raw
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # Session and short-lived login state store. Not published to the host;
+  # only the api container reaches it over the compose network.
+  redis:
+    image: redis:7.4-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --notify-keyspace-events
+      - Egx
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - noeviction
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   # One-off migration step. `profiles` keeps it out of a bare `docker compose
   # up`; deploy.sh always targets it explicitly via `run --rm migrate`, which
@@ -27,3 +54,6 @@ services:
       - path: ./env/migrate.env
         format: raw
     restart: "no"
+
+volumes:
+  redis-data:
