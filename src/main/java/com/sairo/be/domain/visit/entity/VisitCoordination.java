@@ -126,6 +126,31 @@ public class VisitCoordination {
         id, previous, next, actorMembershipId, source, reason, at);
   }
 
+  public VisitCoordinationStatusHistory raiseReschedule(
+      RescheduleTriggerType trigger,
+      String reason,
+      StatusChangeSource source,
+      Long actorMembershipId,
+      Instant at) {
+    if (!status.canMoveTo(CoordinationStatus.RESCHEDULE_REQUIRED)) {
+      throw new IllegalStateException("재조율 필요로 전이할 수 없는 상태다: " + status);
+    }
+    CoordinationStatus previous = status;
+    status = CoordinationStatus.RESCHEDULE_REQUIRED;
+    rescheduleTriggerType = trigger;
+    rescheduleReason = reason;
+    rescheduleRaisedAt = at;
+    touch(at);
+    return VisitCoordinationStatusHistory.record(
+        id,
+        previous,
+        CoordinationStatus.RESCHEDULE_REQUIRED,
+        actorMembershipId,
+        source,
+        reason,
+        at);
+  }
+
   public void touch(Instant at) {
     this.updatedAt = at;
   }

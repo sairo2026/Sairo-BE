@@ -14,7 +14,8 @@ public final class LogMasking {
       Pattern.compile("(?i)(token|ticket|code|password|newPassword|secret)=([^&\\s\"]+)");
 
   private static final Pattern LINK_PATH_TOKEN_PATTERN =
-      Pattern.compile("(?i)(/api/public/[a-z-]+-visit-links/)[^/\\s?\"]+");
+      Pattern.compile(
+          "(?i)(/api/public/(?:[a-z-]+-visit-links|approver-property-links)/)[^/\\s?\"]+");
 
   private LogMasking() {}
 
