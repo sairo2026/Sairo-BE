@@ -8,6 +8,7 @@ public record OfficeRegistrationStatusResponse(
     Long registrationId,
     String status,
     int currentRevisionNo,
+    String entityType,
     String supplementReason,
     OffsetDateTime supplementDueAt,
     String rejectionReason,

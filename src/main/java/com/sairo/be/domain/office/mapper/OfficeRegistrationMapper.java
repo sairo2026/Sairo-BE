@@ -45,6 +45,7 @@ public final class OfficeRegistrationMapper {
         registration.getId(),
         status.name(),
         registration.getCurrentRevisionNo(),
+        registration.getEntityType().name(),
         supplement ? registration.getSupplementReason() : null,
         supplement ? TimeRules.toDisplayOffset(registration.getSupplementDueAt()) : null,
         rejected ? registration.getRejectionReason() : null,
