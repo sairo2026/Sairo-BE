@@ -16,7 +16,7 @@ public class AdvisoryLock {
 
   public void lockForTransaction(String key) {
     jdbcClient
-        .sql("SELECT pg_advisory_xact_lock(hashtext(:key))")
+        .sql("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
         .param("key", key)
         .query()
         .listOfRows();

@@ -7,7 +7,8 @@ public final class DatabaseCleaner {
 
   private static final String TRUNCATE =
       "TRUNCATE TABLE app_user, office, terms_catalog, rate_limit_counter,"
-          + " legal_kakao_unlink_event, legal_retention_rule, deletion_queue"
+          + " legal_kakao_unlink_event, legal_retention_rule, deletion_queue,"
+          + " price_schedule, trial_event, operator_account, company_service_info"
           + " RESTART IDENTITY CASCADE";
 
   private final JdbcTemplate jdbcTemplate;

@@ -47,6 +47,11 @@ sairo:
     kakao-key-hmac-version: 1
     unsubscribe-secret: ${AUTH_UNSUBSCRIBE_SECRET:sairo-local-dev-unsubscribe-secret-do-not-use-in-prod}
     kakao-key-encryption-secret: ${AUTH_KAKAO_KEY_ENCRYPTION_SECRET:sairo-local-dev-kakao-key-encryption-do-not-use-in-prod}
+  billing:
+    vat-rate-bp: 1000
+    customer-key-ttl: PT15M
+    charging-started: false
+    key-encryption-secret: ${BILLING_KEY_ENCRYPTION_SECRET:sairo-local-dev-billing-key-encryption-do-not-use-in-prod}
 
 management:
   endpoint:
