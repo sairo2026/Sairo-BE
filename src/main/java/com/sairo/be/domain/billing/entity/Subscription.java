@@ -83,6 +83,40 @@ public class Subscription {
   @Column(nullable = false)
   private Long version = 1L;
 
+  public static Subscription startTrial(
+      Long officeId, SubscriptionPlan plan, Instant startedAt, Instant endsAt, Long trialEventId) {
+    Subscription subscription = new Subscription();
+    subscription.officeId = officeId;
+    subscription.plan = plan;
+    subscription.applyTrial(startedAt, endsAt, trialEventId);
+    return subscription;
+  }
+
+  public static Subscription startPrePayment(
+      Long officeId, SubscriptionPlan plan, Instant prePaymentSince) {
+    Subscription subscription = new Subscription();
+    subscription.officeId = officeId;
+    subscription.plan = plan;
+    subscription.status = SubscriptionStatus.PRE_PAYMENT;
+    subscription.prePaymentSince = prePaymentSince;
+    return subscription;
+  }
+
+  public void applyTrial(Instant startedAt, Instant endsAt, Long trialEventId) {
+    this.status = SubscriptionStatus.TRIAL;
+    this.trialStartedAt = startedAt;
+    this.trialEndsAt = endsAt;
+    this.trialEventId = trialEventId;
+    this.firstBillingScheduledAt = endsAt;
+    this.prePaymentSince = null;
+  }
+
+  public void extendTrial(Instant endsAt, Long trialEventId) {
+    this.trialEndsAt = endsAt;
+    this.trialEventId = trialEventId;
+    this.firstBillingScheduledAt = endsAt;
+  }
+
   public void markEventRecorded(Instant now) {
     this.updatedAt = now;
   }

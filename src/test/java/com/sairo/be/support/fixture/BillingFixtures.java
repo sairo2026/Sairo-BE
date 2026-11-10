@@ -98,13 +98,14 @@ public final class BillingFixtures {
       Instant priceEndsAt,
       String status) {
     boolean approved = "APPROVED".equals(status);
+    boolean revoked = "REVOKED".equals(status);
     return jdbc.queryForObject(
         "INSERT INTO billing_start_customer_agreement (office_id, trial_event_id,"
             + " price_schedule_id, price_starts_at, price_ends_at, status, contracted_on,"
             + " contract_reference, weekly_use_confirmed, monthly_interview_confirmed,"
             + " agreement_text_version, created_by_operator_id, approved_by_operator_id,"
-            + " approved_at) VALUES (?, ?, ?, ?, ?, ?, current_date, 'ref', true, true, 'v1', ?, ?,"
-            + " ?) RETURNING id",
+            + " approved_at, revoked_by_operator_id, revoked_at, revoke_reason) VALUES (?, ?, ?,"
+            + " ?, ?, ?, current_date, 'ref', true, true, 'v1', ?, ?, ?, ?, ?, ?) RETURNING id",
         Long.class,
         officeId,
         trialEventId,
@@ -114,7 +115,10 @@ public final class BillingFixtures {
         status,
         creatorOperator(),
         approved ? approverOperator() : null,
-        approved ? Timestamp.from(Instant.now()) : null);
+        approved ? Timestamp.from(Instant.now()) : null,
+        revoked ? approverOperator() : null,
+        revoked ? Timestamp.from(Instant.now()) : null,
+        revoked ? "취소 사유" : null);
   }
 
   public void purchaseTerms(String version) {
@@ -179,6 +183,10 @@ public final class BillingFixtures {
         Timestamp.from(now),
         Timestamp.from(now.plusSeconds(86_400L * 30)),
         Timestamp.from(now.plusSeconds(86_400L * 30)));
+  }
+
+  public NoticeSeed notice(long officeId, long subscriptionId, long fromPriceId, long toPriceId) {
+    return new NoticeSeed(jdbc, officeId, subscriptionId, fromPriceId, toPriceId);
   }
 
   public InvoiceSeed invoice(long officeId, long subscriptionId, long consentId) {
@@ -284,6 +292,81 @@ public final class BillingFixtures {
           ts(endedAt),
           ts(firstBillingScheduledAt),
           ts(prePaymentSince));
+    }
+  }
+
+  public static final class NoticeSeed {
+
+    private final JdbcTemplate jdbc;
+    private final long officeId;
+    private final long subscriptionId;
+    private final long fromPriceId;
+    private final long toPriceId;
+    private boolean increase = true;
+    private Instant responseDueAt = Instant.now().plusSeconds(86_400L * 20);
+    private String decision = "PENDING";
+    private Long decidedByMembershipId;
+    private Long consentId;
+
+    private NoticeSeed(
+        JdbcTemplate jdbc, long officeId, long subscriptionId, long fromPriceId, long toPriceId) {
+      this.jdbc = jdbc;
+      this.officeId = officeId;
+      this.subscriptionId = subscriptionId;
+      this.fromPriceId = fromPriceId;
+      this.toPriceId = toPriceId;
+    }
+
+    public NoticeSeed nonIncrease() {
+      this.increase = false;
+      this.decision = "NOT_REQUIRED";
+      return this;
+    }
+
+    public NoticeSeed dueAt(Instant value) {
+      this.responseDueAt = value;
+      return this;
+    }
+
+    public NoticeSeed decided(String value, long membershipId, Long consent) {
+      this.decision = value;
+      this.decidedByMembershipId = membershipId;
+      this.consentId = consent;
+      return this;
+    }
+
+    public NoticeSeed endedNoConsent() {
+      this.decision = "ENDED_NO_CONSENT";
+      return this;
+    }
+
+    public long insert() {
+      Instant notified = responseDueAt.minusSeconds(86_400L * 31);
+      Instant effective = notified.plusSeconds(86_400L * 30);
+      boolean decidedState = !"PENDING".equals(decision) && !"NOT_REQUIRED".equals(decision);
+      return jdbc.queryForObject(
+          "INSERT INTO pricing_change_notice (office_id, subscription_id, from_price_schedule_id,"
+              + " to_price_schedule_id, change_kind, member_count_snapshot, current_amount_incl_vat,"
+              + " new_amount_incl_vat, notified_at, effective_at, applies_from_period_start,"
+              + " response_due_at, decision, decided_at, decided_by_membership_id,"
+              + " purchase_consent_id) VALUES (?, ?, ?, ?, ?, 3, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+              + " RETURNING id",
+          Long.class,
+          officeId,
+          subscriptionId,
+          fromPriceId,
+          toPriceId,
+          increase ? "INCREASE" : "NON_INCREASE",
+          increase ? 49_900 : 59_900,
+          increase ? 59_900 : 49_900,
+          Timestamp.from(notified),
+          Timestamp.from(effective),
+          Timestamp.from(responseDueAt),
+          Timestamp.from(responseDueAt),
+          decision,
+          decidedState ? Timestamp.from(Instant.now()) : null,
+          decidedByMembershipId,
+          consentId);
     }
   }
 

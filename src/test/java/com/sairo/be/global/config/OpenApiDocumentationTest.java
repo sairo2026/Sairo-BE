@@ -115,7 +115,14 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/billing/invoices/{invoiceId}", Set.of("200")),
           Map.entry("POST /api/refund-requests", Set.of("200", "201")),
           Map.entry("GET /api/refund-requests", Set.of("200")),
-          Map.entry("GET /api/refund-requests/{refundId}", Set.of("200")));
+          Map.entry("GET /api/refund-requests/{refundId}", Set.of("200")),
+          Map.entry("GET /api/subscriptions/start-customer-agreement", Set.of("200")),
+          Map.entry("POST /api/subscriptions/start-customer-agreement/acknowledge", Set.of("200")),
+          Map.entry("GET /api/subscriptions/price-change-notices", Set.of("200")),
+          Map.entry(
+              "POST /api/subscriptions/price-change-notices/{noticeId}/decline", Set.of("200")),
+          Map.entry("GET /api/billing/tax-recipient", Set.of("200")),
+          Map.entry("PUT /api/billing/tax-recipient", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 
