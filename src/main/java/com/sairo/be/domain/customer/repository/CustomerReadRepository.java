@@ -645,6 +645,78 @@ public class CustomerReadRepository {
     }
   }
 
+  public record RevisionRow(
+      Instant previousOccurredAt,
+      String previousContent,
+      String previousConsultationType,
+      String correctedBy,
+      boolean correctorWithdrawn,
+      Integer correctorAliasNo,
+      Instant correctedAt,
+      String correctionReason) {}
+
+  public List<Long> firstInquiryIds(Collection<Long> customerIds) {
+    return jdbcClient
+        .sql(
+            "SELECT id FROM customer_consultation WHERE customer_id IN (:ids) AND"
+                + " consultation_type = 'FIRST_INQUIRY' ORDER BY id")
+        .param("ids", customerIds)
+        .query(Long.class)
+        .list();
+  }
+
+  public java.util.Optional<Long> findConsultationCustomerId(long consultationId, long officeId) {
+    return jdbcClient
+        .sql(
+            "SELECT cc.customer_id FROM customer_consultation cc JOIN customer c ON c.id ="
+                + " cc.customer_id WHERE cc.id = :id AND c.office_id = :officeId")
+        .param("id", consultationId)
+        .param("officeId", officeId)
+        .query(Long.class)
+        .optional();
+  }
+
+  public boolean hasScheduleOverlap(Collection<Long> first, Collection<Long> second) {
+    return Boolean.TRUE.equals(
+        jdbcClient
+            .sql(
+                "SELECT EXISTS (SELECT 1 FROM visit_schedule_item x JOIN visit_coordination cx ON"
+                    + " cx.id = x.coordination_id JOIN visit_schedule_item y ON y.id <> x.id JOIN"
+                    + " visit_coordination cy ON cy.id = y.coordination_id WHERE cx.customer_id IN"
+                    + " (:first) AND cy.customer_id IN (:second) AND x.result = 'SCHEDULED' AND"
+                    + " y.result = 'SCHEDULED' AND x.scheduled_start_at IS NOT NULL AND"
+                    + " y.scheduled_start_at IS NOT NULL AND x.scheduled_end_at IS NOT NULL AND"
+                    + " y.scheduled_end_at IS NOT NULL AND x.scheduled_start_at <"
+                    + " y.scheduled_end_at AND y.scheduled_start_at < x.scheduled_end_at)")
+            .param("first", first)
+            .param("second", second)
+            .query(Boolean.class)
+            .single());
+  }
+
+  public List<RevisionRow> findRevisions(long consultationId) {
+    return jdbcClient
+        .sql(
+            "SELECT r.previous_occurred_at, r.previous_content, r.previous_consultation_type,"
+                + " u.name, (u.account_status = 'WITHDRAWN'), m.withdrawn_alias_no,"
+                + " r.corrected_at, r.correction_reason FROM customer_consultation_revision r"
+                + " JOIN office_membership m ON m.id = r.corrected_by_membership_id JOIN app_user u"
+                + " ON u.id = m.user_id WHERE r.consultation_id = :id ORDER BY r.id")
+        .param("id", consultationId)
+        .query(
+            (rs, rowNum) ->
+                new RevisionRow(
+                    instant(rs, 1),
+                    rs.getString(2),
+                    rs.getString(3),
+                    rs.getString(4),
+                    rs.getBoolean(5),
+                    (Integer) rs.getObject(6),
+                    instant(rs, 7),
+                    rs.getString(8)))
+        .list();
+  }
+
   private static String escapeLike(String value) {
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
   }
