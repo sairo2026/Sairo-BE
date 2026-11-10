@@ -19,6 +19,11 @@ kakao:
 sairo:
   public-link:
     hmac-secret: ${PUBLIC_LINK_HMAC_SECRET}
+  security:
+    ticket-secret: ${AUTH_TICKET_SECRET}
+    rate-limit-hmac-secret: ${AUTH_RATE_LIMIT_HMAC_SECRET}
+    kakao-key-hmac-secret: ${AUTH_KAKAO_KEY_HMAC_SECRET}
+    unsubscribe-secret: ${AUTH_UNSUBSCRIBE_SECRET}
 
 app:
   frontend-base-url: ${FRONTEND_BASE_URL:https://app.sairo.agency}

@@ -31,6 +31,12 @@ kakao:
 sairo:
   public-link:
     hmac-secret: ${PUBLIC_LINK_HMAC_SECRET:sairo-local-dev-hmac-secret-do-not-use-in-prod}
+  security:
+    ticket-secret: ${AUTH_TICKET_SECRET:sairo-local-dev-ticket-secret-do-not-use-in-prod}
+    rate-limit-hmac-secret: ${AUTH_RATE_LIMIT_HMAC_SECRET:sairo-local-dev-rate-limit-secret-do-not-use-in-prod}
+    kakao-key-hmac-secret: ${AUTH_KAKAO_KEY_HMAC_SECRET:sairo-local-dev-kakao-key-secret-do-not-use-in-prod}
+    kakao-key-hmac-version: 1
+    unsubscribe-secret: ${AUTH_UNSUBSCRIBE_SECRET:sairo-local-dev-unsubscribe-secret-do-not-use-in-prod}
 
 management:
   endpoint:

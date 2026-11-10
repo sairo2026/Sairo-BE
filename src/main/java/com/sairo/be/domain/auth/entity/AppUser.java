@@ -76,7 +76,49 @@ public class AppUser {
     return user;
   }
 
+  public static AppUser registerWithEmail(
+      String email,
+      String passwordHash,
+      String name,
+      String phone,
+      Instant verifiedAt,
+      Instant createdAt) {
+    AppUser user = new AppUser();
+    user.email = email;
+    user.passwordHash = passwordHash;
+    user.emailVerifiedAt = verifiedAt;
+    user.phone = phone;
+    user.phoneVerifiedAt = verifiedAt;
+    user.name = name;
+    user.accountStatus = AccountStatus.ACTIVE;
+    user.failedLoginCount = 0;
+    user.createdAt = createdAt;
+    return user;
+  }
+
   public boolean isActive() {
     return accountStatus == AccountStatus.ACTIVE;
+  }
+
+  public boolean hasPassword() {
+    return passwordHash != null;
+  }
+
+  public boolean hasEmailLogin() {
+    return email != null && passwordHash != null;
+  }
+
+  public boolean hasKakaoLogin() {
+    return kakaoProviderKey != null && kakaoUnlinkedAt == null;
+  }
+
+  public void recordLoginSuccess() {
+    this.failedLoginCount = 0;
+    this.failedLoginLockedUntil = null;
+  }
+
+  public void recordLoginFailure(int totalFailures, Instant lockedUntil) {
+    this.failedLoginCount = totalFailures;
+    this.failedLoginLockedUntil = lockedUntil;
   }
 }
