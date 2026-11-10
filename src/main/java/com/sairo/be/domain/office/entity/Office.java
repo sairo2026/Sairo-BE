@@ -82,6 +82,30 @@ public class Office {
     return office;
   }
 
+  public void changeRepresentativePhone(String representativePhone) {
+    this.representativePhone = representativePhone;
+  }
+
+  public void changeAddress(String address) {
+    this.address = address;
+  }
+
+  public void changeRegistrationInfo(
+      OfficeEntityType entityType,
+      String registrationAuthority,
+      String realEstateLicenseNumber,
+      String businessRegistrationNumber) {
+    this.entityType = entityType;
+    this.registrationAuthority = registrationAuthority;
+    this.realEstateLicenseNumber = realEstateLicenseNumber;
+    this.businessRegistrationNumber = businessRegistrationNumber;
+  }
+
+  public void changeRepresentative(String representativeName, String representativePhone) {
+    this.representativeName = representativeName;
+    this.representativePhone = representativePhone;
+  }
+
   @PrePersist
   void onCreate() {
     Instant now = Instant.now();

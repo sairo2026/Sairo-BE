@@ -65,7 +65,18 @@ class OpenApiDocumentationTest {
           Map.entry("PATCH /api/me/contact", Set.of("200")),
           Map.entry("GET /api/me/terms-agreements", Set.of("200")),
           Map.entry("GET /api/me/withdrawal-preview", Set.of("200")),
-          Map.entry("DELETE /api/me", Set.of("204")));
+          Map.entry("DELETE /api/me", Set.of("204")),
+          Map.entry("GET /api/offices/lookup", Set.of("200")),
+          Map.entry("POST /api/office-registrations", Set.of("201")),
+          Map.entry("POST /api/office-registrations/{registrationId}/evidence", Set.of("200")),
+          Map.entry("GET /api/office-registrations/me", Set.of("200")),
+          Map.entry("POST /api/office-registrations/{registrationId}/cancel", Set.of("200")),
+          Map.entry(
+              "POST /api/office-registrations/{registrationId}/reapplication-start", Set.of("200")),
+          Map.entry("GET /api/offices/current", Set.of("200")),
+          Map.entry("PATCH /api/offices/current", Set.of("200")),
+          Map.entry("POST /api/office-change-requests", Set.of("201")),
+          Map.entry("GET /api/office-change-requests", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 
