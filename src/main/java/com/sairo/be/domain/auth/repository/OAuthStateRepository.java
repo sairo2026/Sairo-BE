@@ -1,8 +1,14 @@
 package com.sairo.be.domain.auth.repository;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.util.HexFormat;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Repository;
 
 @Profile("!migrate")
@@ -10,22 +16,25 @@ import org.springframework.stereotype.Repository;
 @RequiredArgsConstructor
 public class OAuthStateRepository {
 
-  private final JdbcTemplate jdbcTemplate;
+  private static final String KEY_PREFIX = "sairo:oauth-state:";
 
-  public boolean deleteIfPresent(
-      String sessionId, String attributeName, byte[] expectedValue, long now) {
-    return jdbcTemplate.update(
-            """
-            DELETE FROM SPRING_SESSION_ATTRIBUTES a
-            USING SPRING_SESSION s
-            WHERE a.SESSION_PRIMARY_ID = s.PRIMARY_ID
-              AND s.SESSION_ID = ? AND s.EXPIRY_TIME > ?
-              AND a.ATTRIBUTE_NAME = ? AND a.ATTRIBUTE_BYTES = ?
-            """,
-            sessionId,
-            now,
-            attributeName,
-            expectedValue)
-        == 1;
+  private final StringRedisTemplate redisTemplate;
+
+  public void save(String state, String sessionId, Duration timeToLive) {
+    redisTemplate.opsForValue().set(key(state), sessionId, timeToLive);
+  }
+
+  public Optional<String> consume(String state) {
+    return Optional.ofNullable(redisTemplate.opsForValue().getAndDelete(key(state)));
+  }
+
+  private String key(String state) {
+    try {
+      byte[] digest =
+          MessageDigest.getInstance("SHA-256").digest(state.getBytes(StandardCharsets.UTF_8));
+      return KEY_PREFIX + HexFormat.of().formatHex(digest);
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", e);
+    }
   }
 }

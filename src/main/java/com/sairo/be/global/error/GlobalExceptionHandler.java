@@ -1,21 +1,26 @@
 package com.sairo.be.global.error;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.exc.InvalidFormatException;
@@ -26,59 +31,171 @@ import tools.jackson.databind.exc.MismatchedInputException;
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
   @ExceptionHandler(BusinessException.class)
-  public ResponseEntity<ProblemDetail> handleBusinessException(BusinessException ex) {
-    return toResponse(ex.getErrorCode(), ex.getMessage());
+  public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException exception) {
+    ResponseEntity.BodyBuilder builder =
+        ResponseEntity.status(exception.getErrorCode().getStatus());
+    Object retryAfter = exception.getDetails().get("retryAfterSeconds");
+    if (retryAfter != null) {
+      builder.header(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfter));
+    }
+    return builder.body(ErrorResponse.of(exception, TraceIds.currentOrNew()));
+  }
+
+  @ExceptionHandler(AuthenticationException.class)
+  public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException exception) {
+    return respond(ErrorCode.UNAUTHENTICATED);
+  }
+
+  @ExceptionHandler(AccessDeniedException.class)
+  public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException exception) {
+    return respond(ErrorCode.FORBIDDEN);
+  }
+
+  @ExceptionHandler(ConstraintViolationException.class)
+  public ResponseEntity<ErrorResponse> handleConstraintViolation(
+      ConstraintViolationException exception) {
+    List<FieldErrorItem> items = new ArrayList<>();
+    for (ConstraintViolation<?> violation : exception.getConstraintViolations()) {
+      items.add(
+          new FieldErrorItem(
+              violation.getPropertyPath().toString(),
+              FieldErrorCode.INVALID_VALUE,
+              violation.getMessage()));
+    }
+    return respond(BusinessException.withFieldErrors(ErrorCode.INVALID_REQUEST, items));
   }
 
   @ExceptionHandler(Exception.class)
-  public ResponseEntity<ProblemDetail> handleUnexpected(Exception ex) {
-    String traceId = UUID.randomUUID().toString();
-    log.error("예상하지 못한 오류. traceId={}", traceId, ex);
-    ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.INTERNAL_SERVER_ERROR);
-    problem.setProperty("code", "INTERNAL_ERROR");
-    problem.setProperty("message", "일시적인 오류가 발생했습니다.");
-    problem.setProperty("traceId", traceId);
-    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem);
+  public ResponseEntity<ErrorResponse> handleUnexpected(Exception exception) {
+    String traceId = TraceIds.currentOrNew();
+    log.error("예상하지 못한 오류. traceId={}", traceId, exception);
+    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .body(
+            ErrorResponse.of(
+                ErrorCode.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR.getMessage(), traceId));
+  }
+
+  @Override
+  protected ResponseEntity<Object> handleExceptionInternal(
+      Exception exception,
+      Object body,
+      HttpHeaders headers,
+      HttpStatusCode statusCode,
+      WebRequest request) {
+    ErrorCode errorCode = errorCodeFor(statusCode);
+    ErrorResponse response =
+        ErrorResponse.of(errorCode, errorCode.getMessage(), TraceIds.currentOrNew());
+    return ResponseEntity.status(statusCode).headers(headers).body(response);
   }
 
   @Override
   protected ResponseEntity<Object> handleMethodArgumentNotValid(
-      MethodArgumentNotValidException ex,
+      MethodArgumentNotValidException exception,
       HttpHeaders headers,
       HttpStatusCode status,
       WebRequest request) {
-    ProblemDetail problem =
-        buildBody(ErrorCode.INVALID_REQUEST, ErrorCode.INVALID_REQUEST.getMessage());
-    problem.setProperty(
-        "fieldErrors",
-        ex.getBindingResult().getFieldErrors().stream().map(this::toFieldError).toList());
-    return ResponseEntity.status(ErrorCode.INVALID_REQUEST.getStatus()).body(problem);
+    List<FieldErrorItem> items = new ArrayList<>();
+    for (FieldError fieldError : exception.getBindingResult().getFieldErrors()) {
+      items.add(FieldErrorMapper.fromFieldError(fieldError));
+    }
+    return invalidRequest(items);
+  }
+
+  @Override
+  protected ResponseEntity<Object> handleHandlerMethodValidationException(
+      HandlerMethodValidationException exception,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    List<FieldErrorItem> items = new ArrayList<>();
+    exception
+        .getParameterValidationResults()
+        .forEach(
+            result -> {
+              String parameter =
+                  result.getMethodParameter().getParameterName() == null
+                      ? "parameter"
+                      : result.getMethodParameter().getParameterName();
+              result
+                  .getResolvableErrors()
+                  .forEach(
+                      error ->
+                          items.add(
+                              FieldErrorMapper.fromResolvable(
+                                  parameter, error, result.getArgument())));
+            });
+    return invalidRequest(items);
   }
 
   @Override
   protected ResponseEntity<Object> handleHttpMessageNotReadable(
-      HttpMessageNotReadableException ex,
+      HttpMessageNotReadableException exception,
       HttpHeaders headers,
       HttpStatusCode status,
       WebRequest request) {
-    ProblemDetail problem =
-        buildBody(ErrorCode.INVALID_REQUEST, ErrorCode.INVALID_REQUEST.getMessage());
-    extractFieldError(ex.getCause())
-        .ifPresent(fieldError -> problem.setProperty("fieldErrors", List.of(fieldError)));
-    return ResponseEntity.status(ErrorCode.INVALID_REQUEST.getStatus()).body(problem);
+    List<FieldErrorItem> items = new ArrayList<>();
+    extractFieldError(exception.getCause()).ifPresent(items::add);
+    return invalidRequest(items);
   }
 
   @Override
   protected ResponseEntity<Object> handleMissingServletRequestParameter(
-      MissingServletRequestParameterException ex,
+      MissingServletRequestParameterException exception,
       HttpHeaders headers,
       HttpStatusCode status,
       WebRequest request) {
-    ProblemDetail problem =
-        buildBody(ErrorCode.INVALID_REQUEST, ErrorCode.INVALID_REQUEST.getMessage());
-    problem.setProperty(
-        "fieldErrors", List.of(new FieldErrorItem(ex.getParameterName(), "필수 파라미터입니다.")));
-    return ResponseEntity.status(ErrorCode.INVALID_REQUEST.getStatus()).body(problem);
+    return invalidRequest(
+        List.of(
+            new FieldErrorItem(
+                exception.getParameterName(), FieldErrorCode.REQUIRED, "필수 파라미터입니다.")));
+  }
+
+  @Override
+  protected ResponseEntity<Object> handleTypeMismatch(
+      org.springframework.beans.TypeMismatchException exception,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    String field =
+        exception instanceof MethodArgumentTypeMismatchException mismatch
+            ? mismatch.getName()
+            : exception.getPropertyName();
+    return invalidRequest(
+        List.of(
+            new FieldErrorItem(
+                field == null ? "parameter" : field,
+                FieldErrorCode.TYPE_MISMATCH,
+                "값의 형식이 올바르지 않습니다.")));
+  }
+
+  private ResponseEntity<Object> invalidRequest(List<FieldErrorItem> items) {
+    BusinessException exception =
+        BusinessException.withFieldErrors(ErrorCode.INVALID_REQUEST, items);
+    return ResponseEntity.status(ErrorCode.INVALID_REQUEST.getStatus())
+        .body(ErrorResponse.of(exception, TraceIds.currentOrNew()));
+  }
+
+  private ResponseEntity<ErrorResponse> respond(ErrorCode errorCode) {
+    return respond(new BusinessException(errorCode));
+  }
+
+  private ResponseEntity<ErrorResponse> respond(BusinessException exception) {
+    return ResponseEntity.status(exception.getErrorCode().getStatus())
+        .body(ErrorResponse.of(exception, TraceIds.currentOrNew()));
+  }
+
+  private ErrorCode errorCodeFor(HttpStatusCode statusCode) {
+    int value = statusCode.value();
+    if (value == HttpStatus.NOT_FOUND.value()) {
+      return ErrorCode.RESOURCE_NOT_FOUND;
+    }
+    if (value == HttpStatus.CONTENT_TOO_LARGE.value()) {
+      return ErrorCode.FILE_TOO_LARGE;
+    }
+    if (statusCode.is5xxServerError()) {
+      return ErrorCode.INTERNAL_ERROR;
+    }
+    return ErrorCode.INVALID_REQUEST;
   }
 
   private Optional<FieldErrorItem> extractFieldError(Throwable cause) {
@@ -93,28 +210,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     if (field == null) {
       return Optional.empty();
     }
-    String message =
-        cause instanceof InvalidFormatException invalidFormatException
-            ? "허용되지 않는 값입니다: " + invalidFormatException.getValue()
-            : "요청 형식이 올바르지 않습니다.";
-    return Optional.of(new FieldErrorItem(field, message));
+    if (cause instanceof InvalidFormatException invalidFormatException) {
+      return Optional.of(
+          new FieldErrorItem(
+              field,
+              FieldErrorCode.NOT_ALLOWED,
+              "허용되지 않는 값입니다: " + invalidFormatException.getValue()));
+    }
+    return Optional.of(
+        new FieldErrorItem(field, FieldErrorCode.TYPE_MISMATCH, "요청 형식이 올바르지 않습니다."));
   }
-
-  private FieldErrorItem toFieldError(FieldError fieldError) {
-    return new FieldErrorItem(fieldError.getField(), fieldError.getDefaultMessage());
-  }
-
-  private ResponseEntity<ProblemDetail> toResponse(ErrorCode errorCode, String message) {
-    return ResponseEntity.status(errorCode.getStatus()).body(buildBody(errorCode, message));
-  }
-
-  private ProblemDetail buildBody(ErrorCode errorCode, String message) {
-    ProblemDetail problem = ProblemDetail.forStatus(errorCode.getStatus());
-    problem.setProperty("code", errorCode.name());
-    problem.setProperty("message", message);
-    problem.setProperty("traceId", UUID.randomUUID().toString());
-    return problem;
-  }
-
-  private record FieldErrorItem(String field, String message) {}
 }

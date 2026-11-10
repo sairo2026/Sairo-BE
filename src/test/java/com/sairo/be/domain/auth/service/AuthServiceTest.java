@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 import com.sairo.be.global.security.StaffPrincipal;
+import com.sairo.be.global.security.StaffRole;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -68,7 +69,7 @@ class AuthServiceTest {
   void 등록된_직원이_있으면_그_직원을_돌려준다() {
     var client = mock(KakaoOAuthClient.class);
     var principals = mock(StaffPrincipalQueryService.class);
-    var existing = new StaffPrincipal(1L, 2L, 3L, "박직원");
+    var existing = new StaffPrincipal(1L, 2L, 3L, "박직원", StaffRole.AGENT);
     when(client.exchangeToken("test-code")).thenReturn("token");
     when(client.fetchUserId("token")).thenReturn(1001L);
     when(principals.findByKakaoUserId(1001L)).thenReturn(Optional.of(existing));

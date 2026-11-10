@@ -7,7 +7,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -17,16 +16,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class AbsoluteSessionTimeoutFilter extends OncePerRequestFilter {
 
   public static final String ISSUED_AT_ATTRIBUTE = "AUTH_SESSION_ISSUED_AT";
-
-  private static final Duration ABSOLUTE_TIMEOUT = Duration.ofDays(90);
+  public static final String KIND_ATTRIBUTE = "AUTH_SESSION_KIND";
 
   private final Clock clock;
 
-  public AbsoluteSessionTimeoutFilter() {
-    this(Clock.systemUTC());
-  }
-
-  AbsoluteSessionTimeoutFilter(Clock clock) {
+  public AbsoluteSessionTimeoutFilter(Clock clock) {
     this.clock = clock;
   }
 
@@ -52,6 +46,12 @@ public class AbsoluteSessionTimeoutFilter extends OncePerRequestFilter {
               && !(authentication instanceof AnonymousAuthenticationToken));
     }
     Instant now = clock.instant();
-    return issuedInstant.isAfter(now) || !issuedInstant.isAfter(now.minus(ABSOLUTE_TIMEOUT));
+    SessionKind kind = kindOf(session);
+    return issuedInstant.isAfter(now) || !issuedInstant.isAfter(now.minus(kind.absoluteTimeout()));
+  }
+
+  private SessionKind kindOf(HttpSession session) {
+    Object kind = session.getAttribute(KIND_ATTRIBUTE);
+    return kind instanceof SessionKind sessionKind ? sessionKind : SessionKind.MEMBER;
   }
 }

@@ -2,9 +2,12 @@ package com.sairo.be.domain.auth.controller;
 
 import com.sairo.be.domain.auth.service.AuthService;
 import com.sairo.be.domain.auth.service.OAuthStateService;
-import com.sairo.be.global.security.AbsoluteSessionTimeoutFilter;
+import com.sairo.be.global.security.SessionIssuer;
+import com.sairo.be.global.security.SessionKind;
 import com.sairo.be.global.security.StaffAuthentication;
 import com.sairo.be.global.security.StaffPrincipal;
+import com.sairo.be.global.security.access.AccessPermission;
+import com.sairo.be.global.security.access.RequiresAccess;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -12,9 +15,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
-import java.security.SecureRandom;
-import java.time.Instant;
-import java.util.Base64;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,14 +32,16 @@ import org.springframework.web.bind.annotation.RestController;
 @Slf4j
 @Profile("!migrate")
 @RestController
+@RequiresAccess(AccessPermission.PUBLIC)
 @RequestMapping("/api/auth/kakao")
 @Tag(name = "AUTH", description = "카카오 로그인으로 사무소 직원 세션을 발급한다.")
 public class AuthController {
 
-  private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+  private static final int OAUTH_START_SESSION_SECONDS = 600;
 
   private final AuthService authService;
   private final OAuthStateService oauthStateService;
+  private final SessionIssuer sessionIssuer;
   private final String frontendBaseUrl;
   private final SecurityContextRepository securityContextRepository =
       new HttpSessionSecurityContextRepository();
@@ -47,20 +49,23 @@ public class AuthController {
   public AuthController(
       AuthService authService,
       OAuthStateService oauthStateService,
+      SessionIssuer sessionIssuer,
       @Value("${app.frontend-base-url:http://localhost:3000}") String frontendBaseUrl) {
     this.authService = authService;
     this.oauthStateService = oauthStateService;
+    this.sessionIssuer = sessionIssuer;
     this.frontendBaseUrl = frontendBaseUrl;
   }
 
   @Operation(
       summary = "카카오 로그인 시작",
-      description = "카카오 로그인 페이지로 리다이렉트하며 CSRF 방지를 위한 state 값을 세션에 저장한다.")
+      description = "카카오 로그인 페이지로 리다이렉트하며 CSRF 방지를 위한 state 값을 만료 시간이 있는 저장소에 한 번만 쓸 수 있게 저장한다.")
   @SecurityRequirements
   @GetMapping("/start")
   public void start(HttpServletRequest request, HttpServletResponse response) throws IOException {
-    String state = generateState();
-    request.getSession(true).setAttribute(OAuthStateService.STATE_SESSION_ATTRIBUTE, state);
+    HttpSession session = request.getSession(true);
+    session.setMaxInactiveInterval(OAUTH_START_SESSION_SECONDS);
+    String state = oauthStateService.issue(session.getId());
     response.sendRedirect(authService.buildAuthorizeUrl(state));
   }
 
@@ -101,27 +106,17 @@ public class AuthController {
     if (session == null) {
       return false;
     }
-    Object expected = session.getAttribute(OAuthStateService.STATE_SESSION_ATTRIBUTE);
-    return expected instanceof String expectedState
-        && oauthStateService.consume(session.getId(), expectedState, state);
+    return oauthStateService.consume(session.getId(), state);
   }
 
   private void establishSession(
       HttpServletRequest request, HttpServletResponse response, StaffPrincipal principal) {
-    HttpSession previousSession = request.getSession(false);
-    if (previousSession != null) {
-      previousSession.invalidate();
-    }
-    request.getSession(true);
+    sessionIssuer.issue(request, SessionKind.MEMBER);
 
     SecurityContext context = SecurityContextHolder.createEmptyContext();
     context.setAuthentication(new StaffAuthentication(principal));
     SecurityContextHolder.setContext(context);
     securityContextRepository.saveContext(context, request, response);
-
-    request
-        .getSession(true)
-        .setAttribute(AbsoluteSessionTimeoutFilter.ISSUED_AT_ATTRIBUTE, Instant.now());
 
     issueCsrfCookie(request);
   }
@@ -131,11 +126,5 @@ public class AuthController {
     if (csrfToken instanceof CsrfToken token) {
       token.getToken();
     }
-  }
-
-  private String generateState() {
-    byte[] bytes = new byte[32];
-    SECURE_RANDOM.nextBytes(bytes);
-    return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
   }
 }

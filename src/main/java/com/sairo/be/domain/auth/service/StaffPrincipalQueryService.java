@@ -4,6 +4,7 @@ import com.sairo.be.domain.auth.entity.AccountStatus;
 import com.sairo.be.domain.auth.repository.AppUserRepository;
 import com.sairo.be.domain.office.service.OfficeMembershipQueryService;
 import com.sairo.be.global.security.StaffPrincipal;
+import com.sairo.be.global.security.StaffRole;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
@@ -32,6 +33,7 @@ public class StaffPrincipalQueryService {
                                 user.getId(),
                                 membership.membershipId(),
                                 membership.officeId(),
-                                user.getName())));
+                                user.getName(),
+                                StaffRole.valueOf(membership.role().name()))));
   }
 }

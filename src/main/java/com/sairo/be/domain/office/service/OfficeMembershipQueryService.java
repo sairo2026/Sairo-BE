@@ -19,6 +19,9 @@ public class OfficeMembershipQueryService {
   public Optional<ApprovedMembership> findApprovedMembership(Long userId) {
     return officeMembershipRepository
         .findByUserIdAndStatus(userId, OfficeMembershipStatus.APPROVED)
-        .map(membership -> new ApprovedMembership(membership.getId(), membership.getOfficeId()));
+        .map(
+            membership ->
+                new ApprovedMembership(
+                    membership.getId(), membership.getOfficeId(), membership.getRole()));
   }
 }
