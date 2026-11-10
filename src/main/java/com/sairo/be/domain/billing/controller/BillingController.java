@@ -3,24 +3,32 @@ package com.sairo.be.domain.billing.controller;
 import com.sairo.be.domain.billing.dto.request.BillingKeyRegisterRequest;
 import com.sairo.be.domain.billing.dto.request.RefundRequestCreateRequest;
 import com.sairo.be.domain.billing.dto.request.SubscriptionPurchaseConsentRequest;
+import com.sairo.be.domain.billing.dto.request.TaxRecipientUpsertRequest;
 import com.sairo.be.domain.billing.dto.response.BillingInvoiceDetailResponse;
 import com.sairo.be.domain.billing.dto.response.BillingInvoiceItemResponse;
 import com.sairo.be.domain.billing.dto.response.BillingKeyRegisterResponse;
 import com.sairo.be.domain.billing.dto.response.BillingKeySessionResponse;
 import com.sairo.be.domain.billing.dto.response.BillingPlanListResponse;
+import com.sairo.be.domain.billing.dto.response.PriceChangeNoticeDeclineResponse;
+import com.sairo.be.domain.billing.dto.response.PriceChangeNoticeItemResponse;
 import com.sairo.be.domain.billing.dto.response.PurchaseConsentPreviewResponse;
 import com.sairo.be.domain.billing.dto.response.RefundRequestCreateResponse;
 import com.sairo.be.domain.billing.dto.response.RefundRequestItemResponse;
 import com.sairo.be.domain.billing.dto.response.RefundRequestStatusResponse;
+import com.sairo.be.domain.billing.dto.response.StartCustomerAgreementResponse;
 import com.sairo.be.domain.billing.dto.response.SubscriptionCurrentResponse;
 import com.sairo.be.domain.billing.dto.response.SubscriptionPurchaseConsentResponse;
+import com.sairo.be.domain.billing.dto.response.TaxRecipientResponse;
 import com.sairo.be.domain.billing.service.BillingKeyService;
 import com.sairo.be.domain.billing.service.BillingPlanService;
 import com.sairo.be.domain.billing.service.InvoiceQueryService;
+import com.sairo.be.domain.billing.service.PriceChangeNoticeService;
 import com.sairo.be.domain.billing.service.PurchaseConsentService;
 import com.sairo.be.domain.billing.service.RefundRequestService;
 import com.sairo.be.domain.billing.service.RefundRequestService.CreateResult;
+import com.sairo.be.domain.billing.service.StartCustomerAgreementService;
 import com.sairo.be.domain.billing.service.SubscriptionCurrentService;
+import com.sairo.be.domain.billing.service.TaxRecipientService;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.access.AccessPermission;
 import com.sairo.be.global.security.access.RequiresAccess;
@@ -40,6 +48,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -58,6 +67,9 @@ public class BillingController {
   private final PurchaseConsentService consentService;
   private final InvoiceQueryService invoiceService;
   private final RefundRequestService refundService;
+  private final StartCustomerAgreementService agreementService;
+  private final PriceChangeNoticeService noticeService;
+  private final TaxRecipientService taxRecipientService;
 
   public BillingController(
       BillingPlanService planService,
@@ -65,13 +77,19 @@ public class BillingController {
       BillingKeyService billingKeyService,
       PurchaseConsentService consentService,
       InvoiceQueryService invoiceService,
-      RefundRequestService refundService) {
+      RefundRequestService refundService,
+      StartCustomerAgreementService agreementService,
+      PriceChangeNoticeService noticeService,
+      TaxRecipientService taxRecipientService) {
     this.planService = planService;
     this.currentService = currentService;
     this.billingKeyService = billingKeyService;
     this.consentService = consentService;
     this.invoiceService = invoiceService;
     this.refundService = refundService;
+    this.agreementService = agreementService;
+    this.noticeService = noticeService;
+    this.taxRecipientService = taxRecipientService;
   }
 
   @Operation(summary = "요금제 목록", description = "현재 과금 인원 기준 예상 금액과 적용 가격 버전을 함께 돌려준다.")
@@ -124,8 +142,9 @@ public class BillingController {
   @RequiresAccess(AccessPermission.OWNER)
   public PurchaseConsentPreviewResponse previewPurchaseConsent(
       @RequestParam(required = false) String plan,
+      @RequestParam(required = false) Long priceChangeNoticeId,
       @AuthenticationPrincipal StaffPrincipal principal) {
-    return consentService.preview(principal, plan);
+    return consentService.preview(principal, plan, priceChangeNoticeId);
   }
 
   @Operation(
@@ -190,5 +209,55 @@ public class BillingController {
   public RefundRequestStatusResponse refundRequest(
       @PathVariable Long refundId, @AuthenticationPrincipal StaffPrincipal principal) {
     return refundService.get(principal, refundId);
+  }
+
+  @Operation(summary = "시작 고객 합의 조회", description = "승인된 합의만 보인다. 등록만 됐거나 취소된 합의는 없는 것으로 본다.")
+  @GetMapping("/subscriptions/start-customer-agreement")
+  @RequiresAccess(AccessPermission.OWNER)
+  public StartCustomerAgreementResponse startCustomerAgreement(
+      @AuthenticationPrincipal StaffPrincipal principal) {
+    return agreementService.get(principal);
+  }
+
+  @Operation(summary = "시작 고객 합의 확인", description = "대표의 확인 시각을 기록한다. 이미 확인했으면 최초 확인 시각을 바꾸지 않는다.")
+  @PostMapping("/subscriptions/start-customer-agreement/acknowledge")
+  @RequiresAccess(AccessPermission.OWNER)
+  public StartCustomerAgreementResponse acknowledgeStartCustomerAgreement(
+      @AuthenticationPrincipal StaffPrincipal principal) {
+    return agreementService.acknowledge(principal);
+  }
+
+  @Operation(summary = "가격 변경 안내 목록", description = "자기 사무소의 안내를 최근 안내 시각 순으로 돌려준다.")
+  @GetMapping("/subscriptions/price-change-notices")
+  @RequiresAccess(AccessPermission.OWNER)
+  public PageResponse<PriceChangeNoticeItemResponse> priceChangeNotices(
+      @RequestParam(required = false) Integer page,
+      @RequestParam(required = false) Integer size,
+      @AuthenticationPrincipal StaffPrincipal principal) {
+    return noticeService.list(principal, PageQuery.of(page, size));
+  }
+
+  @Operation(summary = "가격 인상 안내 거절", description = "동의는 구독 구매 동의에 안내 ID를 담아 보낸다.")
+  @PostMapping("/subscriptions/price-change-notices/{noticeId}/decline")
+  @RequiresAccess(AccessPermission.OWNER)
+  public PriceChangeNoticeDeclineResponse declinePriceChangeNotice(
+      @PathVariable Long noticeId, @AuthenticationPrincipal StaffPrincipal principal) {
+    return noticeService.decline(principal, noticeId);
+  }
+
+  @Operation(summary = "세금계산서 수신 정보 조회", description = "저장된 값이 없으면 사무소 정보 기반 초기값을 제안한다.")
+  @GetMapping("/billing/tax-recipient")
+  @RequiresAccess(AccessPermission.OWNER)
+  public TaxRecipientResponse taxRecipient(@AuthenticationPrincipal StaffPrincipal principal) {
+    return taxRecipientService.get(principal);
+  }
+
+  @Operation(summary = "세금계산서 수신 정보 저장", description = "이전 활성 행은 대체됨으로 바꾸고 새 행을 활성으로 만든다.")
+  @PutMapping("/billing/tax-recipient")
+  @RequiresAccess(AccessPermission.OWNER)
+  public TaxRecipientResponse saveTaxRecipient(
+      @Valid @RequestBody TaxRecipientUpsertRequest request,
+      @AuthenticationPrincipal StaffPrincipal principal) {
+    return taxRecipientService.save(principal, request);
   }
 }

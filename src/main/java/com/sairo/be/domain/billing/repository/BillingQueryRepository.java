@@ -15,6 +15,10 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class BillingQueryRepository {
 
+  private static final String TRIAL_EVENT_COLUMNS =
+      "e.id, e.starts_at, e.ends_at, e.free_end_mode, e.fixed_free_ends_at,"
+          + " e.office_created_during, e.first_application_during";
+
   private static final String PRICE_COLUMNS =
       "id, version, solo_amount, team_first_extra, team_after_four_extra, effective_at, audience";
 
@@ -77,6 +81,47 @@ public class BillingQueryRepository {
                     rs.getTimestamp("price_starts_at").toInstant(),
                     rs.getTimestamp("price_ends_at").toInstant()))
         .optional();
+  }
+
+  public Optional<TrialEventDetail> findActiveTrialEventAt(String audience, Instant at) {
+    return jdbcClient
+        .sql(
+            "SELECT "
+                + TRIAL_EVENT_COLUMNS
+                + " FROM trial_event e WHERE e.audience = :audience AND e.status = 'ACTIVE'"
+                + " AND e.starts_at <= :at AND e.ends_at > :at ORDER BY e.starts_at DESC LIMIT 1")
+        .param("audience", audience)
+        .param("at", Timestamp.from(at))
+        .query(BillingQueryRepository::mapTrialEvent)
+        .optional();
+  }
+
+  public Optional<StartCustomerEventRow> findStartCustomerEventFor(long officeId) {
+    return jdbcClient
+        .sql(
+            "SELECT "
+                + TRIAL_EVENT_COLUMNS
+                + ", a.approved_at FROM billing_start_customer_agreement a"
+                + " JOIN trial_event e ON e.id = a.trial_event_id"
+                + " WHERE a.office_id = :officeId AND a.status = 'APPROVED'"
+                + " AND e.audience = 'START_CUSTOMER' AND e.status = 'ACTIVE'"
+                + " AND a.approved_at >= e.starts_at AND a.approved_at < e.ends_at")
+        .param("officeId", officeId)
+        .query(
+            (rs, n) ->
+                new StartCustomerEventRow(
+                    mapTrialEvent(rs, n), rs.getTimestamp("approved_at").toInstant()))
+        .optional();
+  }
+
+  public int countInvoices(long subscriptionId) {
+    Integer count =
+        jdbcClient
+            .sql("SELECT count(*) FROM billing_invoice WHERE subscription_id = :id")
+            .param("id", subscriptionId)
+            .query(Integer.class)
+            .single();
+    return count;
   }
 
   public Optional<TrialEventRow> findActiveGeneralTrialEvent(Instant now) {
@@ -236,6 +281,57 @@ public class BillingQueryRepository {
         .list();
   }
 
+  public Optional<Instant> findTrialEventFixedEnd(long trialEventId) {
+    return jdbcClient
+        .sql("SELECT fixed_free_ends_at FROM trial_event WHERE id = :id")
+        .param("id", trialEventId)
+        .query((rs, n) -> rs.getTimestamp(1))
+        .optional()
+        .map(Timestamp::toInstant);
+  }
+
+  public Map<Long, String> findPriceVersions(Collection<Long> priceScheduleIds) {
+    Map<Long, String> result = new HashMap<>();
+    if (priceScheduleIds.isEmpty()) {
+      return result;
+    }
+    jdbcClient
+        .sql("SELECT id, version FROM price_schedule WHERE id IN (:ids)")
+        .param("ids", priceScheduleIds)
+        .query((rs, n) -> new Object[] {rs.getLong(1), rs.getString(2)})
+        .list()
+        .forEach(row -> result.put((Long) row[0], (String) row[1]));
+    return result;
+  }
+
+  public Optional<OfficeSummaryRow> findOfficeSummary(long officeId) {
+    return jdbcClient
+        .sql(
+            "SELECT name, representative_name, business_registration_number FROM office"
+                + " WHERE id = :officeId")
+        .param("officeId", officeId)
+        .query(
+            (rs, n) ->
+                new OfficeSummaryRow(
+                    rs.getString("name"),
+                    rs.getString("representative_name"),
+                    rs.getString("business_registration_number")))
+        .optional();
+  }
+
+  private static TrialEventDetail mapTrialEvent(java.sql.ResultSet rs, int n)
+      throws java.sql.SQLException {
+    Timestamp fixed = rs.getTimestamp("fixed_free_ends_at");
+    return new TrialEventDetail(
+        rs.getLong("id"),
+        rs.getTimestamp("starts_at").toInstant(),
+        rs.getTimestamp("ends_at").toInstant(),
+        rs.getString("free_end_mode"),
+        fixed == null ? null : fixed.toInstant(),
+        rs.getBoolean("office_created_during"),
+        rs.getBoolean("first_application_during"));
+  }
+
   private static PriceScheduleRow mapPrice(java.sql.ResultSet rs, int n)
       throws java.sql.SQLException {
     return new PriceScheduleRow(
@@ -265,6 +361,20 @@ public class BillingQueryRepository {
 
   public record LatestInvoiceRow(
       long id, String status, Instant nextRetryAt, String lastFailureCategory) {}
+
+  public record TrialEventDetail(
+      long id,
+      Instant startsAt,
+      Instant endsAt,
+      String freeEndMode,
+      Instant fixedFreeEndsAt,
+      boolean officeCreatedDuring,
+      boolean firstApplicationDuring) {}
+
+  public record StartCustomerEventRow(TrialEventDetail event, Instant approvedAt) {}
+
+  public record OfficeSummaryRow(
+      String name, String representativeName, String businessRegistrationNumber) {}
 
   public record RefundSums(long refunded, long reserved) {}
 

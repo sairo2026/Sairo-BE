@@ -9,9 +9,11 @@ import com.sairo.be.domain.auth.repository.TermsAgreementRepository;
 import com.sairo.be.domain.billing.dto.request.SubscriptionPurchaseConsentRequest;
 import com.sairo.be.domain.billing.dto.response.PurchaseConsentPreviewResponse;
 import com.sairo.be.domain.billing.dto.response.SubscriptionPurchaseConsentResponse;
+import com.sairo.be.domain.billing.entity.PriceChangeNotice;
 import com.sairo.be.domain.billing.entity.Subscription;
 import com.sairo.be.domain.billing.entity.SubscriptionPlan;
 import com.sairo.be.domain.billing.entity.SubscriptionPurchaseConsent;
+import com.sairo.be.domain.billing.repository.PriceChangeNoticeRepository;
 import com.sairo.be.domain.billing.repository.SubscriptionPurchaseConsentRepository;
 import com.sairo.be.domain.billing.service.PurchaseQuoteService.Quote;
 import com.sairo.be.domain.legal.service.TermsCatalogService;
@@ -48,6 +50,7 @@ public class PurchaseConsentService {
   private final TermsCatalogService termsCatalogService;
   private final TermsAgreementRepository termsAgreementRepository;
   private final SubscriptionPurchaseConsentRepository consentRepository;
+  private final PriceChangeNoticeRepository noticeRepository;
   private final AdvisoryLock advisoryLock;
   private final Clock clock;
 
@@ -57,6 +60,7 @@ public class PurchaseConsentService {
       TermsCatalogService termsCatalogService,
       TermsAgreementRepository termsAgreementRepository,
       SubscriptionPurchaseConsentRepository consentRepository,
+      PriceChangeNoticeRepository noticeRepository,
       AdvisoryLock advisoryLock,
       Clock clock) {
     this.context = context;
@@ -64,22 +68,28 @@ public class PurchaseConsentService {
     this.termsCatalogService = termsCatalogService;
     this.termsAgreementRepository = termsAgreementRepository;
     this.consentRepository = consentRepository;
+    this.noticeRepository = noticeRepository;
     this.advisoryLock = advisoryLock;
     this.clock = clock;
   }
 
   @Transactional(readOnly = true)
-  public PurchaseConsentPreviewResponse preview(StaffPrincipal principal, String planParam) {
+  public PurchaseConsentPreviewResponse preview(
+      StaffPrincipal principal, String planParam, Long priceChangeNoticeId) {
     validatePlanParam(planParam);
     Subscription subscription = context.requireSubscription(principal.officeId());
     TermsVersionView terms = requireTerms();
-    Quote quote = quoteService.quote(principal.officeId(), subscription);
+    PriceChangeNotice notice = findOpenNotice(principal.officeId(), priceChangeNoticeId);
+    Quote quote =
+        notice == null
+            ? quoteService.quote(principal.officeId(), subscription)
+            : quoteService.quoteForNotice(principal.officeId(), subscription, notice);
     return new PurchaseConsentPreviewResponse(
         terms.version(),
         quote.plan().name(),
         quote.memberCount(),
         quote.selection().version(),
-        null,
+        notice == null ? null : notice.getId(),
         quote.totalAmountInclVat(),
         quote.vatAmount(),
         quote.amountLimit(),
@@ -117,7 +127,11 @@ public class PurchaseConsentService {
                   terms.changeSummary(),
                   terms.documentUrl())));
     }
-    Quote quote = quoteService.quote(officeId, subscription);
+    PriceChangeNotice notice = findOpenNotice(officeId, request.priceChangeNoticeId());
+    Quote quote =
+        notice == null
+            ? quoteService.quote(officeId, subscription)
+            : quoteService.quoteForNotice(officeId, subscription, notice);
     verifyMatchesQuote(request, quote);
 
     Instant now = clock.instant();
@@ -131,21 +145,25 @@ public class PurchaseConsentService {
                 true,
                 ConsentPath.PURCHASE_CONSENT,
                 now));
-    consentRepository.save(
-        SubscriptionPurchaseConsent.record(
-            subscription.getId(),
-            principal.userId(),
-            agreement.getId(),
-            quote.plan(),
-            quote.memberCount(),
-            quote.totalAmountInclVat(),
-            quote.vatAmount(),
-            quote.amountLimit(),
-            instantOf(request.periodStart()),
-            instantOf(request.periodEnd()),
-            instantOf(request.nextChargeAt()),
-            true,
-            now));
+    SubscriptionPurchaseConsent consent =
+        consentRepository.save(
+            SubscriptionPurchaseConsent.record(
+                subscription.getId(),
+                principal.userId(),
+                agreement.getId(),
+                quote.plan(),
+                quote.memberCount(),
+                quote.totalAmountInclVat(),
+                quote.vatAmount(),
+                quote.amountLimit(),
+                instantOf(request.periodStart()),
+                instantOf(request.periodEnd()),
+                instantOf(request.nextChargeAt()),
+                true,
+                now));
+    if (notice != null) {
+      notice.agree(principal.membershipId(), consent.getId(), now);
+    }
     subscription.markEventRecorded(now);
     return new SubscriptionPurchaseConsentResponse(
         terms.version(),
@@ -190,6 +208,18 @@ public class PurchaseConsentService {
 
   private static Instant instantOf(OffsetDateTime value) {
     return value.toInstant();
+  }
+
+  private PriceChangeNotice findOpenNotice(Long officeId, Long noticeId) {
+    if (noticeId == null) {
+      return null;
+    }
+    PriceChangeNotice notice =
+        noticeRepository
+            .findByIdAndOfficeId(noticeId, officeId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    notice.requireOpen(clock.instant());
+    return notice;
   }
 
   private TermsVersionView requireTerms() {
