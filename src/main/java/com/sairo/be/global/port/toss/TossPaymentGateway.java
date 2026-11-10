@@ -109,6 +109,27 @@ public class TossPaymentGateway implements PaymentGateway {
   }
 
   @Override
+  public PaymentResult confirm(ConfirmCommand command) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("paymentKey", command.paymentKey());
+    body.put("orderId", command.orderId());
+    body.put("amount", command.amount());
+    Reply reply =
+        post("/v1/payments/confirm", body, "confirm-" + command.orderId(), approvalTimeout);
+    if (reply.status() == 200) {
+      String paymentKey = reply.body().path("paymentKey").asString(command.paymentKey());
+      if ("DONE".equals(reply.body().path("status").asString(""))) {
+        return new PaymentResult(PaymentStatus.SUCCEEDED, paymentKey, null);
+      }
+      return new PaymentResult(PaymentStatus.VERIFYING, paymentKey, null);
+    }
+    if ("ALREADY_PROCESSED_PAYMENT".equals(reply.code(""))) {
+      return inquire(command.orderId());
+    }
+    return failureOrVerifying(reply, command.paymentKey());
+  }
+
+  @Override
   public PaymentResult cancel(String paymentKey, String reason) {
     return cancel(new CancelCommand(paymentKey, reason, null, null));
   }
