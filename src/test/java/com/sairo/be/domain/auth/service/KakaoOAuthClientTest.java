@@ -64,6 +64,7 @@ class KakaoOAuthClientTest {
         "https://api.example.com/api/auth/step-up/kakao/callback",
         null,
         null,
+        null,
         null);
   }
 }

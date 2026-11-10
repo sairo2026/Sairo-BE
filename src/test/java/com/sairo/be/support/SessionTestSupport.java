@@ -46,6 +46,22 @@ public class SessionTestSupport {
     return session.getId();
   }
 
+  public String createOperatorSession(
+      com.sairo.be.global.security.OperatorPrincipal principal,
+      Instant issuedAt,
+      Instant lastAccess) {
+    Session session = sessionRepository.createSession();
+    SecurityContext context = SecurityContextHolder.createEmptyContext();
+    context.setAuthentication(new com.sairo.be.global.security.OperatorAuthentication(principal));
+    session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
+    session.setAttribute(AbsoluteSessionTimeoutFilter.KIND_ATTRIBUTE, SessionKind.OPERATOR);
+    session.setAttribute(AbsoluteSessionTimeoutFilter.ISSUED_AT_ATTRIBUTE, issuedAt);
+    session.setMaxInactiveInterval(SessionKind.OPERATOR.idleTimeout());
+    session.setLastAccessedTime(lastAccess);
+    sessionRepository.save(session);
+    return session.getId();
+  }
+
   public boolean exists(String sessionId) {
     return sessionRepository.findById(sessionId) != null;
   }

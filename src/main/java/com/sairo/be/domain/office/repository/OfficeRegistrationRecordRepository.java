@@ -78,6 +78,23 @@ public class OfficeRegistrationRecordRepository {
     return keys;
   }
 
+  public Map<Integer, List<EvidenceType>> evidenceTypesByRevision(long registrationId) {
+    Map<Integer, List<EvidenceType>> types = new LinkedHashMap<>();
+    jdbcClient
+        .sql(
+            "SELECT r.revision_no, e.evidence_type FROM office_registration_evidence e"
+                + " JOIN office_registration_revision r ON r.id = e.revision_id"
+                + " WHERE r.registration_id = :registrationId ORDER BY r.revision_no, e.id")
+        .param("registrationId", registrationId)
+        .query(
+            rs -> {
+              types
+                  .computeIfAbsent(rs.getInt("revision_no"), key -> new java.util.ArrayList<>())
+                  .add(EvidenceType.valueOf(rs.getString("evidence_type")));
+            });
+    return types;
+  }
+
   public List<RevisionRow> revisions(long registrationId) {
     return jdbcClient
         .sql(
