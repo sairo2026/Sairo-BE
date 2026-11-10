@@ -40,9 +40,17 @@ public class ImportRunService {
   }
 
   public void run(long batchId, StaffPrincipal principal, boolean retryOnly) {
+    run(batchId, principal, retryOnly, null);
+  }
+
+  public void run(
+      long batchId, StaffPrincipal principal, boolean retryOnly, Long mappingVersionId) {
     try {
       ImportBatch batch = batchRepository.findById(batchId).orElseThrow();
-      ImportLoadedData data = fileReader.loadWithLatestMapping(batch);
+      ImportLoadedData data =
+          mappingVersionId == null
+              ? fileReader.loadWithLatestMapping(batch)
+              : fileReader.loadWithMapping(batch, mappingVersionId);
       Set<Integer> skip =
           retryOnly
               ? new HashSet<>(rowResultRepository.findSucceededRowNumbers(batchId))

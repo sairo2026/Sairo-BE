@@ -241,7 +241,20 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/import-batches/{batchId}/preview", Set.of("200")),
           Map.entry("POST /api/import-batches/{batchId}/execute", Set.of("200")),
           Map.entry("POST /api/import-batches/{batchId}/cancel", Set.of("200")),
-          Map.entry("POST /api/import-batches/{batchId}/retry-failed", Set.of("200")));
+          Map.entry("POST /api/import-batches/{batchId}/retry-failed", Set.of("200")),
+          Map.entry("POST /api/import-support-requests", Set.of("200")),
+          Map.entry("GET /api/import-support-requests", Set.of("200")),
+          Map.entry("GET /api/import-support-requests/{requestId}", Set.of("200")),
+          Map.entry("POST /api/import-support-requests/{requestId}/accept-quote", Set.of("200")),
+          Map.entry("POST /api/import-support-requests/{requestId}/payment/confirm", Set.of("200")),
+          Map.entry("POST /api/import-support-requests/{requestId}/approve", Set.of("200")),
+          Map.entry("POST /api/import-support-requests/{requestId}/request-changes", Set.of("200")),
+          Map.entry("POST /api/import-support-requests/{requestId}/cancel", Set.of("200")),
+          Map.entry("POST /api/exports", Set.of("201")),
+          Map.entry("GET /api/exports", Set.of("200")),
+          Map.entry("GET /api/exports/allowed-tables", Set.of("200")),
+          Map.entry("GET /api/exports/{exportId}", Set.of("200")),
+          Map.entry("PUT /api/offices/current/export-policy", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 

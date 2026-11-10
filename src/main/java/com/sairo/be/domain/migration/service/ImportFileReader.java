@@ -46,6 +46,19 @@ public class ImportFileReader {
         mappingVersionRepository
             .findFirstByImportBatchIdOrderByVersionNoDesc(batch.getId())
             .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TRANSITION));
+    return load(batch, mapping);
+  }
+
+  public ImportLoadedData loadWithMapping(ImportBatch batch, Long mappingVersionId) {
+    ImportMappingVersion mapping =
+        mappingVersionRepository
+            .findById(mappingVersionId)
+            .filter(version -> version.getImportBatchId().equals(batch.getId()))
+            .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TRANSITION));
+    return load(batch, mapping);
+  }
+
+  private ImportLoadedData load(ImportBatch batch, ImportMappingVersion mapping) {
     List<ImportMappingItem> items =
         mappingItemRepository.findByMappingVersionIdOrderById(mapping.getId());
     return new ImportLoadedData(batch, mapping, items, readSelectedSheet(batch));
