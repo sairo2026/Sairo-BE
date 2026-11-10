@@ -6,6 +6,8 @@ public interface PaymentGateway {
 
   PaymentResult charge(ChargeCommand command);
 
+  PaymentResult confirm(ConfirmCommand command);
+
   PaymentResult cancel(String paymentKey, String reason);
 
   PaymentResult inquire(String orderId);
@@ -32,6 +34,8 @@ public interface PaymentGateway {
       long amount,
       String orderName,
       String idempotencyKey) {}
+
+  record ConfirmCommand(String paymentKey, String orderId, long amount) {}
 
   record PaymentResult(PaymentStatus status, String paymentKey, String failureCode) {}
 }

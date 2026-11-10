@@ -53,7 +53,7 @@ public final class ImportRequestParser {
     return new ImportMappingConfirmRequest(mappings, sourceSystem);
   }
 
-  private static void requireObject(JsonNode node, Set<String> allowed) {
+  static void requireObject(JsonNode node, Set<String> allowed) {
     if (node == null || !node.isObject()) {
       throw invalid("body", FieldErrorCode.TYPE_MISMATCH, "JSON 객체여야 합니다.");
     }
@@ -64,7 +64,7 @@ public final class ImportRequestParser {
     }
   }
 
-  private static String text(JsonNode node, String key, String field, int max) {
+  static String text(JsonNode node, String key, String field, int max) {
     JsonNode value = node.get(key);
     if (value == null || value.isNull()) {
       throw invalid(field, FieldErrorCode.REQUIRED, "필수 입력입니다.");

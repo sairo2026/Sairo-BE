@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 public class StubPaymentGateway implements PaymentGateway {
 
   private final List<ChargeCommand> charges = new CopyOnWriteArrayList<>();
+  private final List<ConfirmCommand> confirms = new CopyOnWriteArrayList<>();
   private final AtomicReference<PaymentStatus> nextStatus =
       new AtomicReference<>(PaymentStatus.SUCCEEDED);
 
@@ -53,12 +54,17 @@ public class StubPaymentGateway implements PaymentGateway {
     return List.copyOf(issuedCustomerKeys);
   }
 
+  public List<ConfirmCommand> confirms() {
+    return List.copyOf(confirms);
+  }
+
   public List<ChargeCommand> charges() {
     return List.copyOf(charges);
   }
 
   public void reset() {
     charges.clear();
+    confirms.clear();
     issuedCustomerKeys.clear();
     orders.clear();
     chargeFailure.set(null);
@@ -89,6 +95,23 @@ public class StubPaymentGateway implements PaymentGateway {
     PaymentStatus status = nextStatus.get();
     String code = status == PaymentStatus.FAILED ? failureCode.get() : null;
     PaymentResult result = new PaymentResult(status, "stub-payment-" + command.orderId(), code);
+    orders.put(command.orderId(), result);
+    return result;
+  }
+
+  @Override
+  public PaymentResult confirm(ConfirmCommand command) {
+    confirms.add(command);
+    RuntimeException failure = chargeFailure.getAndSet(null);
+    if (failure != null) {
+      orders.put(
+          command.orderId(),
+          new PaymentResult(PaymentStatus.VERIFYING, command.paymentKey(), null));
+      throw failure;
+    }
+    PaymentStatus status = nextStatus.get();
+    String code = status == PaymentStatus.FAILED ? failureCode.get() : null;
+    PaymentResult result = new PaymentResult(status, command.paymentKey(), code);
     orders.put(command.orderId(), result);
     return result;
   }

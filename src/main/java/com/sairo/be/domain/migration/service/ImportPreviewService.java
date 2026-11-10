@@ -83,37 +83,8 @@ public class ImportPreviewService {
     ImportLoadedData data = fileReader.loadWithLatestMapping(batch);
     ImportTargetType type = batch.getTargetType();
     String sourceSystem = data.mapping().getSourceSystem();
-    Map<String, String> columnByField = data.columnByField();
-
-    List<Computed> computed = new ArrayList<>();
-    for (ParsedRow row : data.sheet().rows()) {
-      NormalizedRow normalized = normalizer.normalize(type, data.rawByField(row), columnByField);
-      computed.add(
-          new Computed(
-              row, normalized, new ArrayList<>(normalized.warnings()), null, new ArrayList<>()));
-    }
-    List<Computed> resolved =
-        markDuplicates(principal.officeId(), type, sourceSystem, columnByField, computed);
-    attachRelations(principal.officeId(), type, columnByField, resolved);
-
-    int errorRows = 0;
-    int warningRows = 0;
-    int duplicateRows = 0;
-    int relationRows = 0;
-    for (Computed item : resolved) {
-      if (item.warnings().stream().anyMatch(w -> w.severity() == Severity.ERROR)) {
-        errorRows++;
-      }
-      if (item.warnings().stream().anyMatch(w -> w.severity() == Severity.WARNING)) {
-        warningRows++;
-      }
-      if (item.existingTargetId() != null) {
-        duplicateRows++;
-      }
-      if (!item.matches().isEmpty()) {
-        relationRows++;
-      }
-    }
+    List<Computed> resolved = resolveAll(principal.officeId(), batch, data);
+    Summary summary = summaryOf(resolved);
 
     int from = Math.min(pageQuery.page() * pageQuery.size(), resolved.size());
     int to = Math.min(from + pageQuery.size(), resolved.size());
@@ -134,12 +105,50 @@ public class ImportPreviewService {
     }
     jdbcRepository.markPreviewed(batchId);
     return new ImportPreviewResponse(
-        rows,
-        duplicates,
-        new Summary(resolved.size(), errorRows, warningRows, duplicateRows, relationRows),
-        pageQuery.page(),
-        pageQuery.size(),
-        resolved.size());
+        rows, duplicates, summary, pageQuery.page(), pageQuery.size(), resolved.size());
+  }
+
+  public Summary summarize(Long officeId, ImportBatch batch, Long mappingVersionId) {
+    ImportLoadedData data = fileReader.loadWithMapping(batch, mappingVersionId);
+    return summaryOf(resolveAll(officeId, batch, data));
+  }
+
+  private List<Computed> resolveAll(Long officeId, ImportBatch batch, ImportLoadedData data) {
+    ImportTargetType type = batch.getTargetType();
+    String sourceSystem = data.mapping().getSourceSystem();
+    Map<String, String> columnByField = data.columnByField();
+    List<Computed> computed = new ArrayList<>();
+    for (ParsedRow row : data.sheet().rows()) {
+      NormalizedRow normalized = normalizer.normalize(type, data.rawByField(row), columnByField);
+      computed.add(
+          new Computed(
+              row, normalized, new ArrayList<>(normalized.warnings()), null, new ArrayList<>()));
+    }
+    List<Computed> resolved = markDuplicates(officeId, type, sourceSystem, columnByField, computed);
+    attachRelations(officeId, type, columnByField, resolved);
+    return resolved;
+  }
+
+  private static Summary summaryOf(List<Computed> resolved) {
+    int errorRows = 0;
+    int warningRows = 0;
+    int duplicateRows = 0;
+    int relationRows = 0;
+    for (Computed item : resolved) {
+      if (item.warnings().stream().anyMatch(w -> w.severity() == Severity.ERROR)) {
+        errorRows++;
+      }
+      if (item.warnings().stream().anyMatch(w -> w.severity() == Severity.WARNING)) {
+        warningRows++;
+      }
+      if (item.existingTargetId() != null) {
+        duplicateRows++;
+      }
+      if (!item.matches().isEmpty()) {
+        relationRows++;
+      }
+    }
+    return new Summary(resolved.size(), errorRows, warningRows, duplicateRows, relationRows);
   }
 
   private PreviewRow toRow(ImportLoadedData data, Computed item) {

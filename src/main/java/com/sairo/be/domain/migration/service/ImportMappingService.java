@@ -111,23 +111,47 @@ public class ImportMappingService {
     guard.requireNotManagedBySupport(batchId);
     guard.requireEditable(batch);
     guard.requireVersion(batch, expectedVersion);
+    return persistMapping(
+        batch,
+        request,
+        (versionNo) ->
+            ImportMappingVersion.byMembership(
+                batch, versionNo, request.sourceSystem(), principal.membershipId()));
+  }
+
+  @Transactional
+  public ImportMappingConfirmResponse confirmByOperator(
+      Long batchId, Long operatorId, ImportMappingConfirmRequest request) {
+    ImportBatch batch =
+        batchRepository
+            .findForUpdateById(batchId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    guard.requireEditable(batch);
+    return persistMapping(
+        batch,
+        request,
+        (versionNo) ->
+            ImportMappingVersion.byOperator(batch, versionNo, request.sourceSystem(), operatorId));
+  }
+
+  private ImportMappingConfirmResponse persistMapping(
+      ImportBatch batch,
+      ImportMappingConfirmRequest request,
+      java.util.function.IntFunction<ImportMappingVersion> versionFactory) {
     ParsedSheet sheet = fileReader.readSelectedSheet(batch);
     validate(batch, request, sheet);
     Map<String, Double> suggested =
         suggester.suggest(batch.getTargetType(), sheet.headers()).stream()
             .collect(
                 Collectors.toMap(
-                    item -> item.sourceColumn() + "\n" + item.targetField(),
+                    item -> item.sourceColumn() + '\n' + item.targetField(),
                     Suggestion::confidence,
                     (left, right) -> left));
-    int versionNo = versionRepository.findMaxVersionNo(batchId) + 1;
-    ImportMappingVersion version =
-        versionRepository.saveAndFlush(
-            ImportMappingVersion.byMembership(
-                batch, versionNo, request.sourceSystem(), principal.membershipId()));
+    int versionNo = versionRepository.findMaxVersionNo(batch.getId()) + 1;
+    ImportMappingVersion version = versionRepository.saveAndFlush(versionFactory.apply(versionNo));
     List<ImportMappingItem> items = new ArrayList<>();
     for (ImportMappingConfirmRequest.Mapping mapping : request.mappings()) {
-      Double confidence = suggested.get(mapping.sourceColumn() + "\n" + mapping.targetField());
+      Double confidence = suggested.get(mapping.sourceColumn() + '\n' + mapping.targetField());
       items.add(
           ImportMappingItem.of(
               version.getId(),
