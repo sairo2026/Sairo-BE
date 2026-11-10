@@ -122,6 +122,35 @@ public class BillingQueryRepository {
         .optional();
   }
 
+  public boolean officeExists(long officeId) {
+    return jdbcClient
+            .sql("SELECT count(*) FROM office WHERE id = :id")
+            .param("id", officeId)
+            .query(Integer.class)
+            .single()
+        > 0;
+  }
+
+  public boolean userExists(long userId) {
+    return jdbcClient
+            .sql("SELECT count(*) FROM app_user WHERE id = :id")
+            .param("id", userId)
+            .query(Integer.class)
+            .single()
+        > 0;
+  }
+
+  public Optional<Long> findLatestMembershipId(long userId, long officeId) {
+    return jdbcClient
+        .sql(
+            "SELECT id FROM office_membership WHERE user_id = :userId AND office_id = :officeId"
+                + " ORDER BY id DESC LIMIT 1")
+        .param("userId", userId)
+        .param("officeId", officeId)
+        .query(Long.class)
+        .optional();
+  }
+
   public Optional<Integer> findPublishedSupplierVersion() {
     return jdbcClient
         .sql(

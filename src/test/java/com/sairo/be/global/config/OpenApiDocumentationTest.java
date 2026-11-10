@@ -126,7 +126,15 @@ class OpenApiDocumentationTest {
           Map.entry("POST /api/subscriptions/first-payment", Set.of("200")),
           Map.entry("POST /api/subscriptions/retry-payment", Set.of("200")),
           Map.entry("POST /api/subscriptions/cancel", Set.of("200")),
-          Map.entry("POST /api/subscriptions/cancel/withdraw", Set.of("200")));
+          Map.entry("POST /api/subscriptions/cancel/withdraw", Set.of("200")),
+          Map.entry("GET /api/offices/current/auth-status", Set.of("200")),
+          Map.entry("POST /api/grant-auth/return", Set.of("200")),
+          Map.entry("POST /api/grant-auth/archive", Set.of("200")),
+          Map.entry("GET /api/return-grants/current", Set.of("200")),
+          Map.entry("POST /api/return-grants/{grantId}/export", Set.of("200")),
+          Map.entry("GET /api/return-grants/{grantId}/exports/{exportId}", Set.of("200")),
+          Map.entry("POST /api/archive-grants", Set.of("201")),
+          Map.entry("GET /api/archive-grants/current", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 

@@ -4,6 +4,7 @@ import com.sairo.be.domain.billing.dto.request.BillingKeyRegisterRequest;
 import com.sairo.be.domain.billing.dto.request.RefundRequestCreateRequest;
 import com.sairo.be.domain.billing.dto.request.SubscriptionPurchaseConsentRequest;
 import com.sairo.be.domain.billing.dto.request.TaxRecipientUpsertRequest;
+import com.sairo.be.domain.billing.dto.response.AuthStatusResponse;
 import com.sairo.be.domain.billing.dto.response.BillingInvoiceDetailResponse;
 import com.sairo.be.domain.billing.dto.response.BillingInvoiceItemResponse;
 import com.sairo.be.domain.billing.dto.response.BillingKeyRegisterResponse;
@@ -22,6 +23,7 @@ import com.sairo.be.domain.billing.dto.response.SubscriptionCurrentResponse;
 import com.sairo.be.domain.billing.dto.response.SubscriptionPurchaseConsentResponse;
 import com.sairo.be.domain.billing.dto.response.SubscriptionStateResponse;
 import com.sairo.be.domain.billing.dto.response.TaxRecipientResponse;
+import com.sairo.be.domain.billing.service.AuthStatusService;
 import com.sairo.be.domain.billing.service.BillingKeyService;
 import com.sairo.be.domain.billing.service.BillingPlanService;
 import com.sairo.be.domain.billing.service.CancellationService;
@@ -77,6 +79,7 @@ public class BillingController {
   private final TaxRecipientService taxRecipientService;
   private final DirectPaymentService directPaymentService;
   private final CancellationService cancellationService;
+  private final AuthStatusService authStatusService;
 
   public BillingController(
       BillingPlanService planService,
@@ -89,7 +92,8 @@ public class BillingController {
       PriceChangeNoticeService noticeService,
       TaxRecipientService taxRecipientService,
       DirectPaymentService directPaymentService,
-      CancellationService cancellationService) {
+      CancellationService cancellationService,
+      AuthStatusService authStatusService) {
     this.planService = planService;
     this.currentService = currentService;
     this.billingKeyService = billingKeyService;
@@ -101,6 +105,7 @@ public class BillingController {
     this.taxRecipientService = taxRecipientService;
     this.directPaymentService = directPaymentService;
     this.cancellationService = cancellationService;
+    this.authStatusService = authStatusService;
   }
 
   @Operation(summary = "요금제 목록", description = "현재 과금 인원 기준 예상 금액과 적용 가격 버전을 함께 돌려준다.")
@@ -302,5 +307,12 @@ public class BillingController {
   public SubscriptionCancelWithdrawResponse withdrawCancellation(
       @AuthenticationPrincipal StaffPrincipal principal) {
     return cancellationService.withdraw(principal);
+  }
+
+  @Operation(summary = "인증 중단 상태 조회", description = "중단 여부, 재인증 기한, 보존된 체험 잔여 초를 돌려준다.")
+  @GetMapping("/offices/current/auth-status")
+  @RequiresAccess(AccessPermission.OWNER)
+  public AuthStatusResponse authStatus(@AuthenticationPrincipal StaffPrincipal principal) {
+    return authStatusService.get(principal);
   }
 }
