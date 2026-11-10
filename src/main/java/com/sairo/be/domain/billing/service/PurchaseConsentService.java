@@ -40,10 +40,6 @@ public class PurchaseConsentService {
 
   public static final String PURCHASE_TERMS_CODE = "SUBSCRIPTION_PURCHASE";
   static final Duration NOW_BASED_TOLERANCE = Duration.ofMinutes(30);
-  static final String CANCELLATION_TERMS =
-      "해지를 예약하면 현재 이용 기간이 끝날 때까지 이용할 수 있고 그 뒤 자동결제가 중단된다. 해지 예약은 이용 기간이 끝나기 전에 취소할 수 있다.";
-  static final String REFUND_TERMS =
-      "해지 예약 기간의 남은 기간은 환불하지 않는다. 즉시 종료, 인증 중단, 서비스 장애, 중복 결제, 오청구는 환불 신청 기준에 따라 환불한다.";
 
   private final BillingContextService context;
   private final PurchaseQuoteService quoteService;
@@ -98,8 +94,10 @@ public class PurchaseConsentService {
         toDisplayOffset(quote.nextChargeAt()),
         toDisplayOffset(quote.firstBillingScheduledAt()),
         true,
-        CANCELLATION_TERMS,
-        REFUND_TERMS);
+        PurchaseConsentTexts.CANCELLATION_TERMS,
+        PurchaseConsentTexts.REFUND_TERMS,
+        PurchaseConsentTexts.checkItems(quote.totalAmountInclVat()),
+        PurchaseConsentTexts.ERROR_MESSAGES);
   }
 
   @Transactional
