@@ -30,7 +30,8 @@ class KakaoUnlinkClientTest {
     server = MockRestServiceServer.bindTo(builder).build();
     client =
         new KakaoUnlinkClient(
-            new KakaoProperties("key", "secret", "https://x/cb", null, null, "admin-key", "1"),
+            new KakaoProperties(
+                "key", "secret", "https://x/cb", null, null, null, "admin-key", "1"),
             builder);
   }
 

@@ -76,7 +76,33 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/offices/current", Set.of("200")),
           Map.entry("PATCH /api/offices/current", Set.of("200")),
           Map.entry("POST /api/office-change-requests", Set.of("201")),
-          Map.entry("GET /api/office-change-requests", Set.of("200")));
+          Map.entry("GET /api/office-change-requests", Set.of("200")),
+          Map.entry("GET /api/ops/auth/kakao/start", Set.of("200")),
+          Map.entry("GET /api/ops/auth/kakao/callback", Set.of("200")),
+          Map.entry("POST /api/ops/auth/mfa/verify", Set.of("200")),
+          Map.entry("POST /api/ops/auth/step-up", Set.of("200")),
+          Map.entry("POST /api/ops/auth/logout", Set.of("204")),
+          Map.entry("GET /api/ops/me", Set.of("200")),
+          Map.entry("POST /api/ops/auth/invitations/preview", Set.of("200")),
+          Map.entry("POST /api/ops/auth/invitations/kakao-start", Set.of("200")),
+          Map.entry("GET /api/ops/auth/invitations/kakao/callback", Set.of("200")),
+          Map.entry("POST /api/ops/auth/invitations/mfa-enrollment", Set.of("200")),
+          Map.entry("POST /api/ops/auth/invitations/accept", Set.of("201")),
+          Map.entry("GET /api/ops/office-registrations", Set.of("200")),
+          Map.entry("GET /api/ops/office-registrations/{registrationId}", Set.of("200")),
+          Map.entry("PUT /api/ops/office-registrations/{registrationId}/checklist", Set.of("200")),
+          Map.entry("POST /api/ops/office-registrations/{registrationId}/approve", Set.of("200")),
+          Map.entry(
+              "POST /api/ops/office-registrations/{registrationId}/request-supplement",
+              Set.of("200")),
+          Map.entry(
+              "POST /api/ops/office-registrations/{registrationId}/evidence/download-url",
+              Set.of("200")),
+          Map.entry("POST /api/ops/office-registrations/{registrationId}/reject", Set.of("200")),
+          Map.entry("POST /api/ops/offices/{officeId}/revoke", Set.of("200")),
+          Map.entry("GET /api/ops/office-change-requests", Set.of("200")),
+          Map.entry("POST /api/ops/office-change-requests/{requestId}/approve", Set.of("200")),
+          Map.entry("POST /api/ops/office-change-requests/{requestId}/reject", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 
