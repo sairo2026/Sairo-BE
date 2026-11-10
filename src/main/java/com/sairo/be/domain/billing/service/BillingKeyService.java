@@ -165,18 +165,28 @@ public class BillingKeyService {
   public void delete(StaffPrincipal principal, HttpSession session) {
     stepUpState.require(session);
     Long officeId = principal.officeId();
-    transactionTemplate.executeWithoutResult(
-        status -> {
-          advisoryLock.lockForTransaction(lockKey(officeId));
-          Optional<BillingCustomer> customer = customerRepository.findByOfficeId(officeId);
-          if (customer.isPresent() && customer.get().hasBillingKey()) {
-            Instant now = clock.instant();
-            customer.get().clearBillingKey(now);
-            customerRepository.saveAndFlush(customer.get());
-            context.requireSubscription(officeId).markEventRecorded(now);
-          }
-        });
+    String removedKey =
+        transactionTemplate.execute(
+            status -> {
+              advisoryLock.lockForTransaction(lockKey(officeId));
+              Optional<BillingCustomer> customer = customerRepository.findByOfficeId(officeId);
+              if (customer.isPresent() && customer.get().hasBillingKey()) {
+                Instant now = clock.instant();
+                String encrypted = customer.get().getBillingKeyEncrypted();
+                customer.get().clearBillingKey(now);
+                customerRepository.saveAndFlush(customer.get());
+                context.requireSubscription(officeId).markEventRecorded(now);
+                return encrypted;
+              }
+              return null;
+            });
     stepUpState.consume(session);
+    if (removedKey != null) {
+      try {
+        paymentGateway.deleteBillingKey(billingKeyCipher.decrypt(removedKey));
+      } catch (RuntimeException ignored) {
+      }
+    }
   }
 
   private TermsVersionView requireCardNoticeVersion(String submittedVersion) {
