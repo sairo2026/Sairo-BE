@@ -56,6 +56,32 @@ class PropertyAccessMatrixIntegrationTest extends PropertyIntegrationTestBase {
         "PUT /api/properties/{id}/fields/{fieldId}",
         c ->
             jsonPutAs("/api/properties/" + propertyId + "/fields/" + floor, "{\"value\":3}", c, 1));
+    map.put(
+        "GET /api/properties/{id}/offers",
+        c -> authedGet("/api/properties/" + propertyId + "/offers", c));
+    map.put(
+        "POST /api/properties/{id}/offers",
+        c ->
+            jsonPostAs(
+                "/api/properties/" + propertyId + "/offers",
+                "{\"dealType\":\"SALE\",\"salePrice\":1}",
+                c));
+    map.put(
+        "PATCH /api/properties/{id}/offers/{offerId}",
+        c ->
+            jsonPatchAs(
+                "/api/properties/" + propertyId + "/offers/99999", "{\"salePrice\":1}", c, 2));
+    map.put(
+        "PATCH /api/properties/{id}/category",
+        c ->
+            jsonPatchAs(
+                "/api/properties/" + propertyId + "/category",
+                "{\"categoryId\":" + category + "}",
+                c,
+                2));
+    map.put(
+        "POST /api/properties/{id}/restore",
+        c -> jsonPostAs("/api/properties/" + propertyId + "/restore", "{}", c));
     map.put("GET /api/property-categories", c -> authedGet("/api/property-categories", c));
     map.put(
         "POST /api/property-categories",
@@ -81,6 +107,7 @@ class PropertyAccessMatrixIntegrationTest extends PropertyIntegrationTestBase {
                 "{\"active\":true}",
                 c,
                 null));
+    map.put("DELETE /api/properties/{id}", c -> deleteAs("/api/properties/" + propertyId, c));
     return map;
   }
 

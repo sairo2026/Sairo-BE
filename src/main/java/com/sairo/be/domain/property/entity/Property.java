@@ -162,6 +162,19 @@ public class Property {
     this.registrationStage = RegistrationStage.ACTIVE;
   }
 
+  public void archive(Instant at) {
+    this.deletedAt = at;
+  }
+
+  public void restore(RegistrationStage stage) {
+    this.deletedAt = null;
+    this.registrationStage = stage;
+  }
+
+  public void changeCategory(Long categoryId) {
+    this.categoryId = categoryId;
+  }
+
   public boolean isArchived() {
     return deletedAt != null;
   }
