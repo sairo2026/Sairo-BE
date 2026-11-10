@@ -22,11 +22,13 @@ import com.sairo.be.support.fixture.OfficeBuilder;
 import com.sairo.be.support.fixture.TermsFixtures;
 import com.sairo.be.support.fixture.TestData;
 import jakarta.servlet.http.Cookie;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.test.web.servlet.ResultActions;
 
 @IntegrationTest
@@ -114,12 +116,37 @@ class WithdrawalIntegrationTest extends AuthIntegrationTestBase {
         .perform(get("/api/me/withdrawal-preview").cookie(session))
         .andExpect(jsonPath("$.retainedItems.length()").value(1))
         .andExpect(jsonPath("$.retainedItems[0].itemCode").value("TERMS_AGREEMENT"))
-        .andExpect(jsonPath("$.retainedItems[0].itemName").value("약관 동의·철회 이력"))
-        .andExpect(jsonPath("$.retainedItems[0].reason").value("분쟁 대응"))
+        .andExpect(jsonPath("$.retainedItems[0].itemName").value("약관 동의와 철회 이력"))
+        .andExpect(jsonPath("$.retainedItems[0].reason").value("동의 사실의 확인과 분쟁 대응"))
         .andExpect(jsonPath("$.retainedItems[0].retentionDays").value(1095))
         .andExpect(jsonPath("$.retainedItems[0].anchorEvent").value("WITHDRAWN_AT"))
         .andExpect(jsonPath("$.retainedItems[0].ruleStatus").value("ASSUMPTION"))
-        .andExpect(jsonPath("$.retainedItems[0].reviewTargetLaws[0]").value("개인정보 보호법"));
+        .andExpect(jsonPath("$.retainedItems[0].reviewTargetLaws[0]").value("개인정보 보호법"))
+        .andExpect(jsonPath("$.retainedItems[0].reviewTargetLaws[1]").value("전자상거래법"));
+    jdbcTemplate.update("DELETE FROM legal_retention_rule");
+  }
+
+  @Test
+  void 시드된_보관_규칙으로_문서의_보관_항목_아홉_개와_기간이_나온다() throws Exception {
+    jdbcTemplate.execute(
+        new ClassPathResource("db/migration/V15__seed_terms_catalog_and_legal_retention_rules.sql")
+            .getContentAsString(StandardCharsets.UTF_8));
+
+    mockMvc
+        .perform(get("/api/me/withdrawal-preview").cookie(session))
+        .andExpect(jsonPath("$.retainedItems.length()").value(9))
+        .andExpect(jsonPath("$.retainedItems[0].itemName").value("로그인과 접속 기록"))
+        .andExpect(jsonPath("$.retainedItems[0].retentionDays").value(365))
+        .andExpect(jsonPath("$.retainedItems[0].reviewTargetLaws[1]").value("통신비밀보호법"))
+        .andExpect(jsonPath("$.retainedItems[2].itemName").value("수신 설정 처리 결과 통지와 재확인 발송 이력"))
+        .andExpect(jsonPath("$.retainedItems[2].retentionDays").value(1095))
+        .andExpect(jsonPath("$.retainedItems[3].retentionDays").value(1825))
+        .andExpect(jsonPath("$.retainedItems[4].itemName").value("세금계산서와 현금영수증 발급 기록"))
+        .andExpect(jsonPath("$.retainedItems[4].anchorEvent").value("ISSUED_AT"))
+        .andExpect(jsonPath("$.retainedItems[7].itemName").value("사무소가 수탁 보관하는 거래계약서"))
+        .andExpect(jsonPath("$.retainedItems[7].retentionDays").value(1825))
+        .andExpect(jsonPath("$.retainedItems[8].retentionDays").value(1095))
+        .andExpect(jsonPath("$.retainedItems[8].reviewTargetLaws[0]").value("공인중개사법"));
     jdbcTemplate.update("DELETE FROM legal_retention_rule");
   }
 
