@@ -87,4 +87,40 @@ public abstract class AuthIntegrationTestBase {
   protected static String quote(String value) {
     return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
   }
+
+  protected String sessionIdOf(Cookie cookie) {
+    return new String(
+        java.util.Base64.getDecoder().decode(cookie.getValue()),
+        java.nio.charset.StandardCharsets.UTF_8);
+  }
+
+  protected void setSessionAttribute(Cookie cookie, String name, Object value) {
+    org.springframework.session.Session stored =
+        (org.springframework.session.Session) sessionRepository.findById(sessionIdOf(cookie));
+    stored.setAttribute(name, value);
+    sessionRepository.save(stored);
+  }
+
+  protected void grantStepUp(Cookie cookie) {
+    setSessionAttribute(
+        cookie,
+        com.sairo.be.global.security.StepUpState.STEP_UP_UNTIL_ATTRIBUTE,
+        java.time.Instant.now().plusSeconds(300));
+  }
+
+  protected Object sessionAttribute(Cookie cookie, String name) {
+    org.springframework.session.Session stored =
+        (org.springframework.session.Session) sessionRepository.findById(sessionIdOf(cookie));
+    return stored == null ? null : stored.getAttribute(name);
+  }
+
+  protected Cookie kakaoSessionFor(com.sairo.be.domain.auth.entity.AppUser user) {
+    String sessionId =
+        sessions.createMemberSession(
+            new com.sairo.be.global.security.StaffPrincipal(
+                user.getId(), null, null, user.getName(), null),
+            java.time.Instant.now(),
+            java.time.Instant.now());
+    return sessions.cookie(sessionId);
+  }
 }

@@ -1,395 +1,325 @@
 package com.sairo.be.domain.auth.controller;
 
+import static com.sairo.be.support.ErrorResponseAssertions.assertFieldError;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.startsWith;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.sairo.be.TestcontainersConfiguration;
-import com.sairo.be.domain.auth.service.KakaoOAuthClient;
-import com.sairo.be.domain.auth.service.OAuthStateService;
+import com.sairo.be.domain.auth.entity.AppUser;
+import com.sairo.be.domain.office.entity.OfficeMembershipRole;
+import com.sairo.be.domain.office.repository.OfficeMembershipRepository;
+import com.sairo.be.domain.office.repository.OfficeRepository;
+import com.sairo.be.support.AuthFlowSupport;
+import com.sairo.be.support.AuthFlowSupport.KakaoStart;
+import com.sairo.be.support.AuthIntegrationTestBase;
+import com.sairo.be.support.IntegrationTest;
+import com.sairo.be.support.fixture.AppUserBuilder;
+import com.sairo.be.support.fixture.TestData;
 import jakarta.servlet.http.Cookie;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.session.Session;
-import org.springframework.session.SessionRepository;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
-@AutoConfigureMockMvc
-@Disabled("BE-01 단계에서 이메일·카카오 인증 기준으로 재작성한다")
-@SuppressWarnings({"rawtypes", "unchecked"})
-class AuthControllerTest {
+@IntegrationTest
+class AuthControllerTest extends AuthIntegrationTestBase {
 
-  private static final String SESSION_COOKIE_NAME = "__Host-sairo_session";
-  private static final String APPROVED_KAKAO_ID = "5001001";
-  private static final String NO_MEMBERSHIP_KAKAO_ID = "5001002";
-  private static final String UNREGISTERED_KAKAO_ID = "5009999";
+  private static final String FRONT = "http://localhost:3000";
+  private static final String FAILED = FRONT + "/login?error=auth_failed";
 
-  @Autowired private MockMvc mockMvc;
-  @Autowired private JdbcTemplate jdbcTemplate;
-  @MockitoBean private KakaoOAuthClient kakaoOAuthClient;
-  @MockitoSpyBean private OAuthStateService oauthStateService;
-  @Autowired private SessionRepository sessionRepository;
+  @Autowired private OfficeRepository officeRepository;
+  @Autowired private OfficeMembershipRepository officeMembershipRepository;
 
-  @BeforeEach
-  void seed() {
-    jdbcTemplate.update("DELETE FROM office_membership");
-    jdbcTemplate.update("DELETE FROM app_user");
-    jdbcTemplate.update("DELETE FROM office");
-    jdbcTemplate.update(
-        "INSERT INTO office (id, name, representative_name, business_registration_number,"
-            + " real_estate_license_number, phone, address, created_at)"
-            + " VALUES (9001, '사이로 데모 사무소', '김대표', '1234567890', '11223344556', '02-1234-5678',"
-            + " '서울시 강남구', now())");
-    jdbcTemplate.update(
-        "INSERT INTO app_user (id, kakao_provider_key, name, created_at)"
-            + " VALUES (9101, ?, '박직원', now())",
-        APPROVED_KAKAO_ID);
-    jdbcTemplate.update(
-        "INSERT INTO app_user (id, kakao_provider_key, name, created_at)"
-            + " VALUES (9102, ?, '미승인', now())",
-        NO_MEMBERSHIP_KAKAO_ID);
-    jdbcTemplate.update(
-        "INSERT INTO office_membership (id, user_id, office_id, role, status, reviewed_at)"
-            + " VALUES (9201, 9101, 9001, 'STAFF', 'APPROVED', now())");
-  }
-
-  @Test
-  void start은_카카오_인가URL로_리다이렉트하고_세션에_state를_저장한다() throws Exception {
-    when(kakaoOAuthClient.buildAuthorizeUrl(anyString()))
-        .thenAnswer(
-            invocation ->
-                "https://kauth.kakao.com/oauth/authorize?state=" + invocation.getArgument(0));
-
-    mockMvc
-        .perform(get("/api/auth/kakao/start"))
-        .andExpect(status().is3xxRedirection())
-        .andExpect(
-            header()
-                .string("Location", startsWith("https://kauth.kakao.com/oauth/authorize?state=")))
-        .andExpect(header().exists("Set-Cookie"));
-  }
-
-  @Test
-  void 유효한_state와_승인된_소속으로_콜백하면_홈으로_리다이렉트하고_인증세션을_발급한다() throws Exception {
-    ArgumentCaptor<String> stateCaptor = ArgumentCaptor.forClass(String.class);
-    when(kakaoOAuthClient.buildAuthorizeUrl(stateCaptor.capture()))
-        .thenReturn("https://kauth.kakao.com/oauth/authorize");
-    when(kakaoOAuthClient.exchangeToken("valid-code")).thenReturn("access-token");
-    when(kakaoOAuthClient.fetchUserId("access-token")).thenReturn(Long.valueOf(APPROVED_KAKAO_ID));
-
-    MvcResult startResult = mockMvc.perform(get("/api/auth/kakao/start")).andReturn();
-    Cookie preAuthCookie = extractSessionCookie(startResult.getResponse());
-    assertThat(preAuthCookie).isNotNull();
-    String state = stateCaptor.getValue();
-
-    MvcResult callbackResult =
-        mockMvc
-            .perform(
-                get("/api/auth/kakao/callback")
-                    .param("code", "valid-code")
-                    .param("state", state)
-                    .cookie(preAuthCookie))
-            .andExpect(status().is3xxRedirection())
-            .andExpect(header().string("Location", "http://localhost:3000/"))
-            .andReturn();
-
-    Cookie authenticatedCookie = extractSessionCookie(callbackResult.getResponse());
-    assertThat(authenticatedCookie).isNotNull();
-    assertThat(authenticatedCookie.getValue()).isNotEqualTo(preAuthCookie.getValue());
-
-    String sessionSetCookieHeader =
-        callbackResult.getResponse().getHeaders("Set-Cookie").stream()
-            .filter(header -> header.startsWith(SESSION_COOKIE_NAME + "="))
-            .findFirst()
-            .orElseThrow();
-    assertThat(sessionSetCookieHeader).contains("HttpOnly");
-    assertThat(sessionSetCookieHeader).contains("Secure");
-    assertThat(sessionSetCookieHeader).containsIgnoringCase("SameSite=Lax");
-
-    assertThat(callbackResult.getResponse().getHeaders("Set-Cookie"))
-        .anyMatch(header -> header.startsWith("XSRF-TOKEN="));
-
-    mockMvc
-        .perform(get("/api/unmapped-protected-path").cookie(authenticatedCookie))
-        .andExpect(status().isNotFound());
-  }
-
-  @Test
-  void state가_일치하지_않으면_로그인_화면으로_리다이렉트하고_세션을_발급하지_않는다() throws Exception {
-    when(kakaoOAuthClient.buildAuthorizeUrl(anyString()))
-        .thenReturn("https://kauth.kakao.com/oauth/authorize");
-
-    MvcResult startResult = mockMvc.perform(get("/api/auth/kakao/start")).andReturn();
-    Cookie preAuthCookie = extractSessionCookie(startResult.getResponse());
-
-    mockMvc
-        .perform(
-            get("/api/auth/kakao/callback")
-                .param("code", "valid-code")
-                .param("state", "wrong-state")
-                .cookie(preAuthCookie))
-        .andExpect(status().is3xxRedirection())
-        .andExpect(header().string("Location", "http://localhost:3000/login?error=auth_failed"));
-  }
-
-  @Test
-  void 카카오_회원번호가_사전_시드된_계정과_일치하지_않으면_로그인_화면으로_리다이렉트한다() throws Exception {
-    ArgumentCaptor<String> stateCaptor = ArgumentCaptor.forClass(String.class);
-    when(kakaoOAuthClient.buildAuthorizeUrl(stateCaptor.capture()))
-        .thenReturn("https://kauth.kakao.com/oauth/authorize");
-    when(kakaoOAuthClient.exchangeToken("valid-code")).thenReturn("access-token");
-    when(kakaoOAuthClient.fetchUserId("access-token"))
-        .thenReturn(Long.valueOf(UNREGISTERED_KAKAO_ID));
-
-    MvcResult startResult = mockMvc.perform(get("/api/auth/kakao/start")).andReturn();
-    Cookie preAuthCookie = extractSessionCookie(startResult.getResponse());
-    assertThat(preAuthCookie).isNotNull();
-    String state = stateCaptor.getValue();
-
-    mockMvc
-        .perform(
-            get("/api/auth/kakao/callback")
-                .param("code", "valid-code")
-                .param("state", state)
-                .cookie(preAuthCookie))
-        .andExpect(status().is3xxRedirection())
-        .andExpect(header().string("Location", "http://localhost:3000/login?error=auth_failed"));
-  }
-
-  @Test
-  void 승인된_사무소_소속이_없으면_로그인_화면으로_리다이렉트한다() throws Exception {
-    ArgumentCaptor<String> stateCaptor = ArgumentCaptor.forClass(String.class);
-    when(kakaoOAuthClient.buildAuthorizeUrl(stateCaptor.capture()))
-        .thenReturn("https://kauth.kakao.com/oauth/authorize");
-    when(kakaoOAuthClient.exchangeToken("valid-code")).thenReturn("access-token");
-    when(kakaoOAuthClient.fetchUserId("access-token"))
-        .thenReturn(Long.valueOf(NO_MEMBERSHIP_KAKAO_ID));
-
-    MvcResult startResult = mockMvc.perform(get("/api/auth/kakao/start")).andReturn();
-    Cookie preAuthCookie = extractSessionCookie(startResult.getResponse());
-    assertThat(preAuthCookie).isNotNull();
-    String state = stateCaptor.getValue();
-
-    mockMvc
-        .perform(
-            get("/api/auth/kakao/callback")
-                .param("code", "valid-code")
-                .param("state", state)
-                .cookie(preAuthCookie))
-        .andExpect(status().is3xxRedirection())
-        .andExpect(header().string("Location", "http://localhost:3000/login?error=auth_failed"));
-  }
-
-  @Test
-  void 인증되지_않은_요청은_401을_반환한다() throws Exception {
-    mockMvc.perform(get("/api/unmapped-protected-path")).andExpect(status().isUnauthorized());
-  }
-
-  @Test
-  void 실패_콜백도_state를_소비하여_정상_코드로_재사용할_수_없다() throws Exception {
-    for (boolean hasError : new boolean[] {true, false}) {
-      var start = startLogin();
-      var callback =
-          get("/api/auth/kakao/callback").cookie(start.cookie()).param("state", start.state());
-      if (hasError) {
-        callback.param("error", "access_denied").param("code", "valid-code");
-      }
-      mockMvc
-          .perform(callback)
-          .andExpect(header().string("Location", "http://localhost:3000/login?error=auth_failed"));
-      mockMvc
-          .perform(
-              get("/api/auth/kakao/callback")
-                  .cookie(start.cookie())
-                  .param("state", start.state())
-                  .param("code", "valid-code"))
-          .andExpect(header().string("Location", "http://localhost:3000/login?error=auth_failed"));
-    }
-    verify(kakaoOAuthClient, never()).exchangeToken(anyString());
-  }
-
-  @Test
-  void 만료된_JDBC_세션의_state는_콜백에서_사용할_수_없다() throws Exception {
-    var start = startLogin();
-    jdbcTemplate.update(
-        "UPDATE SPRING_SESSION SET EXPIRY_TIME = ? WHERE SESSION_ID = ?",
-        System.currentTimeMillis() - 1,
-        sessionId(start.cookie()));
-    mockMvc
-        .perform(
-            get("/api/auth/kakao/callback")
-                .cookie(start.cookie())
-                .param("state", start.state())
-                .param("code", "valid-code"))
-        .andExpect(header().string("Location", "http://localhost:3000/login?error=auth_failed"));
-    verify(kakaoOAuthClient, never()).exchangeToken(anyString());
-  }
-
-  @Test
-  void 동시에_같은_state로_콜백해도_한_요청만_인증하고_외부호출에는_트랜잭션이_없다() throws Exception {
-    var start = startLogin();
-    CountDownLatch snapshotsLoaded = new CountDownLatch(2);
-    doAnswer(
-            invocation -> {
-              snapshotsLoaded.countDown();
-              assertThat(snapshotsLoaded.await(10, TimeUnit.SECONDS)).isTrue();
-              return invocation.callRealMethod();
-            })
-        .when(oauthStateService)
-        .consume(anyString(), anyString());
-    when(kakaoOAuthClient.exchangeToken("valid-code"))
-        .thenAnswer(
-            invocation -> {
-              assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-              return "test-token";
-            });
-    when(kakaoOAuthClient.fetchUserId("test-token"))
-        .thenAnswer(
-            invocation -> {
-              assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-              return Long.valueOf(APPROVED_KAKAO_ID);
-            });
-    try (var executor = Executors.newFixedThreadPool(2)) {
-      var first = executor.submit(() -> callbackLocation(start));
-      var second = executor.submit(() -> callbackLocation(start));
-      assertThat(
-              java.util.List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS)))
-          .containsExactlyInAnyOrder(
-              "http://localhost:3000/", "http://localhost:3000/login?error=auth_failed");
-    }
-    verify(kakaoOAuthClient, times(1)).exchangeToken("valid-code");
-    assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM SPRING_SESSION_ATTRIBUTES WHERE ATTRIBUTE_NAME = ? AND ATTRIBUTE_BYTES = ?",
-                Integer.class,
-                "KAKAO_OAUTH_STATE",
-                org.springframework.util.SerializationUtils.serialize(start.state())))
-        .isZero();
-  }
-
-  @Test
-  void 이전_세션_snapshot은_새_state를_소비하거나_소비된_state를_복원하지_않는다() throws Exception {
-    var start = startLogin();
-    var stale = sessionRepository.findById(sessionId(start.cookie()));
-    assertThat(stale).isNotNull();
-    String staleId = ((Session) stale).getId();
-    assertThat(oauthStateService.consume(staleId, start.state())).isTrue();
-    ((Session) stale).setLastAccessedTime(java.time.Instant.now());
-    sessionRepository.save(stale);
-    assertThat(oauthStateService.consume(staleId, start.state())).isFalse();
-
-    var current = sessionRepository.findById(staleId);
-    ((Session) current).setAttribute("KAKAO_OAUTH_STATE", "new-state");
-    sessionRepository.save(current);
-    assertThat(oauthStateService.consume(staleId, start.state())).isFalse();
-    assertThat(oauthStateService.consume(((Session) current).getId(), "new-state")).isTrue();
-  }
-
-  private LoginStart startLogin() throws Exception {
-    ArgumentCaptor<String> stateCaptor = ArgumentCaptor.forClass(String.class);
-    when(kakaoOAuthClient.buildAuthorizeUrl(stateCaptor.capture()))
-        .thenReturn("https://kauth.kakao.com/oauth/authorize");
-    var result = mockMvc.perform(get("/api/auth/kakao/start")).andReturn();
-    return new LoginStart(extractSessionCookie(result.getResponse()), stateCaptor.getValue());
-  }
-
-  @Test
-  void 이전_세션의_늦은_저장이_인증_세션_ID를_되돌리지_않는다() throws Exception {
-    var start = startLogin();
-    var stale = sessionRepository.findById(sessionId(start.cookie()));
-    assertThat(stale).isNotNull();
-    when(kakaoOAuthClient.exchangeToken("valid-code")).thenReturn("test-token");
-    when(kakaoOAuthClient.fetchUserId("test-token")).thenReturn(Long.valueOf(APPROVED_KAKAO_ID));
-    var result =
-        mockMvc
-            .perform(
-                get("/api/auth/kakao/callback")
-                    .cookie(start.cookie())
-                    .param("state", start.state())
-                    .param("code", "valid-code"))
-            .andExpect(header().string("Location", "http://localhost:3000/"))
-            .andReturn();
-    var authenticatedCookie = extractSessionCookie(result.getResponse());
-    assertThat(authenticatedCookie).isNotNull();
-    ((Session) stale).setLastAccessedTime(java.time.Instant.now());
-    sessionRepository.save(stale);
-
-    mockMvc
-        .perform(get("/api/unmapped-protected-path").cookie(authenticatedCookie))
-        .andExpect(status().isNotFound());
-    mockMvc
-        .perform(get("/api/unmapped-protected-path").cookie(start.cookie()))
-        .andExpect(status().isUnauthorized());
-    assertThat(sessionRepository.findById(sessionId(start.cookie()))).isNull();
-  }
-
-  @Test
-  void 탈퇴한_사용자는_승인된_소속이_남아_있어도_로그인할_수_없다() throws Exception {
-    jdbcTemplate.update(
-        "UPDATE app_user SET account_status = 'WITHDRAWN', withdrawn_at = now() WHERE id = 9101");
-    var start = startLogin();
-    when(kakaoOAuthClient.exchangeToken("valid-code")).thenReturn("test-token");
-    when(kakaoOAuthClient.fetchUserId("test-token")).thenReturn(Long.valueOf(APPROVED_KAKAO_ID));
-    assertThat(callbackLocation(start)).isEqualTo("http://localhost:3000/login?error=auth_failed");
-  }
-
-  private String callbackLocation(LoginStart start) throws Exception {
+  private String callback(KakaoStart start, String code) throws Exception {
     return mockMvc
         .perform(
             get("/api/auth/kakao/callback")
                 .cookie(start.cookie())
-                .param("state", start.state())
-                .param("code", "valid-code"))
+                .param("code", code)
+                .param("state", start.state()))
         .andReturn()
         .getResponse()
         .getHeader("Location");
   }
 
-  private String sessionId(Cookie cookie) {
-    return new String(Base64.getDecoder().decode(cookie.getValue()), StandardCharsets.UTF_8);
+  private MvcResult callbackResult(KakaoStart start, String code) throws Exception {
+    return mockMvc
+        .perform(
+            get("/api/auth/kakao/callback")
+                .cookie(start.cookie())
+                .param("code", code)
+                .param("state", start.state()))
+        .andReturn();
   }
 
-  private record LoginStart(Cookie cookie, String state) {}
+  @Test
+  void start는_카카오_인가_URL로_리다이렉트하고_세션과_state를_만든다() throws Exception {
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
 
-  // Spring Session's cookie serializer writes Set-Cookie via response.addHeader(...) directly,
-  // not response.addCookie(...), so MockHttpServletResponse#getCookie(name) never sees it.
-  private Cookie extractSessionCookie(MockHttpServletResponse response) {
-    String prefix = SESSION_COOKIE_NAME + "=";
-    for (String header : response.getHeaders("Set-Cookie")) {
-      if (header.startsWith(prefix)) {
-        String value = header.substring(prefix.length());
-        int semicolon = value.indexOf(';');
-        return new Cookie(
-            SESSION_COOKIE_NAME, semicolon >= 0 ? value.substring(0, semicolon) : value);
-      }
+    assertThat(start.location()).startsWith("https://kauth.stub.invalid/oauth/authorize?state=");
+    assertThat(start.cookie()).isNotNull();
+    assertThat(redisTemplate.keys("sairo:oauth-state:*")).hasSize(1);
+  }
+
+  @Test
+  void 허용되지_않는_purpose는_400이다() throws Exception {
+    assertFieldError(
+        mockMvc.perform(get("/api/auth/kakao/start").param("purpose", "OTHER")),
+        "purpose",
+        "NOT_ALLOWED");
+  }
+
+  @Test
+  void 신규_카카오_사용자는_가입_대기_계정과_세션을_만들고_가입_화면으로_이동한다() throws Exception {
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
+
+    MvcResult result = callbackResult(start, "5001001");
+
+    assertThat(result.getResponse().getHeader("Location")).isEqualTo(FRONT + "/signup/kakao");
+    Cookie authenticated = AuthFlowSupport.sessionCookie(result);
+    assertThat(authenticated).isNotNull();
+    assertThat(authenticated.getValue()).isNotEqualTo(start.cookie().getValue());
+    Map<String, Object> user =
+        jdbcTemplate.queryForMap(
+            "SELECT kakao_provider_key, phone_verified_at, email FROM app_user");
+    assertThat(user.get("kakao_provider_key")).isEqualTo("5001001");
+    assertThat(user.get("phone_verified_at")).isNull();
+    assertThat(user.get("email")).isNull();
+    assertThat(jdbcTemplate.queryForObject("SELECT auth_method FROM login_history", String.class))
+        .isEqualTo("KAKAO");
+    mockMvc.perform(get("/api/auth/context").cookie(authenticated)).andExpect(status().isOk());
+  }
+
+  @Test
+  void 가입을_마친_사용자는_접근_판정에_따른_화면으로_이동한다() throws Exception {
+    AppUser user =
+        appUserRepository.saveAndFlush(
+            AppUserBuilder.anAppUser().kakaoProviderKey("5001002").build());
+    jdbcTemplate.update("UPDATE app_user SET phone = '010-1111-2222', phone_verified_at = now()");
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
+
+    assertThat(callback(start, "5001002")).isEqualTo(FRONT + "/office/start");
+    assertThat(user.getId()).isNotNull();
+  }
+
+  @Test
+  void 승인된_소속과_정상_구독이면_홈으로_이동하고_인증_세션은_보안_쿠키다() throws Exception {
+    TestData testData =
+        new TestData(appUserRepository, officeRepository, officeMembershipRepository);
+    TestData.Staff staff = testData.approvedStaff(OfficeMembershipRole.AGENT);
+    jdbcTemplate.update(
+        "UPDATE app_user SET kakao_provider_key = '5001003', phone = '010-1111-3333',"
+            + " phone_verified_at = now() WHERE id = ?",
+        staff.user().getId());
+    jdbcTemplate.update(
+        "INSERT INTO subscription (office_id, plan, status) VALUES (?, 'SOLO', 'ACTIVE')",
+        staff.office().getId());
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
+
+    MvcResult result = callbackResult(start, "5001003");
+
+    assertThat(result.getResponse().getHeader("Location")).isEqualTo(FRONT + "/");
+    String sessionHeader =
+        result.getResponse().getHeaders("Set-Cookie").stream()
+            .filter(h -> h.startsWith(AuthFlowSupport.SESSION_COOKIE_NAME + "="))
+            .findFirst()
+            .orElseThrow();
+    assertThat(sessionHeader)
+        .contains("HttpOnly")
+        .contains("Secure")
+        .containsIgnoringCase("SameSite=Lax");
+    mockMvc
+        .perform(get("/api/auth/context").cookie(AuthFlowSupport.sessionCookie(result)))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void state가_일치하지_않으면_로그인_화면으로_이동하고_계정을_만들지_않는다() throws Exception {
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
+
+    String location =
+        mockMvc
+            .perform(
+                get("/api/auth/kakao/callback")
+                    .cookie(start.cookie())
+                    .param("code", "5001001")
+                    .param("state", "wrong-state"))
+            .andReturn()
+            .getResponse()
+            .getHeader("Location");
+
+    assertThat(location).isEqualTo(FAILED);
+    assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM app_user", Integer.class))
+        .isZero();
+  }
+
+  @Test
+  void 세션이_없는_콜백은_로그인_화면으로_이동한다() throws Exception {
+    mockMvc
+        .perform(get("/api/auth/kakao/callback").param("code", "5001001").param("state", "x"))
+        .andExpect(status().is3xxRedirection())
+        .andExpect(header().string("Location", FAILED));
+  }
+
+  @Test
+  void 인증_코드가_거절되면_로그인_화면으로_이동한다() throws Exception {
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
+
+    assertThat(callback(start, "not-a-number")).isEqualTo(FAILED);
+    assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM app_user", Integer.class))
+        .isZero();
+  }
+
+  @Test
+  void 실패_콜백도_state를_소비해_정상_코드로_재사용할_수_없다() throws Exception {
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
+
+    String failed =
+        mockMvc
+            .perform(
+                get("/api/auth/kakao/callback")
+                    .cookie(start.cookie())
+                    .param("state", start.state())
+                    .param("error", "access_denied")
+                    .param("code", "5001001"))
+            .andReturn()
+            .getResponse()
+            .getHeader("Location");
+
+    assertThat(failed).isEqualTo(FAILED);
+    assertThat(callback(start, "5001001")).isEqualTo(FAILED);
+    assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM app_user", Integer.class))
+        .isZero();
+  }
+
+  @Test
+  void 성공한_콜백의_state도_다시_쓸_수_없다() throws Exception {
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
+    callback(start, "5001001");
+
+    assertThat(callback(start, "5001001")).isEqualTo(FAILED);
+  }
+
+  @Test
+  void 다른_세션의_state는_쓸_수_없다() throws Exception {
+    KakaoStart first = flow.startKakao("/api/auth/kakao/start", null);
+    KakaoStart second = flow.startKakao("/api/auth/kakao/start", null);
+
+    String location =
+        mockMvc
+            .perform(
+                get("/api/auth/kakao/callback")
+                    .cookie(second.cookie())
+                    .param("code", "5001001")
+                    .param("state", first.state()))
+            .andReturn()
+            .getResponse()
+            .getHeader("Location");
+
+    assertThat(location).isEqualTo(FAILED);
+  }
+
+  @Test
+  void 재인증_용도로_시작한_state는_로그인_콜백에서_쓸_수_없다() throws Exception {
+    AppUser user =
+        appUserRepository.saveAndFlush(
+            AppUserBuilder.anAppUser().kakaoProviderKey("5001004").build());
+    Cookie session = kakaoSessionFor(user);
+    KakaoStart stepUp = flow.startKakao("/api/auth/step-up/kakao/start", session);
+
+    assertThat(stepUp.location()).contains("flow=STEP_UP");
+    assertThat(callback(stepUp, "5001004")).isEqualTo(FAILED);
+  }
+
+  @Test
+  void 탈퇴한_사용자는_로그인할_수_없다() throws Exception {
+    appUserRepository.saveAndFlush(AppUserBuilder.anAppUser().kakaoProviderKey("5001005").build());
+    jdbcTemplate.update("UPDATE app_user SET account_status = 'WITHDRAWN', withdrawn_at = now()");
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
+
+    assertThat(callback(start, "5001005")).isEqualTo(FAILED);
+  }
+
+  @Test
+  void 카카오_쪽에서_끊긴_계정은_다시_인증하면_같은_계정에_다시_연결한다() throws Exception {
+    appUserRepository.saveAndFlush(AppUserBuilder.anAppUser().kakaoProviderKey("5001006").build());
+    jdbcTemplate.update(
+        "UPDATE app_user SET phone = '010-1111-4444', phone_verified_at = now(),"
+            + " kakao_unlinked_at = now()");
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
+
+    callback(start, "5001006");
+
+    assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM app_user", Integer.class))
+        .isEqualTo(1);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT kakao_unlinked_at FROM app_user", java.sql.Timestamp.class))
+        .isNull();
+  }
+
+  @Test
+  void 반환_보관_권한자_용도는_세션_없이_인증_완료_코드만_전달한다() throws Exception {
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start?purpose=GRANT", null);
+
+    MvcResult result = callbackResult(start, "5001007");
+
+    String location = result.getResponse().getHeader("Location");
+    assertThat(location).startsWith(FRONT + "/grant/verify?credential=");
+    String credential = location.substring(location.indexOf("credential=") + 11);
+    assertThat(redisTemplate.opsForValue().get("sairo:grant-credential:" + credential))
+        .isEqualTo("5001007");
+    assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM app_user", Integer.class))
+        .isZero();
+    assertThat(
+            result.getResponse().getHeaders("Set-Cookie").stream()
+                .anyMatch(h -> h.startsWith(AuthFlowSupport.SESSION_COOKIE_NAME + "=")))
+        .isFalse();
+  }
+
+  @Test
+  void 동시에_같은_state로_콜백해도_한_요청만_성공한다() throws Exception {
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
+    CountDownLatch ready = new CountDownLatch(2);
+    try (var executor = Executors.newFixedThreadPool(2)) {
+      var first =
+          executor.submit(
+              () -> {
+                ready.countDown();
+                ready.await(10, TimeUnit.SECONDS);
+                return callback(start, "5001008");
+              });
+      var second =
+          executor.submit(
+              () -> {
+                ready.countDown();
+                ready.await(10, TimeUnit.SECONDS);
+                return callback(start, "5001008");
+              });
+      assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS)))
+          .containsExactlyInAnyOrder(FRONT + "/signup/kakao", FAILED);
     }
-    return null;
+    assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM app_user", Integer.class))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void 인증되지_않은_요청은_401이다() throws Exception {
+    mockMvc.perform(get("/api/me")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void 콜백에서_인증_세션이_발급되면_이전_세션은_더_이상_쓸_수_없다() throws Exception {
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start", null);
+    callback(start, "5001009");
+
+    mockMvc
+        .perform(get("/api/auth/context").cookie(start.cookie()))
+        .andExpect(status().isUnauthorized());
   }
 }

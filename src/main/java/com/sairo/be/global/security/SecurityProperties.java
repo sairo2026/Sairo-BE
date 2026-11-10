@@ -8,4 +8,5 @@ public record SecurityProperties(
     String rateLimitHmacSecret,
     String kakaoKeyHmacSecret,
     int kakaoKeyHmacVersion,
-    String unsubscribeSecret) {}
+    String unsubscribeSecret,
+    String kakaoKeyEncryptionSecret) {}

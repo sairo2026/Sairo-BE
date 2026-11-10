@@ -9,6 +9,7 @@ import java.lang.annotation.Target;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.TestPropertySource;
 
 @Documented
 @Target(ElementType.TYPE)
@@ -16,4 +17,10 @@ import org.springframework.context.annotation.Import;
 @Import({TestcontainersConfiguration.class, SecurityProbeController.class})
 @SpringBootTest
 @AutoConfigureMockMvc
+@TestPropertySource(
+    properties = {
+      "sairo.integrations.kakao-oauth=stub",
+      "kakao.admin-key=test-admin-key",
+      "kakao.app-id=1234567"
+    })
 public @interface IntegrationTest {}

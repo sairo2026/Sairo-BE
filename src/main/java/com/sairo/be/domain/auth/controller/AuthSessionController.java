@@ -6,6 +6,7 @@ import com.sairo.be.domain.auth.dto.request.LoginRequest;
 import com.sairo.be.domain.auth.dto.request.PhoneVerificationSendRequest;
 import com.sairo.be.domain.auth.dto.request.PhoneVerifyRequest;
 import com.sairo.be.domain.auth.dto.request.SignupEmailRequest;
+import com.sairo.be.domain.auth.dto.request.SignupKakaoRequest;
 import com.sairo.be.domain.auth.dto.response.AccessConditionResponse;
 import com.sairo.be.domain.auth.dto.response.AuthContextResponse;
 import com.sairo.be.domain.auth.dto.response.EmailVerifyResponse;
@@ -17,6 +18,7 @@ import com.sairo.be.domain.auth.service.AccessContextService;
 import com.sairo.be.domain.auth.service.EmailLoginService;
 import com.sairo.be.domain.auth.service.EmailSignupService;
 import com.sairo.be.domain.auth.service.EmailVerificationService;
+import com.sairo.be.domain.auth.service.KakaoSignupService;
 import com.sairo.be.domain.auth.service.PhoneVerificationService;
 import com.sairo.be.domain.auth.service.ReconsentService;
 import com.sairo.be.domain.auth.service.RecoveryOptionsService;
@@ -55,6 +57,7 @@ public class AuthSessionController {
   private final AccessContextService accessContextService;
   private final ReconsentService reconsentService;
   private final MemberSessionManager sessionManager;
+  private final KakaoSignupService kakaoSignupService;
 
   public AuthSessionController(
       EmailLoginService emailLoginService,
@@ -64,7 +67,8 @@ public class AuthSessionController {
       RecoveryOptionsService recoveryOptionsService,
       AccessContextService accessContextService,
       ReconsentService reconsentService,
-      MemberSessionManager sessionManager) {
+      MemberSessionManager sessionManager,
+      KakaoSignupService kakaoSignupService) {
     this.emailLoginService = emailLoginService;
     this.emailSignupService = emailSignupService;
     this.emailVerificationService = emailVerificationService;
@@ -73,6 +77,7 @@ public class AuthSessionController {
     this.accessContextService = accessContextService;
     this.reconsentService = reconsentService;
     this.sessionManager = sessionManager;
+    this.kakaoSignupService = kakaoSignupService;
   }
 
   @Operation(summary = "접근 상태 판정 조회", description = "접근 상태 8조건 판정 결과와 약관 재동의 필요 여부를 돌려준다.")
@@ -166,6 +171,22 @@ public class AuthSessionController {
         emailSignupService.signup(request, ClientRequestInfo.from(httpRequest));
     sessionManager.begin(httpRequest, httpResponse, principal);
     return AuthMapper.toAccessCondition(accessContextService.judge(principal.userId()));
+  }
+
+  @Operation(
+      summary = "카카오 가입 추가정보 입력",
+      description = "카카오 인증을 마친 계정에 이름, 본인확인 번호, 약관 동의를 저장해 가입을 완료한다.")
+  @RequiresAccess(AccessPermission.AUTHENTICATED)
+  @PostMapping("/signup/kakao")
+  @ResponseStatus(HttpStatus.CREATED)
+  public AccessConditionResponse signupKakao(
+      @Valid @RequestBody SignupKakaoRequest request,
+      @AuthenticationPrincipal StaffPrincipal principal,
+      HttpServletRequest httpRequest,
+      HttpServletResponse httpResponse) {
+    StaffPrincipal completed = kakaoSignupService.complete(principal.userId(), request);
+    sessionManager.begin(httpRequest, httpResponse, completed);
+    return AuthMapper.toAccessCondition(accessContextService.judge(completed.userId()));
   }
 
   @Operation(summary = "계정 복구 안내", description = "소유가 확인된 이메일 또는 휴대폰 티켓으로 기존 계정의 로그인·복구 경로를 안내한다.")

@@ -70,6 +70,15 @@ public class EmailVerificationService {
     return new VerificationSendResponse(true, (int) AuthRateLimits.RESEND_INTERVAL.toSeconds());
   }
 
+  public VerificationSendResponse sendLink(Long userId, String rawEmail) {
+    return send(userId, EmailVerificationPurpose.LINK, rawEmail);
+  }
+
+  @Transactional
+  public EmailVerifyResponse verifyLink(Long userId, String token, String clientIp) {
+    return verify(userId, EmailVerificationPurpose.LINK, token, clientIp);
+  }
+
   public VerificationSendResponse sendSignup(String rawEmail) {
     return send(null, EmailVerificationPurpose.SIGNUP, rawEmail);
   }
