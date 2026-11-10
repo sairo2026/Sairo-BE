@@ -1,6 +1,7 @@
 package com.sairo.be.domain.visit.service;
 
 import com.sairo.be.domain.visit.entity.CoordinationStatus;
+import com.sairo.be.domain.visit.entity.RescheduleTriggerType;
 import com.sairo.be.domain.visit.entity.StatusChangeSource;
 import com.sairo.be.domain.visit.entity.VisitCoordination;
 import com.sairo.be.domain.visit.entity.VisitCoordinationStatusHistory;
@@ -28,6 +29,17 @@ public class CoordinationStatusService {
   public void recordOpening(
       VisitCoordination coordination, StatusChangeSource source, Long actorMembershipId) {
     historyRepository.save(coordination.openingHistory(actorMembershipId, source, clock.instant()));
+  }
+
+  @Transactional(propagation = Propagation.MANDATORY)
+  public void raiseReschedule(
+      VisitCoordination coordination,
+      RescheduleTriggerType trigger,
+      StatusChangeSource source,
+      Long actorMembershipId,
+      String reason) {
+    historyRepository.save(
+        coordination.raiseReschedule(trigger, reason, source, actorMembershipId, clock.instant()));
   }
 
   @Transactional(propagation = Propagation.MANDATORY)

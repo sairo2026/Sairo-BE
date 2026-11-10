@@ -28,6 +28,14 @@ public abstract class VisitIntegrationTestBase extends CustomerIntegrationTestBa
         NOTICE_VERSION,
         "b".repeat(64));
     jdbcTemplate.update(
+        "INSERT INTO terms_catalog (terms_code, terms_version, title, category, required,"
+            + " document_url, content_hash, effective_at, display_context, reconsent_required)"
+            + " VALUES ('GUEST_LINK_NOTICE_APPROVER', ?, '승인자 링크 개인정보 안내', 'NOTICE', false,"
+            + " '/legal/link-notice/approver', ?, now() - interval '1 day', 'LINK_NOTICE',"
+            + " false)",
+        NOTICE_VERSION,
+        "c".repeat(64));
+    jdbcTemplate.update(
         "INSERT INTO legal_retention_rule (rule_code, data_group_label, retention_days,"
             + " anchor_event, basis_note, status) VALUES ('GUEST_INPUT_AFTER_APPROVAL_END',"
             + " '비회원 링크 입력 데이터', 90, 'APPROVAL_END', '내부 기준', 'ASSUMPTION')");

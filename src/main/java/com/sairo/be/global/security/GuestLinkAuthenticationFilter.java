@@ -17,7 +17,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class GuestLinkAuthenticationFilter extends OncePerRequestFilter {
 
   private static final Pattern LINK_PATH =
-      Pattern.compile("^/api/public/customer-visit-links/([^/]{1,512})(/.*)?$");
+      Pattern.compile(
+          "^/api/public/(?:customer-visit-links|approver-property-links)/([^/]{1,512})(/.*)?$");
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
