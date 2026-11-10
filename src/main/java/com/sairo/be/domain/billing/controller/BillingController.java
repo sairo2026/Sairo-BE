@@ -16,11 +16,16 @@ import com.sairo.be.domain.billing.dto.response.RefundRequestCreateResponse;
 import com.sairo.be.domain.billing.dto.response.RefundRequestItemResponse;
 import com.sairo.be.domain.billing.dto.response.RefundRequestStatusResponse;
 import com.sairo.be.domain.billing.dto.response.StartCustomerAgreementResponse;
+import com.sairo.be.domain.billing.dto.response.SubscriptionCancelResponse;
+import com.sairo.be.domain.billing.dto.response.SubscriptionCancelWithdrawResponse;
 import com.sairo.be.domain.billing.dto.response.SubscriptionCurrentResponse;
 import com.sairo.be.domain.billing.dto.response.SubscriptionPurchaseConsentResponse;
+import com.sairo.be.domain.billing.dto.response.SubscriptionStateResponse;
 import com.sairo.be.domain.billing.dto.response.TaxRecipientResponse;
 import com.sairo.be.domain.billing.service.BillingKeyService;
 import com.sairo.be.domain.billing.service.BillingPlanService;
+import com.sairo.be.domain.billing.service.CancellationService;
+import com.sairo.be.domain.billing.service.DirectPaymentService;
 import com.sairo.be.domain.billing.service.InvoiceQueryService;
 import com.sairo.be.domain.billing.service.PriceChangeNoticeService;
 import com.sairo.be.domain.billing.service.PurchaseConsentService;
@@ -70,6 +75,8 @@ public class BillingController {
   private final StartCustomerAgreementService agreementService;
   private final PriceChangeNoticeService noticeService;
   private final TaxRecipientService taxRecipientService;
+  private final DirectPaymentService directPaymentService;
+  private final CancellationService cancellationService;
 
   public BillingController(
       BillingPlanService planService,
@@ -80,7 +87,9 @@ public class BillingController {
       RefundRequestService refundService,
       StartCustomerAgreementService agreementService,
       PriceChangeNoticeService noticeService,
-      TaxRecipientService taxRecipientService) {
+      TaxRecipientService taxRecipientService,
+      DirectPaymentService directPaymentService,
+      CancellationService cancellationService) {
     this.planService = planService;
     this.currentService = currentService;
     this.billingKeyService = billingKeyService;
@@ -90,6 +99,8 @@ public class BillingController {
     this.agreementService = agreementService;
     this.noticeService = noticeService;
     this.taxRecipientService = taxRecipientService;
+    this.directPaymentService = directPaymentService;
+    this.cancellationService = cancellationService;
   }
 
   @Operation(summary = "요금제 목록", description = "현재 과금 인원 기준 예상 금액과 적용 가격 버전을 함께 돌려준다.")
@@ -259,5 +270,37 @@ public class BillingController {
       @Valid @RequestBody TaxRecipientUpsertRequest request,
       @AuthenticationPrincipal StaffPrincipal principal) {
     return taxRecipientService.save(principal, request);
+  }
+
+  @Operation(
+      summary = "첫 결제 직접 요청",
+      description = "결제 전 상태의 대표가 첫 결제를 요청한다. 유효한 동의와 등록 카드가 없으면 청구하지 않는다.")
+  @PostMapping("/subscriptions/first-payment")
+  @RequiresAccess(AccessPermission.OWNER)
+  public SubscriptionStateResponse firstPayment(@AuthenticationPrincipal StaffPrincipal principal) {
+    return directPaymentService.firstPayment(principal);
+  }
+
+  @Operation(summary = "지금 재결제", description = "미납 또는 반환기간 중 대표가 원청구 금액으로 재결제한다.")
+  @PostMapping("/subscriptions/retry-payment")
+  @RequiresAccess(AccessPermission.OWNER)
+  public SubscriptionStateResponse retryPayment(@AuthenticationPrincipal StaffPrincipal principal) {
+    return directPaymentService.retryPayment(principal);
+  }
+
+  @Operation(summary = "해지 예약", description = "현재 유료기간 종료 시각에 해지가 적용된다. 재인증이 필요하다.")
+  @PostMapping("/subscriptions/cancel")
+  @RequiresAccess(AccessPermission.OWNER)
+  public SubscriptionCancelResponse cancelSubscription(
+      @AuthenticationPrincipal StaffPrincipal principal, HttpSession session) {
+    return cancellationService.cancel(principal, session);
+  }
+
+  @Operation(summary = "해지 예약 취소", description = "해지가 적용되기 전에만 철회할 수 있다.")
+  @PostMapping("/subscriptions/cancel/withdraw")
+  @RequiresAccess(AccessPermission.OWNER)
+  public SubscriptionCancelWithdrawResponse withdrawCancellation(
+      @AuthenticationPrincipal StaffPrincipal principal) {
+    return cancellationService.withdraw(principal);
   }
 }

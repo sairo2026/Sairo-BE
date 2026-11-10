@@ -122,7 +122,11 @@ class OpenApiDocumentationTest {
           Map.entry(
               "POST /api/subscriptions/price-change-notices/{noticeId}/decline", Set.of("200")),
           Map.entry("GET /api/billing/tax-recipient", Set.of("200")),
-          Map.entry("PUT /api/billing/tax-recipient", Set.of("200")));
+          Map.entry("PUT /api/billing/tax-recipient", Set.of("200")),
+          Map.entry("POST /api/subscriptions/first-payment", Set.of("200")),
+          Map.entry("POST /api/subscriptions/retry-payment", Set.of("200")),
+          Map.entry("POST /api/subscriptions/cancel", Set.of("200")),
+          Map.entry("POST /api/subscriptions/cancel/withdraw", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 

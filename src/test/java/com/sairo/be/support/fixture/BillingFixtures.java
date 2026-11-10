@@ -193,6 +193,18 @@ public final class BillingFixtures {
     return new InvoiceSeed(jdbc, officeId, subscriptionId, consentId);
   }
 
+  public void billingCustomerWithKey(long officeId, String customerKey, String encryptedKey) {
+    jdbc.update(
+        "INSERT INTO billing_customer (office_id, toss_customer_key, billing_key_encrypted,"
+            + " billing_key_registered_at, card_issuer, card_last4) VALUES (?, ?, ?, ?, ?, ?)",
+        officeId,
+        customerKey,
+        encryptedKey,
+        Timestamp.from(Instant.now()),
+        "국민카드",
+        "1234");
+  }
+
   public void billingCustomer(long officeId, String customerKey, boolean withKey) {
     jdbc.update(
         "INSERT INTO billing_customer (office_id, toss_customer_key, billing_key_encrypted,"
