@@ -8,6 +8,15 @@ public interface PaymentGateway {
 
   PaymentResult cancel(String paymentKey, String reason);
 
+  PaymentResult inquire(String orderId);
+
+  class BillingKeyIssueException extends RuntimeException {
+
+    public BillingKeyIssueException(String message) {
+      super(message);
+    }
+  }
+
   enum PaymentStatus {
     SUCCEEDED,
     FAILED,

@@ -9,10 +9,13 @@ import java.util.Base64;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Profile("!migrate")
+@Primary
 @Component
 public class TextCipher {
 
@@ -22,11 +25,15 @@ public class TextCipher {
   private final SecretKeySpec key;
   private final SecureRandom secureRandom = new SecureRandom();
 
+  @Autowired
   public TextCipher(SecurityProperties properties) {
+    this(properties.kakaoKeyEncryptionSecret());
+  }
+
+  public TextCipher(String secret) {
     try {
       byte[] digest =
-          MessageDigest.getInstance("SHA-256")
-              .digest(properties.kakaoKeyEncryptionSecret().getBytes(StandardCharsets.UTF_8));
+          MessageDigest.getInstance("SHA-256").digest(secret.getBytes(StandardCharsets.UTF_8));
       this.key = new SecretKeySpec(digest, "AES");
     } catch (GeneralSecurityException e) {
       throw new IllegalStateException("암호화 키를 만들지 못했습니다.", e);

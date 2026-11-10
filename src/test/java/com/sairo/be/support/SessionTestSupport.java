@@ -62,6 +62,20 @@ public class SessionTestSupport {
     return session.getId();
   }
 
+  public String createGrantSession(
+      com.sairo.be.global.security.GrantPrincipal principal, Instant issuedAt) {
+    Session session = sessionRepository.createSession();
+    SecurityContext context = SecurityContextHolder.createEmptyContext();
+    context.setAuthentication(new com.sairo.be.global.security.GrantAuthentication(principal));
+    session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
+    session.setAttribute(AbsoluteSessionTimeoutFilter.KIND_ATTRIBUTE, SessionKind.GRANT);
+    session.setAttribute(AbsoluteSessionTimeoutFilter.ISSUED_AT_ATTRIBUTE, issuedAt);
+    session.setMaxInactiveInterval(SessionKind.GRANT.idleTimeout());
+    session.setLastAccessedTime(issuedAt);
+    sessionRepository.save(session);
+    return session.getId();
+  }
+
   public boolean exists(String sessionId) {
     return sessionRepository.findById(sessionId) != null;
   }

@@ -53,7 +53,9 @@ public class SecurityConfig {
                     new DelegatingRequestMatcherHeaderWriter(
                         PathPatternRequestMatcher.pathPattern("/api/public/**"),
                         (request, response) -> {
-                          response.setHeader("Cache-Control", "no-store");
+                          if (!response.containsHeader("Cache-Control")) {
+                            response.setHeader("Cache-Control", "no-store");
+                          }
                           response.setHeader("Referrer-Policy", "no-referrer");
                         })))
         .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
