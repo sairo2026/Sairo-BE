@@ -7,19 +7,23 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Profile("!prod & !migrate")
+@ConditionalOnExpression("'${sairo.toss.secret-key:}'.trim() == ''")
 @Component
 public class StubPaymentGateway implements PaymentGateway {
 
   private final List<ChargeCommand> charges = new CopyOnWriteArrayList<>();
+  private final List<ConfirmCommand> confirms = new CopyOnWriteArrayList<>();
   private final AtomicReference<PaymentStatus> nextStatus =
       new AtomicReference<>(PaymentStatus.SUCCEEDED);
 
   private final AtomicBoolean failNextIssue = new AtomicBoolean(false);
   private final List<String> issuedCustomerKeys = new CopyOnWriteArrayList<>();
+  private final List<String> deletedBillingKeys = new CopyOnWriteArrayList<>();
   private final Map<String, PaymentResult> orders = new ConcurrentHashMap<>();
   private final AtomicReference<RuntimeException> chargeFailure = new AtomicReference<>();
   private final AtomicReference<String> failureCode = new AtomicReference<>("STUB_DECLINED");
@@ -53,13 +57,23 @@ public class StubPaymentGateway implements PaymentGateway {
     return List.copyOf(issuedCustomerKeys);
   }
 
+  public List<ConfirmCommand> confirms() {
+    return List.copyOf(confirms);
+  }
+
+  public List<String> deletedBillingKeys() {
+    return List.copyOf(deletedBillingKeys);
+  }
+
   public List<ChargeCommand> charges() {
     return List.copyOf(charges);
   }
 
   public void reset() {
     charges.clear();
+    confirms.clear();
     issuedCustomerKeys.clear();
+    deletedBillingKeys.clear();
     orders.clear();
     chargeFailure.set(null);
     failureCode.set("STUB_DECLINED");
@@ -77,6 +91,11 @@ public class StubPaymentGateway implements PaymentGateway {
   }
 
   @Override
+  public void deleteBillingKey(String billingKey) {
+    deletedBillingKeys.add(billingKey);
+  }
+
+  @Override
   public PaymentResult charge(ChargeCommand command) {
     charges.add(command);
     RuntimeException failure = chargeFailure.getAndSet(null);
@@ -89,6 +108,23 @@ public class StubPaymentGateway implements PaymentGateway {
     PaymentStatus status = nextStatus.get();
     String code = status == PaymentStatus.FAILED ? failureCode.get() : null;
     PaymentResult result = new PaymentResult(status, "stub-payment-" + command.orderId(), code);
+    orders.put(command.orderId(), result);
+    return result;
+  }
+
+  @Override
+  public PaymentResult confirm(ConfirmCommand command) {
+    confirms.add(command);
+    RuntimeException failure = chargeFailure.getAndSet(null);
+    if (failure != null) {
+      orders.put(
+          command.orderId(),
+          new PaymentResult(PaymentStatus.VERIFYING, command.paymentKey(), null));
+      throw failure;
+    }
+    PaymentStatus status = nextStatus.get();
+    String code = status == PaymentStatus.FAILED ? failureCode.get() : null;
+    PaymentResult result = new PaymentResult(status, command.paymentKey(), code);
     orders.put(command.orderId(), result);
     return result;
   }

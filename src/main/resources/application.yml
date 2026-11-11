@@ -48,6 +48,10 @@ sairo:
     kakao-key-hmac-version: 1
     unsubscribe-secret: ${AUTH_UNSUBSCRIBE_SECRET:sairo-local-dev-unsubscribe-secret-do-not-use-in-prod}
     kakao-key-encryption-secret: ${AUTH_KAKAO_KEY_ENCRYPTION_SECRET:sairo-local-dev-kakao-key-encryption-do-not-use-in-prod}
+  toss:
+    secret-key: ${TOSS_SECRET_KEY:}
+    webhook-secret: ${TOSS_WEBHOOK_SECRET:}
+    base-url: ${TOSS_API_BASE_URL:https://api.tosspayments.com}
   billing:
     vat-rate-bp: 1000
     customer-key-ttl: PT15M
