@@ -16,6 +16,7 @@ import com.sairo.be.domain.visit.repository.VisitCustomerLinkRepository;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
+import com.sairo.be.global.port.VisitWorkHooks;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StaffRole;
 import com.sairo.be.global.support.AdvisoryLock;
@@ -44,6 +45,7 @@ public class ManagerChangeService {
   private final VisitCoordinationRepository coordinationRepository;
   private final VisitCoordinationQueryService queryService;
   private final AdvisoryLock advisoryLock;
+  private final VisitWorkHooks workHooks;
   private final Clock clock;
 
   public ManagerChangeService(
@@ -55,6 +57,7 @@ public class ManagerChangeService {
       VisitCoordinationRepository coordinationRepository,
       VisitCoordinationQueryService queryService,
       AdvisoryLock advisoryLock,
+      VisitWorkHooks workHooks,
       Clock clock) {
     this.access = access;
     this.memberDirectory = memberDirectory;
@@ -64,6 +67,7 @@ public class ManagerChangeService {
     this.coordinationRepository = coordinationRepository;
     this.queryService = queryService;
     this.advisoryLock = advisoryLock;
+    this.workHooks = workHooks;
     this.clock = clock;
   }
 
@@ -126,6 +130,7 @@ public class ManagerChangeService {
       linkRepository
           .findFirstByCoordinationIdAndRevokedAtIsNull(coordinationId)
           .ifPresent(link -> link.revoke(now));
+      workHooks.coordinationManagerChanged(coordinationId, principal.membershipId());
     }
     List<VisitManagerUpdateResponse.AffectedItem> affected = new ArrayList<>();
     List<ItemRow> kept = own.stream().filter(ItemRow::kept).toList();

@@ -15,6 +15,8 @@ import com.sairo.be.domain.property.repository.EntityLifecycleEventRepository;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
+import com.sairo.be.global.port.NotificationPublisher;
+import com.sairo.be.global.port.NotificationPublisher.Notice;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.TimeRules;
 import java.time.Clock;
@@ -59,12 +61,14 @@ public class CustomerCommandService {
   private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
   private static final int PHONE_MAX = 30;
   private static final int EMAIL_MAX = 254;
+  static final String MANAGER_MESSAGE = "고객 담당자로 지정됐습니다.";
 
   private final CustomerRepository customerRepository;
   private final CustomerReadRepository readRepository;
   private final EntityLifecycleEventRepository lifecycleEventRepository;
   private final CustomerGuard guard;
   private final CustomerDetailAssembler assembler;
+  private final NotificationPublisher notificationPublisher;
   private final Clock clock;
 
   public CustomerCommandService(
@@ -73,12 +77,14 @@ public class CustomerCommandService {
       EntityLifecycleEventRepository lifecycleEventRepository,
       CustomerGuard guard,
       CustomerDetailAssembler assembler,
+      NotificationPublisher notificationPublisher,
       Clock clock) {
     this.customerRepository = customerRepository;
     this.readRepository = readRepository;
     this.lifecycleEventRepository = lifecycleEventRepository;
     this.guard = guard;
     this.assembler = assembler;
+    this.notificationPublisher = notificationPublisher;
     this.clock = clock;
   }
 
@@ -172,6 +178,17 @@ public class CustomerCommandService {
     if (managerId != null && !managerId.equals(customer.getManagingMembershipId())) {
       guard.validateManager(principal.officeId(), managerId, "managingMembershipId");
       customer.changeManager(managerId);
+      if (!managerId.equals(principal.membershipId())) {
+        notificationPublisher.publishToMembership(
+            managerId,
+            new Notice(
+                principal.officeId(),
+                null,
+                "ASSIGNEE_CHANGED",
+                MANAGER_MESSAGE,
+                "CUSTOMER",
+                customerId));
+      }
     }
     if (has(body, "phone") || has(body, "secondaryPhone") || has(body, "email")) {
       customer.changeContact(

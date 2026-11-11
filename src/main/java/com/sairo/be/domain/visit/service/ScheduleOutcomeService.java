@@ -19,6 +19,7 @@ import com.sairo.be.domain.visit.repository.VisitRequestNoticeRepository;
 import com.sairo.be.domain.visit.repository.VisitRequestRepository;
 import com.sairo.be.domain.visit.repository.VisitRequestStatusHistoryRepository;
 import com.sairo.be.domain.visit.service.VisitRequestChecker.Slot;
+import com.sairo.be.global.port.VisitWorkHooks;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -45,6 +46,7 @@ public class ScheduleOutcomeService {
   private final VisitCustomerLinkRepository linkRepository;
   private final CoordinationStatusService statusService;
   private final ScheduleStateService stateService;
+  private final VisitWorkHooks workHooks;
 
   public ScheduleOutcomeService(
       ScheduleResultRepository resultRepository,
@@ -54,7 +56,8 @@ public class ScheduleOutcomeService {
       VisitRequestNoticeRepository noticeRepository,
       VisitCustomerLinkRepository linkRepository,
       CoordinationStatusService statusService,
-      ScheduleStateService stateService) {
+      ScheduleStateService stateService,
+      VisitWorkHooks workHooks) {
     this.resultRepository = resultRepository;
     this.itemRepository = itemRepository;
     this.requestRepository = requestRepository;
@@ -63,6 +66,7 @@ public class ScheduleOutcomeService {
     this.linkRepository = linkRepository;
     this.statusService = statusService;
     this.stateService = stateService;
+    this.workHooks = workHooks;
   }
 
   /** 예정 방문 하나를 취소한다. replacement가 있으면 변경 대체이며 새 확정 구간과 겹치지 않는 부분만 빈 구간으로 본다. */
@@ -90,6 +94,7 @@ public class ScheduleOutcomeService {
             reasonCode));
     resultRepository.updateItem(
         item.id(), "CANCELLED", now, null, recorderMembershipId, null, null);
+    workHooks.scheduleItemCancelled(item.id());
     if (item.confirmedRequestId() == null) {
       return;
     }
