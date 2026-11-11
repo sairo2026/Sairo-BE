@@ -14,6 +14,7 @@ import com.sairo.be.domain.billing.repository.SubscriptionCancellationRepository
 import com.sairo.be.domain.billing.repository.SubscriptionRepository;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.support.AdvisoryLock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +31,7 @@ public class BillingJobService {
   private static final List<InvoiceStatus> UNPAID =
       List.of(InvoiceStatus.UNBILLED, InvoiceStatus.FAILED);
   private static final int MAX_BOUNDARY_STEPS = 1200;
+  static final List<Integer> TRIAL_ENDING_DAYS = List.of(1, 7, 14, 30);
 
   private final SubscriptionRepository subscriptionRepository;
   private final BillingInvoiceRepository invoiceRepository;
@@ -44,6 +46,7 @@ public class BillingJobService {
   private final AdvisoryLock advisoryLock;
   private final TransactionTemplate transactionTemplate;
   private final AuthSuspensionService authSuspensionService;
+  private final BillingNoticeDispatcher noticeDispatcher;
 
   public BillingJobService(
       SubscriptionRepository subscriptionRepository,
@@ -58,7 +61,8 @@ public class BillingJobService {
       SystemJobRunService jobRunService,
       AdvisoryLock advisoryLock,
       TransactionTemplate transactionTemplate,
-      AuthSuspensionService authSuspensionService) {
+      AuthSuspensionService authSuspensionService,
+      BillingNoticeDispatcher noticeDispatcher) {
     this.subscriptionRepository = subscriptionRepository;
     this.invoiceRepository = invoiceRepository;
     this.customerRepository = customerRepository;
@@ -72,9 +76,11 @@ public class BillingJobService {
     this.advisoryLock = advisoryLock;
     this.transactionTemplate = transactionTemplate;
     this.authSuspensionService = authSuspensionService;
+    this.noticeDispatcher = noticeDispatcher;
   }
 
   public void runAll(Instant now) {
+    runTrialEndingNotices(now);
     runFirstCharges(now);
     runRenewals(now);
     runRetries(now);
@@ -82,6 +88,54 @@ public class BillingJobService {
     runPrePaymentExpiry(now);
     runReconciliation();
     authSuspensionService.expireSuspensions(now);
+  }
+
+  /**
+   * 무료 종료 30·14·7·1일 전 안내다. 지금 지난 가장 가까운 기준 하나만 보내고, 같은 구독·종료 시각·기준일은 system_job_run 키로 한 번만 보낸다.
+   * 해지를 예약한 구독에는 보내지 않는다.
+   */
+  public void runTrialEndingNotices(Instant now) {
+    Instant until = now.plus(Duration.ofDays(TRIAL_ENDING_DAYS.getLast()));
+    for (Subscription subscription :
+        subscriptionRepository.findByStatusAndTrialEndsAtGreaterThanAndTrialEndsAtLessThanEqual(
+            SubscriptionStatus.TRIAL, now, until)) {
+      Instant endsAt = subscription.getTrialEndsAt();
+      Duration remaining = Duration.between(now, endsAt);
+      Integer days =
+          TRIAL_ENDING_DAYS.stream()
+              .filter(day -> remaining.compareTo(Duration.ofDays(day)) <= 0)
+              .findFirst()
+              .orElse(null);
+      if (days == null) {
+        continue;
+      }
+      jobRunService.runOnce(
+          "billing-trial-ending-notice",
+          subscription.getOfficeId(),
+          "trial-ending-notice:"
+              + subscription.getId()
+              + ":"
+              + endsAt.getEpochSecond()
+              + ":D"
+              + days,
+          endsAt.minus(Duration.ofDays(days)),
+          () -> trialEndingNotice(subscription.getId(), endsAt, days, now));
+    }
+  }
+
+  private void trialEndingNotice(Long subscriptionId, Instant endsAt, int days, Instant now) {
+    transactionTemplate.executeWithoutResult(
+        status -> {
+          Subscription subscription = lockedSubscription(subscriptionId);
+          if (subscription.getStatus() != SubscriptionStatus.TRIAL
+              || !endsAt.equals(subscription.getTrialEndsAt())
+              || cancellationRepository
+                  .findFirstBySubscriptionIdAndRevokedAtIsNullOrderByIdDesc(subscriptionId)
+                  .isPresent()) {
+            return;
+          }
+          noticeDispatcher.trialEnding(subscription.getOfficeId(), endsAt, days + "일");
+        });
   }
 
   public void runFirstCharges(Instant now) {
@@ -219,6 +273,8 @@ public class BillingJobService {
               if (invoice.isEmpty()) {
                 subscription.enterPrePayment(now);
                 subscriptionRepository.save(subscription);
+                noticeDispatcher.prePaymentStarted(
+                    subscription.getOfficeId(), now.plus(BillingPeriods.PRE_PAYMENT_LIMIT));
                 return null;
               }
               return invoice.get().getId();
@@ -313,6 +369,11 @@ public class BillingJobService {
           if (subscription.getStatus() == SubscriptionStatus.PAST_DUE_GRACE) {
             subscription.restrictPastDue();
             subscriptionRepository.save(subscription);
+            Instant since = subscription.getPastDueSince();
+            noticeDispatcher.suspensionStarted(
+                subscription.getOfficeId(),
+                since.plus(BillingPeriods.PAST_DUE_RESTRICT_AFTER),
+                since.plus(BillingPeriods.PAST_DUE_TERMINATE_AFTER));
           }
         });
   }
@@ -334,6 +395,8 @@ public class BillingJobService {
           invoiceRepository.saveAll(open);
           subscription.end(endedAt);
           subscriptionRepository.save(subscription);
+          noticeDispatcher.endedUnpaid(
+              subscription.getOfficeId(), endedAt, BillingPeriods.returnPeriodEnd(endedAt));
         });
   }
 

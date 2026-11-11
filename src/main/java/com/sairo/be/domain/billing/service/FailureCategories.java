@@ -41,6 +41,19 @@ public final class FailureCategories {
     return FailureCategory.OTHER;
   }
 
+  /** 결제 실패 안내에 넣는 사유 문구다. */
+  public static String label(FailureCategory category) {
+    if (category == null) {
+      return "결제사 처리 실패";
+    }
+    return switch (category) {
+      case CARD_UNUSABLE -> "카드 사용 불가";
+      case INSUFFICIENT_FUNDS -> "잔액 또는 한도 부족";
+      case TIMEOUT -> "결제사 응답 지연";
+      case OTHER -> "결제사 처리 실패";
+    };
+  }
+
   public static Instant nextRetryAt(Instant dueAt, int failedAttemptNo, FailureCategory category) {
     if (category == FailureCategory.CARD_UNUSABLE
         || failedAttemptNo < 1
