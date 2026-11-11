@@ -2,11 +2,13 @@ package com.sairo.be.domain.contract.service;
 
 import com.sairo.be.domain.contract.dto.response.PartyResponse;
 import com.sairo.be.domain.contract.entity.ContractRow;
+import com.sairo.be.domain.contract.entity.ContractStatus;
 import com.sairo.be.domain.contract.entity.ContractValues;
 import com.sairo.be.domain.contract.entity.LeasePeriodStatus;
 import com.sairo.be.domain.contract.entity.PartyInput;
 import com.sairo.be.domain.contract.entity.PartyRow;
 import com.sairo.be.domain.contract.entity.PartySide;
+import com.sairo.be.domain.contract.repository.ContractFollowupRepository;
 import com.sairo.be.domain.contract.repository.ContractHistoryRepository;
 import com.sairo.be.domain.contract.repository.ContractPartyRepository;
 import com.sairo.be.domain.contract.repository.ContractRepository;
@@ -15,6 +17,7 @@ import com.sairo.be.domain.customer.service.CustomerInput;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
+import com.sairo.be.global.port.ContractWorkHooks;
 import com.sairo.be.global.port.SettlementRecalculator;
 import com.sairo.be.global.support.TimeRules;
 import java.time.Clock;
@@ -46,20 +49,50 @@ class ContractSupport {
   private final ContractRepository contracts;
   private final ContractPartyRepository parties;
   private final ContractHistoryRepository histories;
+  private final ContractFollowupRepository followups;
   private final SettlementRecalculator recalculator;
+  private final ContractWorkHooks workHooks;
   private final Clock clock;
 
   ContractSupport(
       ContractRepository contracts,
       ContractPartyRepository parties,
       ContractHistoryRepository histories,
+      ContractFollowupRepository followups,
       SettlementRecalculator recalculator,
+      ContractWorkHooks workHooks,
       Clock clock) {
     this.contracts = contracts;
     this.parties = parties;
     this.histories = histories;
+    this.followups = followups;
     this.recalculator = recalculator;
+    this.workHooks = workHooks;
     this.clock = clock;
+  }
+
+  static final long D90_WINDOW_DAYS = 90;
+
+  /**
+   * 체결·재계약·정정·상태 변경 뒤 후속업무와 자동 업무를 맞춘다. 체결된 전세·월세의 만기가 오늘부터 90일 이하이면 D-90 후속업무를 바로 만들고, 체결 상태인데 그
+   * 조건에서 벗어나면 아직 제출하지 않은 D-90 후속업무를 지운다. 잔금 예정·임대 만기 업무는 홈 업무 포트로 넘긴다.
+   */
+  void syncFollowups(Long officeId, Long contractId, Instant now) {
+    ContractRow row = contracts.find(officeId, contractId).orElseThrow();
+    if (row.contractStatus() == ContractStatus.SIGNED) {
+      LocalDate end = row.values().leaseEndDate();
+      boolean due =
+          row.dealType().isLease()
+              && row.duplicateExcludedAt() == null
+              && end != null
+              && !end.isAfter(today(now).plusDays(D90_WINDOW_DAYS));
+      if (!due) {
+        followups.deleteUnsubmitted(contractId, ContractFollowupRepository.D90);
+      } else if (!followups.hasType(contractId, ContractFollowupRepository.D90)) {
+        followups.insert(contractId, ContractFollowupRepository.D90, now);
+      }
+    }
+    workHooks.contractChanged(contractId);
   }
 
   Instant now() {
@@ -200,6 +233,7 @@ class ContractSupport {
         now);
     contracts.completeOffers(row.propertyId(), values.dealType(), now);
     recalculate(row.officeId(), affectedTimes(values));
+    syncFollowups(row.officeId(), row.id(), now);
   }
 
   void recalculate(Long officeId, Collection<Instant> times) {
@@ -214,6 +248,24 @@ class ContractSupport {
       if (date != null) {
         times.add(TimeRules.startOfDisplayDay(date));
       }
+    }
+    return times;
+  }
+
+  /**
+   * 누적 지표(지급의무자별 미수금·초과수납)에 영향을 주는 날짜부터 이번 달까지 각 달의 첫날 0시다. 보수 사건이나 거래가 과거 날짜로 바뀌면 그 달부터 저장된 결산을 모두
+   * 다시 계산해야 하기 때문이다. 현재 달과 저장값이 없는 달은 재계산기가 건너뛴다.
+   */
+  static List<Instant> monthsFrom(LocalDate from, Instant now) {
+    List<Instant> times = new ArrayList<>();
+    if (from == null) {
+      return times;
+    }
+    LocalDate month = from.withDayOfMonth(1);
+    LocalDate last = today(now).withDayOfMonth(1);
+    while (!month.isAfter(last)) {
+      times.add(TimeRules.startOfDisplayDay(month));
+      month = month.plusMonths(1);
     }
     return times;
   }

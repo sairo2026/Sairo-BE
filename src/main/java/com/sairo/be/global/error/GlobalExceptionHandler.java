@@ -91,6 +91,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                   ErrorCode.ATTACHMENT_TOO_LARGE.getMessage(),
                   TraceIds.currentOrNew()));
     }
+    if (statusCode.value() == HttpStatus.CONTENT_TOO_LARGE.value()
+        && request.getDescription(false).startsWith("uri=/api/contracts/")) {
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+          .body(
+              ErrorResponse.of(
+                  BusinessException.withFieldErrors(
+                      ErrorCode.INVALID_REQUEST,
+                      List.of(
+                          new FieldErrorItem(
+                              "file", FieldErrorCode.OUT_OF_RANGE, "파일은 20MB까지 올릴 수 있습니다."))),
+                  TraceIds.currentOrNew()));
+    }
     ErrorCode errorCode = errorCodeFor(statusCode);
     ErrorResponse response =
         ErrorResponse.of(errorCode, errorCode.getMessage(), TraceIds.currentOrNew());

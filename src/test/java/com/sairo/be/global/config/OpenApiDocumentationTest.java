@@ -416,7 +416,20 @@ class OpenApiDocumentationTest {
           Map.entry("PATCH /api/contracts/{contractId}/settlement-status", Set.of("200")),
           Map.entry("POST /api/contracts/{contractId}/renew", Set.of("201")),
           Map.entry("GET /api/contracts/{contractId}/status-history", Set.of("200")),
-          Map.entry("POST /api/contracts/{contractId}/duplicate-exclusion", Set.of("200")));
+          Map.entry("POST /api/contracts/{contractId}/duplicate-exclusion", Set.of("200")),
+          Map.entry("POST /api/contracts/{contractId}/documents", Set.of("201")),
+          Map.entry(
+              "POST /api/contracts/{contractId}/documents/{documentId}/revision", Set.of("201")),
+          Map.entry("GET /api/contracts/{contractId}/documents/{documentId}", Set.of("200")),
+          Map.entry("POST /api/contracts/{contractId}/fees", Set.of("201")),
+          Map.entry("GET /api/contracts/{contractId}/fees", Set.of("200")),
+          Map.entry("POST /api/contract-fees/{feeId}/revisions", Set.of("201")),
+          Map.entry("POST /api/contract-fees/{feeId}/transactions", Set.of("201")),
+          Map.entry("POST /api/contracts/{contractId}/payment-schedules", Set.of("201")),
+          Map.entry("GET /api/contracts/{contractId}/payment-schedules", Set.of("200")),
+          Map.entry("POST /api/payment-schedules/{scheduleId}/transactions", Set.of("201")),
+          Map.entry("GET /api/contracts/{contractId}/followup-tasks", Set.of("200")),
+          Map.entry("PATCH /api/contract-followup-tasks/{taskId}", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 

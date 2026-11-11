@@ -314,6 +314,42 @@ public class ContractRepository {
         .single();
   }
 
+  public List<Long> openManagedIds(Long officeId, Long membershipId) {
+    return jdbcClient
+        .sql(
+            "SELECT id FROM contract WHERE office_id = :office AND managing_membership_id ="
+                + " :member AND contract_status IN ('DRAFT','SIGNED') ORDER BY id")
+        .param("office", officeId)
+        .param("member", membershipId)
+        .query(Long.class)
+        .list();
+  }
+
+  /** 서류·보수·대금·후속업무처럼 계약에 딸린 행을 바꿨을 때 부모 집계의 버전을 올린다. */
+  public void bumpVersion(Long contractId, Instant now) {
+    jdbcClient
+        .sql("UPDATE contract SET" + BUMP + " WHERE id = :id")
+        .param("now", Timestamp.from(now))
+        .param("id", contractId)
+        .update();
+  }
+
+  public Optional<String> paymentMismatchReason(Long contractId) {
+    return jdbcClient
+        .sql("SELECT payment_amount_mismatch_reason FROM contract WHERE id = :id")
+        .param("id", contractId)
+        .query((rs, i) -> Optional.ofNullable(rs.getString(1)))
+        .single();
+  }
+
+  public void updatePaymentMismatchReason(Long contractId, String reason) {
+    jdbcClient
+        .sql("UPDATE contract SET payment_amount_mismatch_reason = :reason WHERE id = :id")
+        .param("reason", reason)
+        .param("id", contractId)
+        .update();
+  }
+
   public int reassignOpen(Long officeId, Long fromMembershipId, Long toMembershipId, Instant now) {
     return jdbcClient
         .sql(

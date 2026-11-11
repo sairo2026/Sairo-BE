@@ -90,6 +90,35 @@ abstract class ContractIntegrationTestBase extends CustomerIntegrationTestBase {
         mockMvc.perform(authedGet(url, cookie)).andExpect(status().isOk()).andReturn());
   }
 
+  /** 상세 응답의 현재 값으로 정정 본문을 만든다. 당사자는 partyId·sequenceNo를 포함한다. */
+  protected tools.jackson.databind.node.ObjectNode correctionOf(long contractId) throws Exception {
+    JsonNode detail = getJson("/api/contracts/" + contractId, ownerCookie);
+    tools.jackson.databind.node.ObjectNode body =
+        tools.jackson.databind.json.JsonMapper.builder().build().createObjectNode();
+    body.put("baseRevisionId", detail.get("currentRevisionId").longValue());
+    body.put("reason", "오기록 정정");
+    body.put(
+        "effectiveAt",
+        java.time.Instant.now().minusSeconds(3600).atZone(KST).toOffsetDateTime().toString());
+    for (String key :
+        new String[] {
+          "signedDate",
+          "dealType",
+          "salePrice",
+          "depositAmount",
+          "monthlyRentAmount",
+          "balanceDueDate",
+          "balanceDueDatePendingReason",
+          "leaseStartDate",
+          "leaseEndDate",
+          "sellerLandlordParties",
+          "buyerTenantParties"
+        }) {
+      body.set(key, detail.get(key));
+    }
+    return body;
+  }
+
   protected long contractVersion(long contractId) {
     return longValue("SELECT version FROM contract WHERE id = ?", contractId);
   }
