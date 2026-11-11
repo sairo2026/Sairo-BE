@@ -62,28 +62,45 @@ public class ImportSupportOperatorService {
 
   @Transactional
   public Transition quote(Long requestId, long quoteAmount, String scopeNote) {
+    return quote(requestId, quoteAmount, scopeNote, null);
+  }
+
+  /** expectedVersion이 있으면 잠근 뒤 현재 version과 비교한다(운영 콘솔의 If-Match). */
+  @Transactional
+  public Transition quote(
+      Long requestId, long quoteAmount, String scopeNote, Long expectedVersion) {
     if (quoteAmount <= 0) {
       throw ImportRequestParser.invalid(
           "quoteAmount", FieldErrorCode.OUT_OF_RANGE, "견적 금액은 0보다 커야 합니다.");
     }
-    ImportSupportRequest request = lock(requestId);
+    ImportSupportRequest request = lock(requestId, expectedVersion);
     request.quote(quoteAmount, scopeNote == null || scopeNote.isBlank() ? null : scopeNote.strip());
     return save(request);
   }
 
   @Transactional
   public Transition reject(Long requestId, Long operatorId, String reason) {
+    return reject(requestId, operatorId, reason, null);
+  }
+
+  @Transactional
+  public Transition reject(Long requestId, Long operatorId, String reason, Long expectedVersion) {
     if (reason == null || reason.isBlank()) {
       throw ImportRequestParser.invalid("reason", FieldErrorCode.REQUIRED, "거절 사유는 필수입니다.");
     }
-    ImportSupportRequest request = lock(requestId);
+    ImportSupportRequest request = lock(requestId, expectedVersion);
     request.reject(operatorId, reason.strip(), now());
     return save(request);
   }
 
   @Transactional
   public Transition start(Long requestId, Long operatorId) {
-    ImportSupportRequest request = lock(requestId);
+    return start(requestId, operatorId, null);
+  }
+
+  @Transactional
+  public Transition start(Long requestId, Long operatorId, Long expectedVersion) {
+    ImportSupportRequest request = lock(requestId, expectedVersion);
     request.startProcessing(operatorId, now());
     return save(request);
   }
@@ -91,7 +108,13 @@ public class ImportSupportOperatorService {
   @Transactional
   public ImportMappingConfirmResponse saveMapping(
       Long requestId, Long operatorId, ImportMappingConfirmRequest mapping) {
-    ImportSupportRequest request = lock(requestId);
+    return saveMapping(requestId, operatorId, mapping, null);
+  }
+
+  @Transactional
+  public ImportMappingConfirmResponse saveMapping(
+      Long requestId, Long operatorId, ImportMappingConfirmRequest mapping, Long expectedVersion) {
+    ImportSupportRequest request = lock(requestId, expectedVersion);
     requireStatus(request, ImportSupportStatus.PROCESSING);
     requireAssigned(request, operatorId);
     return mappingService.confirmByOperator(request.getImportBatchId(), operatorId, mapping);
@@ -99,20 +122,30 @@ public class ImportSupportOperatorService {
 
   @Transactional
   public Transition submitReview(Long requestId, Long operatorId) {
-    ImportSupportRequest request = lock(requestId);
+    return submitReview(requestId, operatorId, null);
+  }
+
+  @Transactional
+  public Transition submitReview(Long requestId, Long operatorId, Long expectedVersion) {
+    ImportSupportRequest request = lock(requestId, expectedVersion);
     requireStatus(request, ImportSupportStatus.PROCESSING);
     requireAssigned(request, operatorId);
     ImportMappingVersion latest =
         versionRepository
             .findFirstByImportBatchIdOrderByVersionNoDesc(request.getImportBatchId())
-            .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TRANSITION));
+            .orElseThrow(() -> new BusinessException(ErrorCode.MAPPING_REQUIRED));
     request.submitForReview(latest.getId(), now());
     return save(request);
   }
 
   @Transactional
   public ImportExecuteResponse execute(Long requestId, Long operatorId) {
-    ImportSupportRequest request = lock(requestId);
+    return execute(requestId, operatorId, null);
+  }
+
+  @Transactional
+  public ImportExecuteResponse execute(Long requestId, Long operatorId, Long expectedVersion) {
+    ImportSupportRequest request = lock(requestId, expectedVersion);
     requireStatus(request, ImportSupportStatus.APPROVED);
     requireAssigned(request, operatorId);
     ImportBatch batch =
@@ -122,6 +155,14 @@ public class ImportSupportOperatorService {
     if (batch.getStatus() != ImportBatchStatus.MAPPING
         && batch.getStatus() != ImportBatchStatus.PREVIEW) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    Long latestVersionId =
+        versionRepository
+            .findFirstByImportBatchIdOrderByVersionNoDesc(batch.getId())
+            .map(ImportMappingVersion::getId)
+            .orElse(null);
+    if (!request.getApprovedMappingVersionId().equals(latestVersionId)) {
+      throw new BusinessException(ErrorCode.APPROVED_MAPPING_MISMATCH);
     }
     StaffPrincipal owner =
         jdbcRepository
@@ -138,7 +179,12 @@ public class ImportSupportOperatorService {
 
   @Transactional
   public Transition deliver(Long requestId, Long operatorId) {
-    ImportSupportRequest request = lock(requestId);
+    return deliver(requestId, operatorId, null);
+  }
+
+  @Transactional
+  public Transition deliver(Long requestId, Long operatorId, Long expectedVersion) {
+    ImportSupportRequest request = lock(requestId, expectedVersion);
     requireStatus(request, ImportSupportStatus.APPROVED);
     requireAssigned(request, operatorId);
     ImportBatch batch =
@@ -152,10 +198,15 @@ public class ImportSupportOperatorService {
     return save(request);
   }
 
-  private ImportSupportRequest lock(Long requestId) {
-    return requestRepository
-        .findForUpdateById(requestId)
-        .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+  private ImportSupportRequest lock(Long requestId, Long expectedVersion) {
+    ImportSupportRequest request =
+        requestRepository
+            .findForUpdateById(requestId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    if (expectedVersion != null && !expectedVersion.equals(request.getVersion())) {
+      throw new BusinessException(ErrorCode.VERSION_CONFLICT);
+    }
+    return request;
   }
 
   private Transition save(ImportSupportRequest request) {
