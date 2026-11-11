@@ -21,6 +21,9 @@ import java.util.Map;
 
 public final class VisitCoordinationMapper {
 
+  /** 다른 사무소 후보 매물의 신청 허용 표시 값이다. */
+  public record CandidateGrant(Long grantId, String state) {}
+
   private static final String PASSED = "PASSED";
 
   private VisitCoordinationMapper() {}
@@ -84,7 +87,14 @@ public final class VisitCoordinationMapper {
       long scheduleVersion,
       Map<Long, List<Slot>> applicableSlots,
       Map<Long, ItemState> states,
-      List<ScheduleStateService.Alternative> alternatives) {
+      List<ScheduleStateService.Alternative> alternatives,
+      Map<Long, CandidateGrant> grants) {
+    java.util.Set<Long> confirmedCandidates = new java.util.HashSet<>();
+    for (ItemRow item : items) {
+      if (item.confirmedRequestId() != null && item.kept()) {
+        confirmedCandidates.add(item.candidatePropertyId());
+      }
+    }
     return new VisitCoordinationDetailResponse(
         coordination.getId(),
         coordination.getStatus().name(),
@@ -112,6 +122,8 @@ public final class VisitCoordinationMapper {
                         candidate,
                         properties.get(candidate.getPropertyId()),
                         officeNames.getOrDefault(candidate.getPropertyOfficeId(), ""),
+                        grants.get(candidate.getId()),
+                        confirmedCandidates.contains(candidate.getId()),
                         applicableSlots.getOrDefault(candidate.getId(), List.of())))
             .toList(),
         scheduleItems(items, states),
@@ -147,8 +159,11 @@ public final class VisitCoordinationMapper {
       VisitCandidateProperty candidate,
       PropertySummary property,
       String ownerOfficeName,
+      CandidateGrant grant,
+      boolean confirmed,
       List<Slot> applicable) {
     boolean crossOffice = candidate.isCrossOffice();
+    boolean hideDetail = crossOffice && !confirmed;
     return new VisitCoordinationDetailResponse.Candidate(
         candidate.getId(),
         candidate.getPropertyId(),
@@ -158,9 +173,9 @@ public final class VisitCoordinationMapper {
         candidate.getPropertyOfficeId(),
         ownerOfficeName,
         crossOffice,
-        null,
-        null,
-        crossOffice || property == null ? null : property.addressDetail(),
+        crossOffice && grant != null ? grant.grantId() : null,
+        crossOffice && grant != null ? grant.state() : null,
+        hideDetail || property == null ? null : property.addressDetail(),
         null,
         List.of(),
         applicable.stream()

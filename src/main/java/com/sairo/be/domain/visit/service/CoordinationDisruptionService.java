@@ -71,6 +71,7 @@ public class CoordinationDisruptionService {
   private final ScheduleOutcomeService outcomeService;
   private final ScheduleStateService stateService;
   private final CustomerReferenceService customerReferences;
+  private final ApplyGrantService grantService;
   private final Clock clock;
 
   public CoordinationDisruptionService(
@@ -86,6 +87,7 @@ public class CoordinationDisruptionService {
       ScheduleOutcomeService outcomeService,
       ScheduleStateService stateService,
       CustomerReferenceService customerReferences,
+      ApplyGrantService grantService,
       Clock clock) {
     this.access = access;
     this.coordinationRepository = coordinationRepository;
@@ -99,6 +101,7 @@ public class CoordinationDisruptionService {
     this.outcomeService = outcomeService;
     this.stateService = stateService;
     this.customerReferences = customerReferences;
+    this.grantService = grantService;
     this.clock = clock;
   }
 
@@ -258,6 +261,7 @@ public class CoordinationDisruptionService {
       approval.revoke(
           revokedAt.toInstant().truncatedTo(ChronoUnit.MICROS), reason, now, principal.userId());
       approvalRepository.saveAndFlush(approval);
+      grantService.expireForRevokedApproval(approvalId);
       boolean uses = usesApproval(coordinationId, approvalId, now);
       if (uses) {
         outcomeService.revokeCustomerLink(coordinationId, now);
