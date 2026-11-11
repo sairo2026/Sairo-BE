@@ -36,6 +36,12 @@ public interface SupportInquiryAttachmentRepository
 
   long countByInquiryIdAndUploadedByUserIdIsNotNull(Long inquiryId);
 
+  long countByInquiryIdAndUploadedByOperatorIdIsNotNull(Long inquiryId);
+
+  List<SupportInquiryAttachment> findByInquiryIdOrderByCreatedAtAscIdAsc(Long inquiryId);
+
+  Optional<SupportInquiryAttachment> findByIdAndInquiryId(Long id, Long inquiryId);
+
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select a from SupportInquiryAttachment a where a.id = :id")
   Optional<SupportInquiryAttachment> findForUpdateById(@Param("id") Long id);

@@ -19,5 +19,9 @@ public interface SupportInquiryRepository extends JpaRepository<SupportInquiry, 
   Optional<SupportInquiry> findForUpdateByRequester(
       @Param("id") Long id, @Param("userId") Long userId);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select i from SupportInquiry i where i.id = :id")
+  Optional<SupportInquiry> findForUpdateById(@Param("id") Long id);
+
   Page<SupportInquiry> findByRequesterUserId(Long requesterUserId, Pageable pageable);
 }
