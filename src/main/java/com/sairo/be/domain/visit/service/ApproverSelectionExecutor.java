@@ -35,6 +35,7 @@ import com.sairo.be.domain.visit.service.VisitRequestChecker.Slot;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.port.ApplyGrantPort;
+import com.sairo.be.global.port.VisitWorkHooks;
 import com.sairo.be.global.support.AdvisoryLock;
 import com.sairo.be.global.support.TimeRules;
 import jakarta.persistence.EntityManager;
@@ -109,6 +110,7 @@ public class ApproverSelectionExecutor {
   private final TrustSummaryRepository trustRepository;
   private final FeasibilityContextFactory contextFactory;
   private final ApplyGrantPort applyGrants;
+  private final VisitWorkHooks workHooks;
   private final AdvisoryLock advisoryLock;
   private final EntityManager entityManager;
   private final Clock clock;
@@ -131,6 +133,7 @@ public class ApproverSelectionExecutor {
       TrustSummaryRepository trustRepository,
       FeasibilityContextFactory contextFactory,
       ApplyGrantPort applyGrants,
+      VisitWorkHooks workHooks,
       AdvisoryLock advisoryLock,
       EntityManager entityManager,
       Clock clock) {
@@ -151,6 +154,7 @@ public class ApproverSelectionExecutor {
     this.trustRepository = trustRepository;
     this.contextFactory = contextFactory;
     this.applyGrants = applyGrants;
+    this.workHooks = workHooks;
     this.advisoryLock = advisoryLock;
     this.entityManager = entityManager;
     this.clock = clock;
@@ -425,16 +429,18 @@ public class ApproverSelectionExecutor {
             : request
                 .getRequestedEndAt()
                 .plus(candidate.getTravelDurationMinutes(), ChronoUnit.MINUTES);
-    itemRepository.insertConfirmed(
-        coordination.getId(),
-        coordination.getOfficeId(),
-        candidate.getId(),
-        request.getRequestedStartAt(),
-        request.getRequestedEndAt(),
-        candidate.getSortOrder(),
-        request.getId(),
-        travelStart,
-        travelEnd);
+    Long itemId =
+        itemRepository.insertConfirmed(
+            coordination.getId(),
+            coordination.getOfficeId(),
+            candidate.getId(),
+            request.getRequestedStartAt(),
+            request.getRequestedEndAt(),
+            candidate.getSortOrder(),
+            request.getId(),
+            travelStart,
+            travelEnd);
+    workHooks.scheduleItemConfirmed(itemId);
   }
 
   private List<Long> closeOverlapping(

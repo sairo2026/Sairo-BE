@@ -388,7 +388,14 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/exports", Set.of("200")),
           Map.entry("GET /api/exports/allowed-tables", Set.of("200")),
           Map.entry("GET /api/exports/{exportId}", Set.of("200")),
-          Map.entry("PUT /api/offices/current/export-policy", Set.of("200")));
+          Map.entry("PUT /api/offices/current/export-policy", Set.of("200")),
+          Map.entry("GET /api/home", Set.of("200")),
+          Map.entry("GET /api/tasks", Set.of("200")),
+          Map.entry("POST /api/tasks", Set.of("201")),
+          Map.entry("PATCH /api/tasks/{taskId}", Set.of("200")),
+          Map.entry("DELETE /api/tasks/{taskId}", Set.of("204")),
+          Map.entry("GET /api/notifications", Set.of("200")),
+          Map.entry("POST /api/notifications/{notificationId}/read", Set.of("204")));
 
   @Autowired private MockMvc mockMvc;
 
