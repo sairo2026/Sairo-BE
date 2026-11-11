@@ -128,4 +128,25 @@ public class PrivacyRequest {
     request.handlerType = PrivacyHandlerType.OFFICE;
     return request;
   }
+
+  /** 운영자 처리 단계를 반영한다. 담당이 없으면 처음 처리한 운영자를 담당으로 둔다. */
+  public void moveTo(PrivacyRequestStatus next, Long operatorId) {
+    this.status = next;
+    if (assignedOperatorId == null) {
+      this.assignedOperatorId = operatorId;
+    }
+  }
+
+  public void recordIdentity(IdentityStatus identity) {
+    this.identityStatus = identity;
+  }
+
+  public void recordDecision(String reason) {
+    this.decisionReason = reason;
+  }
+
+  public void complete(String evidence, Instant now) {
+    this.completionEvidence = evidence;
+    this.completedAt = now.truncatedTo(ChronoUnit.MICROS);
+  }
 }

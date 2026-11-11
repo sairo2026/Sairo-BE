@@ -67,4 +67,23 @@ public class PrivacyRequestEvent {
     event.occurredAt = now.truncatedTo(ChronoUnit.MICROS);
     return event;
   }
+
+  public static PrivacyRequestEvent processed(
+      Long privacyRequestId,
+      String eventType,
+      PrivacyRequestStatus previousStatus,
+      PrivacyRequestStatus newStatus,
+      String actionDetail,
+      Long operatorId,
+      Instant now) {
+    PrivacyRequestEvent event = new PrivacyRequestEvent();
+    event.privacyRequestId = privacyRequestId;
+    event.eventType = eventType;
+    event.previousStatus = previousStatus;
+    event.newStatus = newStatus;
+    event.actionDetail = actionDetail;
+    event.actorOperatorId = operatorId;
+    event.occurredAt = now.truncatedTo(ChronoUnit.MICROS);
+    return event;
+  }
 }
