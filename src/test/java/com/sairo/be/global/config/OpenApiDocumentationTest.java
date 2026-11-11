@@ -402,7 +402,21 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/settlements/{yearMonth}/memo", Set.of("200")),
           Map.entry("PUT /api/settlements/{yearMonth}/memo", Set.of("200")),
           Map.entry("GET /api/settlements/{yearMonth}/export", Set.of("200")),
-          Map.entry("POST /api/entity-lifecycle-events/{eventId}/corrections", Set.of("201")));
+          Map.entry("POST /api/entity-lifecycle-events/{eventId}/corrections", Set.of("201")),
+          Map.entry("GET /api/contracts", Set.of("200")),
+          Map.entry("POST /api/properties/{propertyId}/contracts/drafts", Set.of("201")),
+          Map.entry("PATCH /api/contracts/{contractId}/draft", Set.of("200")),
+          Map.entry("POST /api/contracts/{contractId}/sign", Set.of("200")),
+          Map.entry("DELETE /api/contracts/{contractId}/draft", Set.of("204")),
+          Map.entry("POST /api/properties/{propertyId}/contracts", Set.of("201")),
+          Map.entry("GET /api/contracts/{contractId}", Set.of("200")),
+          Map.entry("POST /api/contracts/{contractId}/corrections", Set.of("201")),
+          Map.entry("GET /api/contracts/{contractId}/revisions", Set.of("200")),
+          Map.entry("PATCH /api/contracts/{contractId}/status", Set.of("200")),
+          Map.entry("PATCH /api/contracts/{contractId}/settlement-status", Set.of("200")),
+          Map.entry("POST /api/contracts/{contractId}/renew", Set.of("201")),
+          Map.entry("GET /api/contracts/{contractId}/status-history", Set.of("200")),
+          Map.entry("POST /api/contracts/{contractId}/duplicate-exclusion", Set.of("200")));
 
   @Autowired private MockMvc mockMvc;
 

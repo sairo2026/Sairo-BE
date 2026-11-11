@@ -14,6 +14,7 @@ import com.sairo.be.domain.office.repository.OfficeMembershipHistoryRepository;
 import com.sairo.be.domain.office.repository.OfficeMembershipHistoryRepository.Actor;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
+import com.sairo.be.global.port.ContractAssignments;
 import com.sairo.be.global.port.MailSender;
 import com.sairo.be.global.port.MailSender.MailMessage;
 import com.sairo.be.global.security.StaffPrincipal;
@@ -41,6 +42,7 @@ public class MembershipDecisionService {
   private final JdbcClient jdbcClient;
   private final AdvisoryLock advisoryLock;
   private final MailSender mailSender;
+  private final ContractAssignments contractAssignments;
   private final Clock clock;
   private final String frontendBaseUrl;
 
@@ -53,6 +55,7 @@ public class MembershipDecisionService {
       AdvisoryLock advisoryLock,
       MailSender mailSender,
       Clock clock,
+      ContractAssignments contractAssignments,
       @Value("${app.frontend-base-url:http://localhost:3000}") String frontendBaseUrl) {
     this.repository = repository;
     this.historyRepository = historyRepository;
@@ -62,6 +65,7 @@ public class MembershipDecisionService {
     this.advisoryLock = advisoryLock;
     this.mailSender = mailSender;
     this.clock = clock;
+    this.contractAssignments = contractAssignments;
     this.frontendBaseUrl = frontendBaseUrl;
   }
 
@@ -215,6 +219,7 @@ public class MembershipDecisionService {
     Integer alias = aliasNumber == 0 ? null : aliasNumber;
     long customers = count("customer", membershipId);
     long properties = count("property", membershipId);
+    long contracts = contractAssignments.countOpen(row.officeId(), membershipId);
     return new MembershipDetailResponse(
         row.id(),
         row.officeId(),
@@ -228,7 +233,7 @@ public class MembershipDecisionService {
         row.trainingConfirmed(),
         row.status() == OfficeMembershipStatus.APPROVED,
         TimeRules.toDisplayOffset(row.approvedAt()),
-        new MembershipDetailResponse.AssignedCounts(customers, properties, 0, 0, 0),
+        new MembershipDetailResponse.AssignedCounts(customers, properties, 0, contracts, 0),
         TimeRules.toDisplayOffset(row.createdAt()),
         TimeRules.toDisplayOffset(row.updatedAt()),
         row.version());
