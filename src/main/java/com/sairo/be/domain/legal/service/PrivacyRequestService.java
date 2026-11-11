@@ -76,6 +76,35 @@ public class PrivacyRequestService {
     return PrivacyRequestMapper.toCreate(request);
   }
 
+  /** 운영자가 확인한 비회원 접수를 권리 요청으로 만든다(OPS-15). 만든 요청 ID를 돌려준다. */
+  @Transactional
+  public Long receiveFromGuestIntake(GuestConversion conversion, Long operatorId, Instant now) {
+    PrivacyRequest request =
+        requestRepository.saveAndFlush(
+            PrivacyRequest.receiveFromGuest(
+                conversion.officeId(),
+                conversion.requestType(),
+                conversion.requestScope(),
+                conversion.legalBasis(),
+                conversion.receivedAt(),
+                conversion.legalDueAt(),
+                conversion.internalDueAt()));
+    eventRepository.save(
+        PrivacyRequestEvent.receivedFromGuestIntake(
+            request.getId(), conversion.intakeId(), operatorId, now));
+    return request.getId();
+  }
+
+  public record GuestConversion(
+      Long intakeId,
+      Long officeId,
+      PrivacyRequestType requestType,
+      String requestScope,
+      String legalBasis,
+      Instant receivedAt,
+      Instant legalDueAt,
+      Instant internalDueAt) {}
+
   @Transactional(readOnly = true)
   public PageResponse<PrivacyRequestListItem> list(
       StaffPrincipal principal, String statusInput, Integer page, Integer size) {

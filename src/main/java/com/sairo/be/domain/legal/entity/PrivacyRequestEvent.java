@@ -50,6 +50,14 @@ public class PrivacyRequestEvent {
   @Column(name = "occurred_at", nullable = false, updatable = false)
   private Instant occurredAt;
 
+  public static PrivacyRequestEvent receivedFromGuestIntake(
+      Long privacyRequestId, Long intakeId, Long operatorId, Instant now) {
+    PrivacyRequestEvent event = received(privacyRequestId, now);
+    event.actionDetail = "운영자가 비회원 접수(" + intakeId + ")의 본인 확인을 마치고 권리 요청으로 바꿨다.";
+    event.actorOperatorId = operatorId;
+    return event;
+  }
+
   public static PrivacyRequestEvent received(Long privacyRequestId, Instant now) {
     PrivacyRequestEvent event = new PrivacyRequestEvent();
     event.privacyRequestId = privacyRequestId;
