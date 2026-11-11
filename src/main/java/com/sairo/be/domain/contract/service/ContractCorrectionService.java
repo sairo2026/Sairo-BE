@@ -110,7 +110,7 @@ public class ContractCorrectionService {
     }
     StatusHistoryRow signedEvent = replaceSignedEventIfMoved(row, values, reason, principal, now);
 
-    parties.shiftCurrent(contractId);
+    parties.shiftCurrent(contractId, ContractInput.PARTY_MAX);
     for (PartyRow party : current) {
       if (!kept.contains(party.id())) {
         parties.remove(party.id(), now);

@@ -75,13 +75,17 @@ public class ContractPartyRepository {
         .update();
   }
 
-  /** 순서를 다시 매기기 전에 현재 행의 번호를 현재 최댓값보다 큰 임시 번호로 옮겨 부분 유일 인덱스 충돌을 피한다. */
-  public void shiftCurrent(Long contractId) {
+  /**
+   * 순서를 다시 매기기 전에 현재 행의 번호를 현재 최댓값과 새 목록 길이를 더한 값보다 큰 임시 번호로 옮긴다. 최종 번호(1부터 새 목록 길이까지)와 부분 유일 인덱스가
+   * 부딪치지 않게 하려는 것이다.
+   */
+  public void shiftCurrent(Long contractId, int room) {
     jdbcClient
         .sql(
-            "UPDATE contract_party SET sequence_no = sequence_no + (SELECT COALESCE(max(p.sequence_no),"
-                + " 0) FROM contract_party p WHERE p.contract_id = :id) WHERE contract_id = :id"
-                + " AND removed_at IS NULL")
+            "UPDATE contract_party SET sequence_no = sequence_no + :room + (SELECT"
+                + " COALESCE(max(p.sequence_no), 0) FROM contract_party p WHERE p.contract_id ="
+                + " :id) WHERE contract_id = :id AND removed_at IS NULL")
+        .param("room", room)
         .param("id", contractId)
         .update();
   }

@@ -102,9 +102,13 @@ class ContractChangeIntegrationTest extends ContractIntegrationTestBase {
     added.putNull("partyId");
     added.put("sequenceNo", 1);
     added.put("name", "새임대");
-    ((ObjectNode) sellers.get(0)).put("sequenceNo", 2);
+    ObjectNode second = added.deepCopy();
+    second.put("sequenceNo", 2);
+    second.put("name", "둘째임대");
+    ((ObjectNode) sellers.get(0)).put("sequenceNo", 3);
     ((ObjectNode) sellers.get(0)).put("name", "김임대정정");
     sellers.add(added);
+    sellers.add(second);
     ArrayNode buyers = (ArrayNode) body.get("buyerTenantParties");
     buyers.removeAll();
     ObjectNode newBuyer = MAPPER.createObjectNode();
@@ -130,10 +134,12 @@ class ContractChangeIntegrationTest extends ContractIntegrationTestBase {
     JsonNode current = revision.get("currentSnapshot");
     assertThat(current.get("depositAmount").longValue()).isEqualTo(310_000_000L);
     assertThat(current.get("sellerLandlordParties").get(0).get("name").asString()).isEqualTo("새임대");
-    assertThat(current.get("sellerLandlordParties").get(1).get("partyId").longValue())
+    assertThat(current.get("sellerLandlordParties").get(1).get("name").asString())
+        .isEqualTo("둘째임대");
+    assertThat(current.get("sellerLandlordParties").get(2).get("partyId").longValue())
         .isEqualTo(keptSeller);
-    assertThat(current.get("sellerLandlordParties").get(1).get("sequenceNo").intValue())
-        .isEqualTo(2);
+    assertThat(current.get("sellerLandlordParties").get(2).get("sequenceNo").intValue())
+        .isEqualTo(3);
     assertThat(
             longValue(
                 "SELECT count(*) FROM contract_party WHERE id = ? AND removed_at IS NOT NULL",
