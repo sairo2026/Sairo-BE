@@ -98,7 +98,7 @@ class ImportSupportOperatorFlowIntegrationTest extends SupportIntegrationTestBas
     assertThat(thrown(() -> operatorService.submitReview(processing, other)))
         .isEqualTo(ErrorCode.FORBIDDEN);
     assertThat(thrown(() -> operatorService.submitReview(processing, operator)))
-        .isEqualTo(ErrorCode.INVALID_TRANSITION);
+        .isEqualTo(ErrorCode.MAPPING_REQUIRED);
     assertThat(thrown(() -> operatorService.execute(processing, operator)))
         .isEqualTo(ErrorCode.INVALID_TRANSITION);
     assertThat(thrown(() -> operatorService.deliver(processing, operator)))
