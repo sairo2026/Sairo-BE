@@ -139,6 +139,7 @@ public class ContractStatusService {
         now);
     contracts.updateStatus(contractId, to, row.leasePeriodStatus(), row.settlementStatus(), now);
     support.recalculate(principal.officeId(), times);
+    support.syncFollowups(principal.officeId(), contractId, now);
     return ContractCommandService.state(reload(principal, contractId));
   }
 
@@ -210,6 +211,7 @@ public class ContractStatusService {
     List<Instant> times = new ArrayList<>(ContractSupport.affectedTimes(row.values()));
     histories.validContractEvents(contractId).forEach(event -> times.add(event.effectiveAt()));
     support.recalculate(principal.officeId(), times);
+    support.syncFollowups(principal.officeId(), contractId, now);
     ContractRow updated = reload(principal, contractId);
     return new ContractDuplicateExclusionResponse(
         updated.id(),

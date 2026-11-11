@@ -162,6 +162,7 @@ public class ContractCorrectionService {
       times.add(signedEvent.effectiveAt());
     }
     support.recalculate(principal.officeId(), times);
+    support.syncFollowups(principal.officeId(), contractId, now);
 
     ContractRow updated = contracts.find(principal.officeId(), contractId).orElseThrow();
     RevisionRow saved = histories.findRevision(revisionId).orElseThrow();
