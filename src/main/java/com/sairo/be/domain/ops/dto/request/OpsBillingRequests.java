@@ -1,5 +1,6 @@
 package com.sairo.be.domain.ops.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.sairo.be.global.support.PlainText;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -35,7 +36,7 @@ public final class OpsBillingRequests {
               description = "증빙 종류",
               allowableValues = {"TAX_INVOICE", "CASH_RECEIPT", "EXEMPT_INVOICE"})
           @NotBlank @Pattern(regexp = "TAX_INVOICE|CASH_RECEIPT|EXEMPT_INVOICE") String documentKind,
-      @Schema(description = "전자 발급 여부") @NotNull Boolean isElectronic,
+      @Schema(description = "전자 발급 여부") @JsonProperty("isElectronic") @NotNull Boolean isElectronic,
       @Schema(
               description = "기록할 상태",
               allowableValues = {"ISSUED", "ISSUE_FAILED", "NOT_REQUIRED", "PENDING"})

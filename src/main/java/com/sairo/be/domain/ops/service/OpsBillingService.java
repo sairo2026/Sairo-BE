@@ -402,6 +402,9 @@ public class OpsBillingService {
     if (billing.hasIssued(invoiceId, body.documentKind())) {
       throw new BusinessException(ErrorCode.TAX_DOCUMENT_ALREADY_ISSUED);
     }
+    if (issued && billing.approvalNumberUsed(approval)) {
+      throw duplicateApproval();
+    }
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     NewTaxDocument document =
         new NewTaxDocument(
@@ -446,6 +449,10 @@ public class OpsBillingService {
     if (!original.status().equals("ISSUED")) {
       throw new BusinessException(ErrorCode.TAX_INVOICE_NOT_ELIGIBLE);
     }
+    String amendApproval = body.approvalNumber().strip();
+    if (billing.approvalNumberUsed(amendApproval)) {
+      throw duplicateApproval();
+    }
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     String note = body.operatorNote().strip();
     long amendedId =
@@ -456,7 +463,7 @@ public class OpsBillingService {
                 original.documentKind(),
                 original.electronic(),
                 "AMENDED",
-                body.approvalNumber().strip(),
+                amendApproval,
                 body.issuedOn(),
                 body.supplyAmount(),
                 body.vatAmount(),
@@ -582,6 +589,11 @@ public class OpsBillingService {
 
   private static String blankToNull(String value) {
     return value == null || value.isBlank() ? null : value.strip();
+  }
+
+  /** 승인번호는 발급 서비스가 부여하는 고유 값이라 이미 기록된 번호는 받지 않는다. */
+  private static BusinessException duplicateApproval() {
+    return OpsQueryParams.invalid("approvalNumber", FieldErrorCode.NOT_ALLOWED, "이미 기록된 승인번호입니다.");
   }
 
   private static BusinessException notFound() {

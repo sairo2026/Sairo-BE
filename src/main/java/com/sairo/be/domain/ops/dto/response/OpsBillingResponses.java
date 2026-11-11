@@ -1,5 +1,6 @@
 package com.sairo.be.domain.ops.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -157,7 +158,7 @@ public final class OpsBillingResponses {
       Long officeId,
       String officeName,
       String documentKind,
-      boolean isElectronic,
+      @JsonProperty("isElectronic") boolean isElectronic,
       String status,
       String approvalNumber,
       LocalDate issuedOn,
@@ -172,7 +173,7 @@ public final class OpsBillingResponses {
       Long documentId,
       Long invoiceId,
       String documentKind,
-      boolean isElectronic,
+      @JsonProperty("isElectronic") boolean isElectronic,
       String status,
       String approvalNumber,
       LocalDate issuedOn,

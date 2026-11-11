@@ -468,6 +468,15 @@ public class OpsBillingRepository {
         .optional();
   }
 
+  public boolean approvalNumberUsed(String approvalNumber) {
+    return jdbcClient
+            .sql("SELECT count(*) FROM tax_document WHERE approval_number = :number")
+            .param("number", approvalNumber)
+            .query(Long.class)
+            .single()
+        > 0;
+  }
+
   public boolean hasIssued(long invoiceId, String kind) {
     return jdbcClient
             .sql(

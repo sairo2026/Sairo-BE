@@ -50,6 +50,7 @@ class OpsBillingIntegrationTest extends OpsConsoleTestBase {
   private TestData.Staff owner;
   private long subscriptionId;
   private long consentId;
+  private int invoiceSequence;
 
   @BeforeEach
   void setUp() {
@@ -60,6 +61,7 @@ class OpsBillingIntegrationTest extends OpsConsoleTestBase {
     billing2 = operator("이결제", OperatorRole.BILLING);
     billing2Session = sessionOf(billing2);
     owner = staff(OfficeMembershipRole.OWNER);
+    fixtures.purchaseTerms(BillingFixtures.PURCHASE_TERMS_VERSION);
     Instant now = Instant.now();
     subscriptionId =
         fixtures
@@ -74,11 +76,14 @@ class OpsBillingIntegrationTest extends OpsConsoleTestBase {
 
   private long invoice(String status, long amount) {
     Instant now = Instant.now();
+    invoiceSequence++;
     return fixtures
         .invoice(owner.office().getId(), subscriptionId, consentId)
         .amount(amount)
         .status(status)
-        .period(now.minus(Duration.ofDays(10)), now.plus(Duration.ofDays(20)))
+        .period(
+            now.minus(Duration.ofDays(10)).plusSeconds(invoiceSequence),
+            now.plus(Duration.ofDays(20)))
         .insert();
   }
 
@@ -541,6 +546,10 @@ class OpsBillingIntegrationTest extends OpsConsoleTestBase {
         "issuedOn",
         "REQUIRED");
     assertError(post(TAX + "/999999/amend", amend, billingSession), ErrorCode.RESOURCE_NOT_FOUND);
+    assertFieldError(
+        post(TAX + "/" + original + "/amend", amend, billingSession),
+        "approvalNumber",
+        "NOT_ALLOWED");
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT status FROM tax_document WHERE id = ?", String.class, original))
