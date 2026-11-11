@@ -16,8 +16,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class ApproverReviewContext {
 
+  /** 링크 또는 승인자 세션으로 연 출입승인이다. linkId와 profileId 가운데 하나만 값이 있다. */
   public record Opened(
-      LinkHead link, PropertyAccessApproval approval, Optional<Long> dataApprovalId) {
+      Long linkId, Long profileId, PropertyAccessApproval approval, Optional<Long> dataApprovalId) {
 
     public boolean writable() {
       return approval.isPrimary();
@@ -29,6 +30,7 @@ public class ApproverReviewContext {
   private final PropertyAccessApprovalRepository approvalRepository;
   private final PropertyReferenceService propertyReferences;
   private final OfficeDirectory officeDirectory;
+  private final ApproverPortalAccess portalAccess;
   private final Clock clock;
 
   public ApproverReviewContext(
@@ -37,12 +39,14 @@ public class ApproverReviewContext {
       PropertyAccessApprovalRepository approvalRepository,
       PropertyReferenceService propertyReferences,
       OfficeDirectory officeDirectory,
+      ApproverPortalAccess portalAccess,
       Clock clock) {
     this.linkResolver = linkResolver;
     this.accessRecorder = accessRecorder;
     this.approvalRepository = approvalRepository;
     this.propertyReferences = propertyReferences;
     this.officeDirectory = officeDirectory;
+    this.portalAccess = portalAccess;
     this.clock = clock;
   }
 
@@ -61,7 +65,21 @@ public class ApproverReviewContext {
                 .stream()
                 .findFirst()
                 .map(PropertyAccessApproval::getId);
-    return new Opened(head, approval, dataApproval);
+    return new Opened(head.getId(), null, approval, dataApproval);
+  }
+
+  /** 승인자 세션으로 연결된 출입승인을 연다. 연결이 LINKED가 아니면 404다. */
+  public Opened openForProfile(Long profileId, Long approvalId) {
+    PropertyAccessApproval approval = portalAccess.linked(profileId, approvalId);
+    return new Opened(null, profileId, approval, portalAccess.dataApprovalId(approval));
+  }
+
+  public Opened openForProfileWrite(Long profileId, Long approvalId) {
+    Opened opened = openForProfile(profileId, approvalId);
+    if (!opened.writable()) {
+      throw new BusinessException(ErrorCode.APPROVER_READ_ONLY);
+    }
+    return opened;
   }
 
   public Opened openForWrite(String token, String clientIp) {

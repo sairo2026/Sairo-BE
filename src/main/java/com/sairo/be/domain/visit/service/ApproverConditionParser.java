@@ -56,7 +56,8 @@ public final class ApproverConditionParser {
   public enum Mode {
     LINK_SAVE,
     LINK_PREVIEW,
-    PROXY
+    PROXY,
+    BULK
   }
 
   public record Parsed(
@@ -70,7 +71,9 @@ public final class ApproverConditionParser {
 
   public static Parsed parse(JsonNode body, Mode mode) {
     Set<String> allowed = new HashSet<>(BASE_KEYS);
-    if (mode != Mode.PROXY) {
+    if (mode == Mode.BULK) {
+      allowed.remove("impactAcknowledged");
+    } else if (mode != Mode.PROXY) {
       allowed.add("acknowledgedNoticeVersion");
     }
     CustomerInput.requireObject(body, allowed);
@@ -104,7 +107,7 @@ public final class ApproverConditionParser {
       if (!CustomerInput.isNull(body, "impactAcknowledged")) {
         acknowledged = CustomerInput.requiredBoolean(body, "impactAcknowledged");
       }
-    } else {
+    } else if (mode != Mode.BULK) {
       acknowledged = CustomerInput.requiredBoolean(body, "impactAcknowledged");
     }
     String noticeVersion = null;

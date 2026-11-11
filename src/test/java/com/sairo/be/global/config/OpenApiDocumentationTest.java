@@ -297,6 +297,43 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/apply-grants/received", Set.of("200")),
           Map.entry("GET /api/properties/{propertyId}/cross-office-requests", Set.of("200")),
           Map.entry("GET /api/properties/{propertyId}/cross-office-schedules", Set.of("200")),
+          Map.entry("POST /api/public/approver-auth/otp", Set.of("200")),
+          Map.entry("POST /api/public/approver-auth/verify", Set.of("200")),
+          Map.entry("DELETE /api/approver-portal/session", Set.of("204")),
+          Map.entry("GET /api/approver-portal/profile", Set.of("200")),
+          Map.entry("POST /api/approver-portal/profile/close", Set.of("200")),
+          Map.entry("GET /api/approver-portal/approvals", Set.of("200")),
+          Map.entry(
+              "POST /api/approver-portal/approvals/{approvalId}/link-decision", Set.of("200")),
+          Map.entry("DELETE /api/approver-portal/approvals/{approvalId}/link", Set.of("204")),
+          Map.entry("POST /api/approver-portal/condition-bulk/preview", Set.of("200")),
+          Map.entry("POST /api/approver-portal/condition-bulk", Set.of("200")),
+          Map.entry("GET /api/approver-portal/approvals/{approvalId}/conditions", Set.of("200")),
+          Map.entry("PUT /api/approver-portal/approvals/{approvalId}/conditions", Set.of("200")),
+          Map.entry(
+              "POST /api/approver-portal/approvals/{approvalId}/conditions/impact-preview",
+              Set.of("200")),
+          Map.entry(
+              "GET /api/approver-portal/approvals/{approvalId}/visit-requests", Set.of("200")),
+          Map.entry(
+              "POST /api/approver-portal/approvals/{approvalId}/visit-requests/{requestId}/select",
+              Set.of("200")),
+          Map.entry(
+              "GET /api/approver-portal/approvals/{approvalId}/confirmed-schedules", Set.of("200")),
+          Map.entry("GET /api/approver-portal/approvals/{approvalId}/visit-reviews", Set.of("200")),
+          Map.entry(
+              "PUT /api/approver-portal/approvals/{approvalId}/visit-reviews/{scheduleItemId}",
+              Set.of("200", "201")),
+          Map.entry(
+              "POST /api/approver-portal/approvals/{approvalId}/visit-reviews/{scheduleItemId}/withdraw",
+              Set.of("200")),
+          Map.entry(
+              "GET /api/approver-portal/approvals/{approvalId}/preferred-brokers", Set.of("200")),
+          Map.entry(
+              "POST /api/approver-portal/approvals/{approvalId}/preferred-brokers", Set.of("201")),
+          Map.entry(
+              "POST /api/approver-portal/approvals/{approvalId}/preferred-brokers/{preferredBrokerId}/release",
+              Set.of("200")),
           Map.entry("POST /api/properties/{propertyId}/owner-occupants", Set.of("201")),
           Map.entry("PATCH /api/owner-occupants/{linkId}", Set.of("200")),
           Map.entry("POST /api/customers/{customerId}/property-interests", Set.of("201")),

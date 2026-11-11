@@ -11,14 +11,20 @@ public class PathAwareSessionIdResolver implements HttpSessionIdResolver {
 
   public static final String OPERATOR_PATH_PREFIX = "/api/ops/";
   public static final String OPERATOR_ARCHIVE_GRANT_PATH = "/api/archive-grants";
+  public static final String APPROVER_PORTAL_PATH_PREFIX = "/api/approver-portal/";
+  public static final String APPROVER_AUTH_PATH_PREFIX = "/api/public/approver-auth/";
 
   private final CookieHttpSessionIdResolver memberResolver = new CookieHttpSessionIdResolver();
   private final CookieHttpSessionIdResolver operatorResolver = new CookieHttpSessionIdResolver();
+  private final CookieHttpSessionIdResolver approverResolver = new CookieHttpSessionIdResolver();
 
   public PathAwareSessionIdResolver(
-      CookieSerializer memberSerializer, CookieSerializer operatorSerializer) {
+      CookieSerializer memberSerializer,
+      CookieSerializer operatorSerializer,
+      CookieSerializer approverSerializer) {
     memberResolver.setCookieSerializer(memberSerializer);
     operatorResolver.setCookieSerializer(operatorSerializer);
+    approverResolver.setCookieSerializer(approverSerializer);
   }
 
   @Override
@@ -38,7 +44,15 @@ public class PathAwareSessionIdResolver implements HttpSessionIdResolver {
   }
 
   private CookieHttpSessionIdResolver pick(HttpServletRequest request) {
+    if (isApproverRequest(request)) {
+      return approverResolver;
+    }
     return isOperatorRequest(request) ? operatorResolver : memberResolver;
+  }
+
+  private static boolean isApproverRequest(HttpServletRequest request) {
+    String uri = request.getRequestURI();
+    return uri.startsWith(APPROVER_PORTAL_PATH_PREFIX) || uri.startsWith(APPROVER_AUTH_PATH_PREFIX);
   }
 
   private static boolean isOperatorRequest(HttpServletRequest request) {

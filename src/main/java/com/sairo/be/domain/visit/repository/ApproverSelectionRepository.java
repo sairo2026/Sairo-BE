@@ -127,14 +127,15 @@ public class ApproverSelectionRepository {
   }
 
   public Long insertSelection(
-      Long requestId, Long linkId, int comparedCount, String note, Instant at) {
+      Long requestId, Long linkId, Long profileId, int comparedCount, String note, Instant at) {
     return jdbcClient
         .sql(
             "INSERT INTO visit_request_selection (request_id, approver_link_id,"
-                + " compared_request_count, selection_note, selected_at) VALUES (:request, :link,"
-                + " :count, :note, :at) RETURNING id")
+                + " approver_profile_id, compared_request_count, selection_note, selected_at)"
+                + " VALUES (:request, :link, :profile, :count, :note, :at) RETURNING id")
         .param("request", requestId)
         .param("link", linkId)
+        .param("profile", profileId)
         .param("count", comparedCount)
         .param("note", note)
         .param("at", Timestamp.from(at))
@@ -214,15 +215,16 @@ public class ApproverSelectionRepository {
         .update();
   }
 
-  public Optional<Outcome> priorOutcome(Long requestId, Long linkId) {
+  public Optional<Outcome> priorOutcome(Long requestId, Long linkId, Long profileId) {
     return jdbcClient
         .sql(
             "SELECT s.id, v.result, v.failure_code, v.failure_detail, v.checked_at FROM"
                 + " visit_request_selection s JOIN visit_request_revalidation v ON v.selection_id"
-                + " = s.id WHERE s.request_id = :request AND s.approver_link_id = :link ORDER BY"
-                + " s.id DESC LIMIT 1")
+                + " = s.id WHERE s.request_id = :request AND (s.approver_link_id = :link OR"
+                + " s.approver_profile_id = :profile) ORDER BY s.id DESC LIMIT 1")
         .param("request", requestId)
         .param("link", linkId)
+        .param("profile", profileId)
         .query(
             (rs, rowNum) ->
                 new Outcome(

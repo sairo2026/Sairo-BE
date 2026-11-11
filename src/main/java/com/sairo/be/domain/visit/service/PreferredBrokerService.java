@@ -61,7 +61,15 @@ public class PreferredBrokerService {
 
   @Transactional
   public ApproverPreferredBrokerListResponse list(String token, String clientIp) {
-    Opened opened = context.open(token, clientIp);
+    return list(context.open(token, clientIp));
+  }
+
+  @Transactional(readOnly = true)
+  public ApproverPreferredBrokerListResponse listForProfile(Long profileId, Long approvalId) {
+    return list(context.openForProfile(profileId, approvalId));
+  }
+
+  private ApproverPreferredBrokerListResponse list(Opened opened) {
     List<Preferred> active =
         opened.dataApprovalId().map(preferredRepository::active).orElse(List.of());
     List<Candidate> candidates =
@@ -97,7 +105,16 @@ public class PreferredBrokerService {
 
   @Transactional
   public ApproverPreferredBrokerResponse designate(String token, JsonNode body, String clientIp) {
-    Opened opened = context.openForWrite(token, clientIp);
+    return designate(context.openForWrite(token, clientIp), body);
+  }
+
+  @Transactional
+  public ApproverPreferredBrokerResponse designateForProfile(
+      Long profileId, Long approvalId, JsonNode body) {
+    return designate(context.openForProfileWrite(profileId, approvalId), body);
+  }
+
+  private ApproverPreferredBrokerResponse designate(Opened opened, JsonNode body) {
     CustomerInput.requireObject(body, KEYS);
     Long requestId = CustomerInput.optionalLong(body, "sourceRequestId");
     Long itemId = CustomerInput.optionalLong(body, "sourceScheduleItemId");
@@ -123,7 +140,13 @@ public class PreferredBrokerService {
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     Long id =
         preferredRepository.insert(
-            approvalId, source.membershipId(), opened.link().getId(), requestId, itemId, now);
+            approvalId,
+            source.membershipId(),
+            opened.linkId(),
+            opened.profileId(),
+            requestId,
+            itemId,
+            now);
     return response(
         preferredRepository
             .lock(id, approvalId)
@@ -133,7 +156,16 @@ public class PreferredBrokerService {
   @Transactional
   public ApproverPreferredBrokerResponse release(
       String token, Long preferredBrokerId, String clientIp) {
-    Opened opened = context.openForWrite(token, clientIp);
+    return release(context.openForWrite(token, clientIp), preferredBrokerId);
+  }
+
+  @Transactional
+  public ApproverPreferredBrokerResponse releaseForProfile(
+      Long profileId, Long approvalId, Long preferredBrokerId) {
+    return release(context.openForProfileWrite(profileId, approvalId), preferredBrokerId);
+  }
+
+  private ApproverPreferredBrokerResponse release(Opened opened, Long preferredBrokerId) {
     Long approvalId = opened.approval().getId();
     advisoryLock.lockForTransaction(ApprovalAccess.lockKey(approvalId));
     Preferred preferred =
@@ -144,7 +176,7 @@ public class PreferredBrokerService {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
-    preferredRepository.release(preferred.id(), opened.link().getId(), now);
+    preferredRepository.release(preferred.id(), opened.linkId(), opened.profileId(), now);
     return response(
         preferredRepository
             .lock(preferred.id(), approvalId)
