@@ -26,8 +26,8 @@ public final class OpsBillingRequests {
 
   @Schema(description = "대사 불일치 원인과 해결 근거")
   public record ReconciliationResolveRequest(
-      @Schema(description = "불일치 원인") @NotBlank @PlainText(max = 2000) String differenceReason,
-      @Schema(description = "해결 근거") @NotBlank @PlainText(max = 2000) String resolutionEvidence,
+      @Schema(description = "불일치 원인") @PlainText(max = 2000) String differenceReason,
+      @Schema(description = "해결 근거") @PlainText(max = 2000) String resolutionEvidence,
       @Schema(description = "대사 차이 담당 운영자. 생략하면 요청한 운영자") Long assigneeOperatorId) {}
 
   @Schema(description = "국세청 서비스에서 발급한 증빙 결과 기록")
@@ -51,9 +51,9 @@ public final class OpsBillingRequests {
 
   @Schema(description = "수정 발급 기록. 원본은 고치지 않고 새 기록을 만든다")
   public record TaxDocumentAmendRequest(
-      @Schema(description = "수정 발급 승인번호") @NotBlank @PlainText(max = 40) String approvalNumber,
+      @Schema(description = "수정 발급 승인번호") @PlainText(max = 40) String approvalNumber,
       @Schema(description = "수정 발급일") @NotNull LocalDate issuedOn,
       @Schema(description = "수정 공급가액. 음수 가능") @NotNull Long supplyAmount,
       @Schema(description = "수정 세액. 음수 가능") @NotNull Long vatAmount,
-      @Schema(description = "수정 사유") @NotBlank @PlainText(max = 2000) String operatorNote) {}
+      @Schema(description = "수정 사유") @PlainText(max = 2000) String operatorNote) {}
 }
