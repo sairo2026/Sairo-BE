@@ -114,8 +114,10 @@ public class VisitReviewRepository {
         .param("windowStart", Timestamp.from(windowStart))
         .query(
             (rs, rowNum) -> {
+              Target target = target(rs);
               rs.getLong("id");
-              return new TargetWithReview(target(rs), rs.wasNull() ? null : review(rs));
+              boolean noReview = rs.wasNull();
+              return new TargetWithReview(target, noReview ? null : review(rs));
             })
         .list();
   }
