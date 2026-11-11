@@ -51,6 +51,7 @@ class OpsPricingIntegrationTest extends OpsConsoleTestBase {
   @BeforeEach
   void setUp() {
     fixtures = new BillingFixtures(jdbcTemplate);
+    fixtures.purchaseTerms(BillingFixtures.PURCHASE_TERMS_VERSION);
     ops = operator("최운영", OperatorRole.OPS);
     opsSession = sessionOf(ops);
     billing = operator("박결제", OperatorRole.BILLING);
