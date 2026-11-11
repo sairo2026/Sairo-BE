@@ -10,5 +10,10 @@ public final class VisitRateLimits {
   public static final RateLimitRule PUBLIC_LINK_TOKEN =
       RateLimitRule.of("visit-public-link-token", 60, Duration.ofSeconds(60));
 
+  public static final RateLimitRule PRIVACY_INTAKE_LINK =
+      RateLimitRule.of("visit-privacy-intake-link", 3, Duration.ofDays(1));
+  public static final RateLimitRule PRIVACY_INTAKE_IP =
+      RateLimitRule.of("visit-privacy-intake-ip", 5, Duration.ofHours(1));
+
   private VisitRateLimits() {}
 }
