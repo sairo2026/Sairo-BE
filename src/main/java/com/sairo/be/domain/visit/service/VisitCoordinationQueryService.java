@@ -15,6 +15,8 @@ import com.sairo.be.domain.visit.entity.VisitCoordination;
 import com.sairo.be.domain.visit.entity.VisitCustomerLink;
 import com.sairo.be.domain.visit.entity.VisitCustomerTimeSlot;
 import com.sairo.be.domain.visit.mapper.VisitCoordinationMapper;
+import com.sairo.be.domain.visit.mapper.VisitCoordinationMapper.CandidateGrant;
+import com.sairo.be.domain.visit.repository.ApplyGrantRepository;
 import com.sairo.be.domain.visit.repository.PropertyAccessApprovalRepository;
 import com.sairo.be.domain.visit.repository.ScheduleItemRepository;
 import com.sairo.be.domain.visit.repository.ScheduleItemRepository.ItemRow;
@@ -65,6 +67,7 @@ public class VisitCoordinationQueryService {
   private final FeasibilityContextFactory contextFactory;
   private final ScheduleSlotCalculator slotCalculator;
   private final ScheduleStateService stateService;
+  private final ApplyGrantRepository grantRepository;
   private final Clock clock;
 
   public VisitCoordinationQueryService(
@@ -83,6 +86,7 @@ public class VisitCoordinationQueryService {
       FeasibilityContextFactory contextFactory,
       ScheduleSlotCalculator slotCalculator,
       ScheduleStateService stateService,
+      ApplyGrantRepository grantRepository,
       Clock clock) {
     this.access = access;
     this.readRepository = readRepository;
@@ -99,6 +103,7 @@ public class VisitCoordinationQueryService {
     this.contextFactory = contextFactory;
     this.slotCalculator = slotCalculator;
     this.stateService = stateService;
+    this.grantRepository = grantRepository;
     this.clock = clock;
   }
 
@@ -161,6 +166,20 @@ public class VisitCoordinationQueryService {
           candidate.getPropertyOfficeId(),
           key -> officeDirectory.find(key).map(OfficeDirectory.OfficeSummary::name).orElse(""));
     }
+    Map<Long, CandidateGrant> grants = new LinkedHashMap<>();
+    for (VisitCandidateProperty candidate : candidates) {
+      if (candidate.isCrossOffice()) {
+        grantRepository
+            .latestForCandidate(
+                coordination.getOfficeId(),
+                principal.membershipId(),
+                candidate.getPropertyId(),
+                clock.instant())
+            .ifPresent(
+                grant ->
+                    grants.put(candidate.getId(), new CandidateGrant(grant.id(), grant.state())));
+      }
+    }
     Optional<VisitCustomerLink> link =
         linkRepository.findFirstByCoordinationIdOrderByIdDesc(coordinationId);
     List<VisitCustomerTimeSlot> slots =
@@ -214,7 +233,8 @@ public class VisitCoordinationQueryService {
         itemRepository.scheduleVersion(coordinationId),
         applicable,
         states,
-        alternatives);
+        alternatives,
+        grants);
   }
 
   private Map<Long, List<Slot>> applicableSlots(

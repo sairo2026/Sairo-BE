@@ -285,6 +285,18 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/ops/visit-review-disputes", Set.of("200")),
           Map.entry("POST /api/ops/visit-review-disputes/{disputeId}/decision", Set.of("200")),
           Map.entry("POST /api/ops/visit-reviews/{reviewId}/remove", Set.of("200")),
+          Map.entry(
+              "POST /api/properties/{propertyId}/access-approvals/{approvalId}/apply-grants",
+              Set.of("201")),
+          Map.entry(
+              "GET /api/properties/{propertyId}/access-approvals/{approvalId}/apply-grants",
+              Set.of("200")),
+          Map.entry(
+              "POST /api/properties/{propertyId}/access-approvals/{approvalId}/apply-grants/{grantId}/revoke",
+              Set.of("200")),
+          Map.entry("GET /api/apply-grants/received", Set.of("200")),
+          Map.entry("GET /api/properties/{propertyId}/cross-office-requests", Set.of("200")),
+          Map.entry("GET /api/properties/{propertyId}/cross-office-schedules", Set.of("200")),
           Map.entry("POST /api/properties/{propertyId}/owner-occupants", Set.of("201")),
           Map.entry("PATCH /api/owner-occupants/{linkId}", Set.of("200")),
           Map.entry("POST /api/customers/{customerId}/property-interests", Set.of("201")),
