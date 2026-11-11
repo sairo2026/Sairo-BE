@@ -11,12 +11,17 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "sairo.batch.enabled", havingValue = "true")
 public class BillingScheduler {
 
+  private final PriceScheduleActivationService activationService;
   private final BillingJobService jobService;
   private final PlanNoticeJobService planNoticeJobService;
   private final Clock clock;
 
   public BillingScheduler(
-      BillingJobService jobService, PlanNoticeJobService planNoticeJobService, Clock clock) {
+      PriceScheduleActivationService activationService,
+      BillingJobService jobService,
+      PlanNoticeJobService planNoticeJobService,
+      Clock clock) {
+    this.activationService = activationService;
     this.jobService = jobService;
     this.planNoticeJobService = planNoticeJobService;
     this.clock = clock;
@@ -24,6 +29,7 @@ public class BillingScheduler {
 
   @Scheduled(fixedDelayString = "PT5M")
   public void run() {
+    activationService.activateDue(clock.instant());
     jobService.runAll(clock.instant());
     planNoticeJobService.runAll(clock.instant());
   }
