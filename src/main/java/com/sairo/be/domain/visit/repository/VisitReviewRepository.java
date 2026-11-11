@@ -375,13 +375,14 @@ public class VisitReviewRepository {
         .param("offset", offset)
         .query(
             (rs, rowNum) -> {
-              long issuer = rs.getLong("issued_by_membership_id");
+              long issued = rs.getLong("issued_by_membership_id");
+              Long issuer = rs.wasNull() ? null : issued;
               return new OpsRow(
                   dispute(rs),
                   review(rs),
                   instant(rs.getTimestamp("item_visited_at")),
                   rs.getString("approver_type"),
-                  rs.wasNull() ? null : issuer);
+                  issuer);
             })
         .list();
   }
