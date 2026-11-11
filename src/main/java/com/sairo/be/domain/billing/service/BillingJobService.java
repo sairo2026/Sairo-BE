@@ -47,6 +47,7 @@ public class BillingJobService {
   private final TransactionTemplate transactionTemplate;
   private final AuthSuspensionService authSuspensionService;
   private final BillingNoticeDispatcher noticeDispatcher;
+  private final BillingReconciliationService reconciliationService;
 
   public BillingJobService(
       SubscriptionRepository subscriptionRepository,
@@ -62,7 +63,8 @@ public class BillingJobService {
       AdvisoryLock advisoryLock,
       TransactionTemplate transactionTemplate,
       AuthSuspensionService authSuspensionService,
-      BillingNoticeDispatcher noticeDispatcher) {
+      BillingNoticeDispatcher noticeDispatcher,
+      BillingReconciliationService reconciliationService) {
     this.subscriptionRepository = subscriptionRepository;
     this.invoiceRepository = invoiceRepository;
     this.customerRepository = customerRepository;
@@ -77,6 +79,7 @@ public class BillingJobService {
     this.transactionTemplate = transactionTemplate;
     this.authSuspensionService = authSuspensionService;
     this.noticeDispatcher = noticeDispatcher;
+    this.reconciliationService = reconciliationService;
   }
 
   public void runAll(Instant now) {
@@ -88,6 +91,7 @@ public class BillingJobService {
     runPrePaymentExpiry(now);
     runReconciliation();
     authSuspensionService.expireSuspensions(now);
+    runDailyReconciliation(now);
   }
 
   /**
@@ -236,6 +240,11 @@ public class BillingJobService {
                   SubscriptionStatus.PRE_PAYMENT,
                   since.plus(BillingPeriods.PRE_PAYMENT_LIMIT)));
     }
+  }
+
+  /** KST 전일 승인·취소 거래의 PG 대사다. 영업일마다 한 번만 만든다. */
+  public void runDailyReconciliation(Instant now) {
+    reconciliationService.runForPreviousDay(now);
   }
 
   public void runReconciliation() {

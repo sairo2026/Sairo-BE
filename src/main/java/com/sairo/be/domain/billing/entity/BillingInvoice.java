@@ -144,6 +144,15 @@ public class BillingInvoice {
     this.nextRetryAt = null;
   }
 
+  /** 완료된 환불 누계로 부분·전액 환불 상태를 정한다. */
+  public void applyRefunded(long completedTotal) {
+    if (completedTotal <= 0) {
+      return;
+    }
+    this.status =
+        completedTotal >= amount ? InvoiceStatus.FULLY_REFUNDED : InvoiceStatus.PARTIALLY_REFUNDED;
+  }
+
   public boolean isUnpaid() {
     return status == InvoiceStatus.UNBILLED || status == InvoiceStatus.FAILED;
   }

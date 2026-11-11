@@ -28,6 +28,8 @@ public class TossPaymentGateway implements PaymentGateway {
 
   private static final Set<String> FAILED_PAYMENT_STATUSES =
       Set.of("CANCELED", "ABORTED", "EXPIRED");
+  private static final Set<String> APPROVED_STATUSES =
+      Set.of("DONE", "PARTIAL_CANCELED", "CANCELED");
   private static final Set<String> UNDETERMINED_CODES =
       Set.of(
           "IDEMPOTENT_REQUEST_PROCESSING",
@@ -172,6 +174,27 @@ public class TossPaymentGateway implements PaymentGateway {
       return new PaymentResult(PaymentStatus.FAILED, paymentKey, status);
     }
     return new PaymentResult(PaymentStatus.VERIFYING, paymentKey, null);
+  }
+
+  @Override
+  public TransactionSnapshot lookup(String orderId) {
+    Reply reply = send(newRequest("/v1/payments/orders/" + encode(orderId), requestTimeout).GET());
+    if (reply.status() == 404) {
+      return new TransactionSnapshot(PaymentStatus.FAILED, null, null);
+    }
+    if (reply.status() != 200) {
+      return new TransactionSnapshot(PaymentStatus.VERIFYING, null, null);
+    }
+    String status = reply.body().path("status").asString("");
+    if (APPROVED_STATUSES.contains(status)) {
+      long total = reply.body().path("totalAmount").asLong(0);
+      long balance = reply.body().path("balanceAmount").asLong(total);
+      return new TransactionSnapshot(PaymentStatus.SUCCEEDED, total, total - balance);
+    }
+    if (FAILED_PAYMENT_STATUSES.contains(status)) {
+      return new TransactionSnapshot(PaymentStatus.FAILED, null, null);
+    }
+    return new TransactionSnapshot(PaymentStatus.VERIFYING, null, null);
   }
 
   private PaymentResult failureOrVerifying(Reply reply, String paymentKey) {

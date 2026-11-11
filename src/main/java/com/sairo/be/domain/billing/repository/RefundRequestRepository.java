@@ -16,6 +16,9 @@ public interface RefundRequestRepository extends JpaRepository<RefundRequest, Lo
 
   Optional<RefundRequest> findByIdAndOfficeId(Long id, Long officeId);
 
+  @Query("select r.invoiceId from RefundRequest r where r.id = :id")
+  Optional<Long> findInvoiceIdById(@Param("id") Long id);
+
   Optional<RefundRequest> findByInvoiceIdAndReasonCode(Long invoiceId, RefundReasonCode reasonCode);
 
   Optional<RefundRequest> findByInvoiceIdAndReasonEventTypeAndReasonEventId(
