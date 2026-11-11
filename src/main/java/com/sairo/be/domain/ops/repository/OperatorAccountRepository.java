@@ -111,6 +111,91 @@ public class OperatorAccountRepository {
         .update();
   }
 
+  public record Summary(long id, String name, OperatorStatus status, Instant createdAt) {}
+
+  public List<Summary> list(int limit, long offset) {
+    return jdbcClient
+        .sql(
+            "SELECT id, name, status, created_at FROM operator_account ORDER BY id"
+                + " LIMIT :limit OFFSET :offset")
+        .param("limit", limit)
+        .param("offset", offset)
+        .query(this::mapSummary)
+        .list();
+  }
+
+  public long count() {
+    return jdbcClient.sql("SELECT count(*) FROM operator_account").query(Long.class).single();
+  }
+
+  public Optional<Summary> summary(long id) {
+    return jdbcClient
+        .sql("SELECT id, name, status, created_at FROM operator_account WHERE id = :id")
+        .param("id", id)
+        .query(this::mapSummary)
+        .optional();
+  }
+
+  public void updateStatus(long id, OperatorStatus status) {
+    jdbcClient
+        .sql("UPDATE operator_account SET status = :status WHERE id = :id")
+        .param("status", status.name())
+        .param("id", id)
+        .update();
+  }
+
+  public void deleteRole(long operatorId, OperatorRole role) {
+    jdbcClient
+        .sql(
+            "DELETE FROM operator_role_assignment WHERE operator_account_id = :id"
+                + " AND role = :role")
+        .param("id", operatorId)
+        .param("role", role.name())
+        .update();
+  }
+
+  /** 대상을 뺀 활성 보안관리자 수다. */
+  public long countOtherActiveSecurityAdmins(long excludedOperatorId) {
+    return jdbcClient
+        .sql(
+            "SELECT count(*) FROM operator_account a JOIN operator_role_assignment r"
+                + " ON r.operator_account_id = a.id WHERE r.role = 'SECURITY_ADMIN'"
+                + " AND a.status = 'ACTIVE' AND a.id <> :id")
+        .param("id", excludedOperatorId)
+        .query(Long.class)
+        .single();
+  }
+
+  public boolean isActiveWithRole(long operatorId, OperatorRole role) {
+    return jdbcClient
+            .sql(
+                "SELECT count(*) FROM operator_account a JOIN operator_role_assignment r"
+                    + " ON r.operator_account_id = a.id WHERE a.id = :id AND a.status = 'ACTIVE'"
+                    + " AND r.role = :role")
+            .param("id", operatorId)
+            .param("role", role.name())
+            .query(Long.class)
+            .single()
+        > 0;
+  }
+
+  public boolean isActive(long operatorId) {
+    return jdbcClient
+            .sql("SELECT count(*) FROM operator_account WHERE id = :id AND status = 'ACTIVE'")
+            .param("id", operatorId)
+            .query(Long.class)
+            .single()
+        > 0;
+  }
+
+  private Summary mapSummary(java.sql.ResultSet rs, int rowNumber) throws java.sql.SQLException {
+    return new Summary(
+        rs.getLong("id"),
+        rs.getString("name"),
+        OperatorStatus.valueOf(rs.getString("status")),
+        rs.getTimestamp("created_at").toInstant());
+  }
+
   private Row map(java.sql.ResultSet rs, int rowNumber) throws java.sql.SQLException {
     Timestamp locked = rs.getTimestamp("mfa_locked_until");
     return new Row(
