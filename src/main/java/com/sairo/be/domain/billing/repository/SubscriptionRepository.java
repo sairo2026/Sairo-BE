@@ -22,4 +22,7 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
 
   List<Subscription> findByStatusAndPrePaymentSinceLessThanEqual(
       SubscriptionStatus status, Instant at);
+
+  List<Subscription> findByStatusAndTrialEndsAtGreaterThanAndTrialEndsAtLessThanEqual(
+      SubscriptionStatus status, Instant after, Instant until);
 }

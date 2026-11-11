@@ -45,6 +45,7 @@ public class BillingChargeService {
   private final AdvisoryLock advisoryLock;
   private final SubscriptionTransitions transitions;
   private final TransactionTemplate transactionTemplate;
+  private final BillingNoticeDispatcher noticeDispatcher;
   private final Clock clock;
 
   public BillingChargeService(
@@ -59,6 +60,7 @@ public class BillingChargeService {
       AdvisoryLock advisoryLock,
       SubscriptionTransitions transitions,
       TransactionTemplate transactionTemplate,
+      BillingNoticeDispatcher noticeDispatcher,
       Clock clock) {
     this.invoiceRepository = invoiceRepository;
     this.attemptRepository = attemptRepository;
@@ -71,6 +73,7 @@ public class BillingChargeService {
     this.advisoryLock = advisoryLock;
     this.transitions = transitions;
     this.transactionTemplate = transactionTemplate;
+    this.noticeDispatcher = noticeDispatcher;
     this.clock = clock;
   }
 
@@ -191,6 +194,10 @@ public class BillingChargeService {
         if (transitions.isPastDue(subscription)) {
           invoice.markFailed(
               FailureCategories.nextRetryAt(invoice.getDueAt(), attempt.getAttemptNo(), category));
+          if (attempt.getAttemptNo() == 1) {
+            noticeDispatcher.paymentFailed(
+                invoice.getOfficeId(), invoice.getAmount(), FailureCategories.label(category));
+          }
         }
       }
       case VERIFYING -> {

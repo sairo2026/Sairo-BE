@@ -20,6 +20,7 @@ import com.sairo.be.domain.visit.service.ScheduleStateService.ItemState;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
+import com.sairo.be.global.port.SettlementRecalculator;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.TimeRules;
 import java.time.Clock;
@@ -55,6 +56,7 @@ public class ScheduleResultService {
   private final ScheduleOutcomeService outcomeService;
   private final ScheduleStateService stateService;
   private final MembershipNameRepository nameRepository;
+  private final SettlementRecalculator settlementRecalculator;
   private final Clock clock;
 
   public ScheduleResultService(
@@ -65,6 +67,7 @@ public class ScheduleResultService {
       ScheduleOutcomeService outcomeService,
       ScheduleStateService stateService,
       MembershipNameRepository nameRepository,
+      SettlementRecalculator settlementRecalculator,
       Clock clock) {
     this.access = access;
     this.resultRepository = resultRepository;
@@ -73,6 +76,7 @@ public class ScheduleResultService {
     this.outcomeService = outcomeService;
     this.stateService = stateService;
     this.nameRepository = nameRepository;
+    this.settlementRecalculator = settlementRecalculator;
     this.clock = clock;
   }
 
@@ -142,6 +146,13 @@ public class ScheduleResultService {
     outcomeService.settle(
         coordination, StatusChangeSource.STAFF, principal.membershipId(), "방문 결과 기록");
     coordinationRepository.saveAndFlush(coordination);
+    if (correction) {
+      List<Instant> times = new ArrayList<>();
+      times.add(item.actualVisitedAt());
+      times.add(input.actualVisitedAt());
+      settlementRecalculator.recalculateForCoordination(
+          coordination.getOfficeId(), coordination.getId(), times);
+    }
     OffsetDateTime reviewEndsAt =
         "COMPLETED".equals(input.result()) && item.confirmedRequestId() != null
             ? TimeRules.toDisplayOffset(now.plus(REVIEW_WINDOW))

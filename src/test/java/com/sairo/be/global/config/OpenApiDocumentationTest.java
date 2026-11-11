@@ -395,7 +395,14 @@ class OpenApiDocumentationTest {
           Map.entry("PATCH /api/tasks/{taskId}", Set.of("200")),
           Map.entry("DELETE /api/tasks/{taskId}", Set.of("204")),
           Map.entry("GET /api/notifications", Set.of("200")),
-          Map.entry("POST /api/notifications/{notificationId}/read", Set.of("204")));
+          Map.entry("POST /api/notifications/{notificationId}/read", Set.of("204")),
+          Map.entry("GET /api/settlements", Set.of("200")),
+          Map.entry("GET /api/settlements/{yearMonth}", Set.of("200")),
+          Map.entry("GET /api/settlements/{yearMonth}/details", Set.of("200")),
+          Map.entry("GET /api/settlements/{yearMonth}/memo", Set.of("200")),
+          Map.entry("PUT /api/settlements/{yearMonth}/memo", Set.of("200")),
+          Map.entry("GET /api/settlements/{yearMonth}/export", Set.of("200")),
+          Map.entry("POST /api/entity-lifecycle-events/{eventId}/corrections", Set.of("201")));
 
   @Autowired private MockMvc mockMvc;
 
