@@ -47,6 +47,21 @@ public class RefundRequest {
   @Column(nullable = false, length = 12)
   private RefundStatus status;
 
+  @Column(name = "reviewed_by_operator_id")
+  private Long reviewedByOperatorId;
+
+  @Column(name = "reviewed_at")
+  private Instant reviewedAt;
+
+  @Column(name = "pg_idempotency_key", length = 36)
+  private String pgIdempotencyKey;
+
+  @Column(name = "pg_refund_id", length = 200)
+  private String pgRefundId;
+
+  @Column(name = "resolved_at")
+  private Instant resolvedAt;
+
   @Column(name = "refund_amount")
   private Long refundAmount;
 
@@ -124,5 +139,60 @@ public class RefundRequest {
 
   public boolean hasCalculation() {
     return originalApprovedAmount != null;
+  }
+
+  /** 접수 때 고정한 산정값을 승인 시점의 예약액과 환불 가능 잔액으로 다시 맞춘다. */
+  public void adjustForApproval(long reservedAmount, long refundAmount) {
+    this.reservedAmount = reservedAmount;
+    this.refundAmount = refundAmount;
+  }
+
+  public boolean isAwaitingReview() {
+    return status == RefundStatus.RECEIVED || status == RefundStatus.REVIEWING;
+  }
+
+  public void fillReasonEvent(Long eventId) {
+    this.reasonEventId = eventId;
+  }
+
+  public void approve(long operatorId, Instant now) {
+    this.status = RefundStatus.APPROVED;
+    this.reviewedByOperatorId = operatorId;
+    this.reviewedAt = now;
+  }
+
+  public void reject(long operatorId, String reason, Instant now) {
+    this.status = RefundStatus.REJECTED;
+    this.reviewedByOperatorId = operatorId;
+    this.reviewedAt = now;
+    this.rejectionReason = reason;
+  }
+
+  /** PG 취소 요청 직전이다. 멱등키는 처음 한 번만 정하고 확인 중 재요청에도 같은 키를 쓴다. */
+  public void beginProcessing(String idempotencyKey) {
+    if (this.pgIdempotencyKey == null) {
+      this.pgIdempotencyKey = idempotencyKey;
+    }
+    this.status = RefundStatus.PROCESSING;
+  }
+
+  public void markCompleted(String pgRefundId, Instant now) {
+    this.status = RefundStatus.COMPLETED;
+    this.pgRefundId = pgRefundId;
+    this.resolvedAt = now;
+    this.failureReason = null;
+  }
+
+  public void markFailed(String reason, Instant now) {
+    this.status = RefundStatus.FAILED;
+    this.failureReason = reason;
+    this.resolvedAt = now;
+  }
+
+  public void markVerifying(String pgRefundId) {
+    this.status = RefundStatus.VERIFYING;
+    if (pgRefundId != null) {
+      this.pgRefundId = pgRefundId;
+    }
   }
 }

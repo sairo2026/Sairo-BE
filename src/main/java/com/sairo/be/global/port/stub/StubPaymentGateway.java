@@ -27,6 +27,13 @@ public class StubPaymentGateway implements PaymentGateway {
   private final Map<String, PaymentResult> orders = new ConcurrentHashMap<>();
   private final AtomicReference<RuntimeException> chargeFailure = new AtomicReference<>();
   private final AtomicReference<String> failureCode = new AtomicReference<>("STUB_DECLINED");
+  private final List<CancelCommand> cancels = new CopyOnWriteArrayList<>();
+  private final AtomicReference<PaymentStatus> nextCancelStatus =
+      new AtomicReference<>(PaymentStatus.SUCCEEDED);
+  private final AtomicReference<RuntimeException> cancelFailure = new AtomicReference<>();
+  private final Map<String, Long> approvedAmounts = new ConcurrentHashMap<>();
+  private final Map<String, Long> cancelledAmounts = new ConcurrentHashMap<>();
+  private final Map<String, String> orderByPaymentKey = new ConcurrentHashMap<>();
 
   public void respondWith(PaymentStatus status) {
     nextStatus.set(status);
@@ -53,6 +60,25 @@ public class StubPaymentGateway implements PaymentGateway {
             status, paymentKey, status == PaymentStatus.FAILED ? "STUB_DECLINED" : null));
   }
 
+  /** 시험용 승인 거래를 남긴다. 대사 조회가 이 금액을 돌려준다. */
+  public void recordApproval(String orderId, String paymentKey, long amount) {
+    orders.put(orderId, new PaymentResult(PaymentStatus.SUCCEEDED, paymentKey, null));
+    approvedAmounts.put(orderId, amount);
+    orderByPaymentKey.put(paymentKey, orderId);
+  }
+
+  public void respondToCancelWith(PaymentStatus status) {
+    nextCancelStatus.set(status);
+  }
+
+  public void throwOnNextCancel(RuntimeException exception) {
+    cancelFailure.set(exception);
+  }
+
+  public List<CancelCommand> cancels() {
+    return List.copyOf(cancels);
+  }
+
   public List<String> issuedCustomerKeys() {
     return List.copyOf(issuedCustomerKeys);
   }
@@ -75,6 +101,12 @@ public class StubPaymentGateway implements PaymentGateway {
     issuedCustomerKeys.clear();
     deletedBillingKeys.clear();
     orders.clear();
+    cancels.clear();
+    approvedAmounts.clear();
+    cancelledAmounts.clear();
+    orderByPaymentKey.clear();
+    cancelFailure.set(null);
+    nextCancelStatus.set(PaymentStatus.SUCCEEDED);
     chargeFailure.set(null);
     failureCode.set("STUB_DECLINED");
     failNextIssue.set(false);
@@ -109,6 +141,10 @@ public class StubPaymentGateway implements PaymentGateway {
     String code = status == PaymentStatus.FAILED ? failureCode.get() : null;
     PaymentResult result = new PaymentResult(status, "stub-payment-" + command.orderId(), code);
     orders.put(command.orderId(), result);
+    if (status == PaymentStatus.SUCCEEDED) {
+      approvedAmounts.put(command.orderId(), command.amount());
+      orderByPaymentKey.put(result.paymentKey(), command.orderId());
+    }
     return result;
   }
 
@@ -136,7 +172,39 @@ public class StubPaymentGateway implements PaymentGateway {
   }
 
   @Override
+  public TransactionSnapshot lookup(String orderId) {
+    PaymentResult found = orders.get(orderId);
+    if (found == null) {
+      return new TransactionSnapshot(PaymentStatus.FAILED, null, null);
+    }
+    return new TransactionSnapshot(
+        found.status(),
+        approvedAmounts.get(orderId),
+        found.status() == PaymentStatus.SUCCEEDED
+            ? cancelledAmounts.getOrDefault(orderId, 0L)
+            : null);
+  }
+
+  @Override
   public PaymentResult cancel(String paymentKey, String reason) {
-    return new PaymentResult(PaymentStatus.SUCCEEDED, paymentKey, null);
+    return cancel(new CancelCommand(paymentKey, reason, null, null));
+  }
+
+  @Override
+  public PaymentResult cancel(CancelCommand command) {
+    cancels.add(command);
+    RuntimeException failure = cancelFailure.getAndSet(null);
+    if (failure != null) {
+      throw failure;
+    }
+    PaymentStatus status = nextCancelStatus.get();
+    if (status == PaymentStatus.SUCCEEDED && command.amount() != null) {
+      String orderId = orderByPaymentKey.get(command.paymentKey());
+      if (orderId != null) {
+        cancelledAmounts.merge(orderId, command.amount(), Long::sum);
+      }
+    }
+    String code = status == PaymentStatus.FAILED ? "STUB_CANCEL_DECLINED" : null;
+    return new PaymentResult(status, command.paymentKey(), code);
   }
 }
