@@ -115,7 +115,7 @@ public class ApproverReviewService {
                       editable,
                       revisions,
                       MAX_REVISIONS - revisions,
-                      review == null ? null : review.version(),
+                      review == null ? null : Long.valueOf(review.version()),
                       review == null || "WITHDRAWN".equals(review.status())
                           ? null
                           : answers(review),
