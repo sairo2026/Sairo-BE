@@ -26,6 +26,20 @@ public class TrustSummaryRepository {
     this.jdbcClient = jdbcClient;
   }
 
+  public int excludedCount(Long membershipId, Instant now) {
+    Instant since = now.atZone(ZoneOffset.UTC).minusMonths(TrustSummary.WINDOW_MONTHS).toInstant();
+    return jdbcClient
+        .sql(
+            "SELECT count(*) FROM visit_schedule_item si JOIN visit_request vr ON vr.id ="
+                + " si.confirmed_request_id JOIN visit_review r ON r.schedule_item_id = si.id"
+                + " WHERE vr.applicant_membership_id = :member AND si.result = 'COMPLETED' AND"
+                + " si.actual_visited_at >= :since AND r.status = 'DISPUTED'")
+        .param("member", membershipId)
+        .param("since", Timestamp.from(since))
+        .query(Integer.class)
+        .single();
+  }
+
   public TrustSummary summarize(Long membershipId, Instant now) {
     Instant since = now.atZone(ZoneOffset.UTC).minusMonths(TrustSummary.WINDOW_MONTHS).toInstant();
     List<Row> rows =

@@ -6,6 +6,7 @@ import com.sairo.be.domain.visit.dto.response.ApproverPropertyLinkStatusResponse
 import com.sairo.be.domain.visit.entity.PropertyAccessApproval;
 import com.sairo.be.domain.visit.entity.VisitApproverPropertyLink;
 import com.sairo.be.domain.visit.repository.VisitApproverPropertyLinkRepository;
+import com.sairo.be.domain.visit.repository.VisitReviewRepository;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.security.StaffPrincipal;
@@ -16,6 +17,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
@@ -32,6 +34,7 @@ public class ApproverPropertyLinkService {
   private final VisitApproverPropertyLinkRepository linkRepository;
   private final PublicLinkIssuer linkIssuer;
   private final RetentionRuleLookup retentionRules;
+  private final VisitReviewRepository reviewRepository;
   private final Clock clock;
 
   public ApproverPropertyLinkService(
@@ -39,11 +42,13 @@ public class ApproverPropertyLinkService {
       VisitApproverPropertyLinkRepository linkRepository,
       PublicLinkIssuer linkIssuer,
       RetentionRuleLookup retentionRules,
+      VisitReviewRepository reviewRepository,
       Clock clock) {
     this.access = access;
     this.linkRepository = linkRepository;
     this.linkIssuer = linkIssuer;
     this.retentionRules = retentionRules;
+    this.reviewRepository = reviewRepository;
     this.clock = clock;
   }
 
@@ -53,7 +58,13 @@ public class ApproverPropertyLinkService {
     access.requireAgentOrOwner(principal);
     PropertyAccessApproval approval = access.lock(principal, propertyId, approvalId);
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
-    if (!approval.isUsableAt(now)) {
+    Optional<Instant> reviewDeadline =
+        approval.isPrimary()
+                && approval.getRevokedAt() == null
+                && approval.getAnonymizedAt() == null
+            ? reviewRepository.latestPendingDeadline(approvalId, now)
+            : Optional.empty();
+    if (!approval.isUsableAt(now) && reviewDeadline.isEmpty()) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
     linkRepository
@@ -63,9 +74,7 @@ public class ApproverPropertyLinkService {
               previous.revoke(now);
               linkRepository.saveAndFlush(previous);
             });
-    Instant maxExpiry = now.plus(MAX_LIFETIME);
-    Instant expiresAt =
-        approval.getValidUntil().isBefore(maxExpiry) ? approval.getValidUntil() : maxExpiry;
+    Instant expiresAt = expiresAt(now, approval.getValidUntil(), reviewDeadline);
     VisitApproverPropertyLink saved =
         linkRepository.saveAndFlush(
             VisitApproverPropertyLink.issue(
@@ -122,6 +131,15 @@ public class ApproverPropertyLinkService {
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
     link.revoke(clock.instant().truncatedTo(ChronoUnit.MICROS));
     linkRepository.saveAndFlush(link);
+  }
+
+  static Instant expiresAt(Instant now, Instant validUntil, Optional<Instant> reviewDeadline) {
+    Instant responseLimit = validUntil;
+    if (reviewDeadline.isPresent() && reviewDeadline.get().isAfter(responseLimit)) {
+      responseLimit = reviewDeadline.get();
+    }
+    Instant maxExpiry = now.plus(MAX_LIFETIME);
+    return responseLimit.isBefore(maxExpiry) ? responseLimit : maxExpiry;
   }
 
   private int retentionDays() {

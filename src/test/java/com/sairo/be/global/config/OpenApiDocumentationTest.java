@@ -265,6 +265,26 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/public/customer-visit-links/{token}/confirmed", Set.of("200")),
           Map.entry(
               "GET /api/public/approver-property-links/{token}/confirmed-schedules", Set.of("200")),
+          Map.entry("GET /api/public/approver-property-links/{token}/visit-reviews", Set.of("200")),
+          Map.entry(
+              "PUT /api/public/approver-property-links/{token}/visit-reviews/{scheduleItemId}",
+              Set.of("200", "201")),
+          Map.entry(
+              "POST /api/public/approver-property-links/{token}/visit-reviews/{scheduleItemId}/withdraw",
+              Set.of("200")),
+          Map.entry(
+              "GET /api/public/approver-property-links/{token}/preferred-brokers", Set.of("200")),
+          Map.entry(
+              "POST /api/public/approver-property-links/{token}/preferred-brokers", Set.of("201")),
+          Map.entry(
+              "POST /api/public/approver-property-links/{token}/preferred-brokers/{preferredBrokerId}/release",
+              Set.of("200")),
+          Map.entry("GET /api/visit-trust/me", Set.of("200")),
+          Map.entry("GET /api/visit-reviews/received", Set.of("200")),
+          Map.entry("POST /api/visit-reviews/{reviewId}/disputes", Set.of("201")),
+          Map.entry("GET /api/ops/visit-review-disputes", Set.of("200")),
+          Map.entry("POST /api/ops/visit-review-disputes/{disputeId}/decision", Set.of("200")),
+          Map.entry("POST /api/ops/visit-reviews/{reviewId}/remove", Set.of("200")),
           Map.entry("POST /api/properties/{propertyId}/owner-occupants", Set.of("201")),
           Map.entry("PATCH /api/owner-occupants/{linkId}", Set.of("200")),
           Map.entry("POST /api/customers/{customerId}/property-interests", Set.of("201")),
