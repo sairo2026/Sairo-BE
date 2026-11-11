@@ -73,6 +73,59 @@ public class BillingNoticeDispatcher {
     return send(officeId, "PAYMENT", BillingNoticeTemplate.SUBSCRIPTION_ENDED_UNPAID, values);
   }
 
+  /** 자동 갱신 결제 사전 안내(PAYMENT, 결제 7일 전)다. 카드 정보가 없으면 그 문장은 빠진다. */
+  public List<Long> paymentUpcoming(
+      Long officeId, Instant chargeAt, long amount, int members, String cardIssuer, String last4) {
+    Map<String, String> values = base(officeId);
+    values.put("결제 예정일", format(chargeAt));
+    values.put("금액", String.format("%,d", amount));
+    values.put("인원", String.valueOf(members));
+    if (cardIssuer != null) {
+      values.put("카드사", cardIssuer);
+    }
+    if (last4 != null) {
+      values.put("끝4자리", last4);
+    }
+    return send(officeId, "PAYMENT", BillingNoticeTemplate.PAYMENT_UPCOMING, values);
+  }
+
+  /** 가격 변경 안내와 응답 기한 재안내(PLAN_CHANGED)다. 인상은 동의가 필요한 문구, 인하·동일은 안내만 하는 문구다. */
+  public List<Long> priceChange(
+      Long officeId,
+      boolean increase,
+      Instant effectiveAt,
+      long currentAmount,
+      long newAmount,
+      int members,
+      Instant appliesFrom,
+      Instant responseDueAt) {
+    Map<String, String> values = base(officeId);
+    values.put("효력 일시", format(effectiveAt));
+    values.put("현재 금액", String.format("%,d", currentAmount));
+    values.put("새 금액", String.format("%,d", newAmount));
+    values.put("인원", String.valueOf(members));
+    values.put("적용 청구 기간 시작 일시", format(appliesFrom));
+    values.put("응답 기한", format(responseDueAt));
+    return send(
+        officeId,
+        "PLAN_CHANGED",
+        increase
+            ? BillingNoticeTemplate.PRICE_INCREASE
+            : BillingNoticeTemplate.PRICE_DECREASE_OR_SAME,
+        values);
+  }
+
+  /** 시작 고객 가격 보장 종료 45일 전 안내(PLAN_CHANGED)다. */
+  public List<Long> guaranteeEnding(
+      Long officeId, Instant guaranteeEndsAt, long standardAmount, int members) {
+    Map<String, String> values = base(officeId);
+    values.put("보장 종료 일시", format(guaranteeEndsAt));
+    values.put("새 금액", String.format("%,d", standardAmount));
+    values.put("인원", String.valueOf(members));
+    return send(
+        officeId, "PLAN_CHANGED", BillingNoticeTemplate.START_CUSTOMER_GUARANTEE_ENDING, values);
+  }
+
   private List<Long> send(
       Long officeId, String type, BillingNoticeTemplate template, Map<String, String> values) {
     BillingNotice notice = BillingNoticeComposer.compose(template, values);

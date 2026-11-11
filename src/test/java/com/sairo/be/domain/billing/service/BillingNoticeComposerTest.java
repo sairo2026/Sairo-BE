@@ -34,6 +34,9 @@ class BillingNoticeComposerTest {
           "적용 청구 기간 시작 일시",
           "응답 기한",
           "보장 종료 일시",
+          "결제 예정일",
+          "카드사",
+          "끝4자리",
           "지원 이메일"
         }) {
       values.put(key, "[" + key + "]");
