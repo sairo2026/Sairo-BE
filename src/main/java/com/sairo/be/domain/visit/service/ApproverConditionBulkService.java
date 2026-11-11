@@ -140,13 +140,15 @@ public class ApproverConditionBulkService {
         case "NEEDS_IMPACT_ACK" -> needsAck++;
         default -> failed++;
       }
-      profileRepository.insertBatchItem(
-          batchId,
-          approvalId,
-          outcome.result(),
-          outcome.conditionId(),
-          outcome.failureCode(),
-          outcome.affectedItemCount());
+      if (approvalRepository.existsById(approvalId)) {
+        profileRepository.insertBatchItem(
+            batchId,
+            approvalId,
+            outcome.result(),
+            outcome.conditionId(),
+            outcome.failureCode(),
+            outcome.affectedItemCount());
+      }
       items.add(
           new BulkApplyItem(
               approvalId,

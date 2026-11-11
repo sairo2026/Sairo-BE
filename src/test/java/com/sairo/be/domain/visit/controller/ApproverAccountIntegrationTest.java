@@ -283,7 +283,7 @@ class ApproverAccountIntegrationTest extends ApproverAccountTestBase {
                 "SELECT count(*) FROM approver_condition_bulk_batch WHERE applied_count = 2 AND"
                     + " failed_count = 2 AND completed_at IS NOT NULL"))
         .isEqualTo(1);
-    assertThat(count("SELECT count(*) FROM approver_condition_bulk_item")).isEqualTo(4);
+    assertThat(count("SELECT count(*) FROM approver_condition_bulk_item")).isEqualTo(3);
     assertThat(count("SELECT count(*) FROM approver_auth_event WHERE event_type = 'BULK_APPLIED'"))
         .isEqualTo(1);
 
