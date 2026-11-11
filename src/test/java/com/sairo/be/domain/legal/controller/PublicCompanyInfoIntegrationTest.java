@@ -114,4 +114,14 @@ class PublicCompanyInfoIntegrationTest extends AuthIntegrationTestBase {
         .andExpect(jsonPath("$.links[0].url").value("/legal/policies/TERMS/2.0"))
         .andExpect(jsonPath("$.links[1].url").value("/legal/policies/PRIVACY/1.0"));
   }
+
+  @Test
+  void 같은_IP는_분당_60회까지만_조회하고_넘으면_429다() throws Exception {
+    for (int i = 0; i < 60; i++) {
+      mockMvc.perform(get(URL)).andExpect(status().isOk());
+    }
+
+    com.sairo.be.support.ErrorResponseAssertions.assertError(
+        mockMvc.perform(get(URL)), com.sairo.be.global.error.ErrorCode.RATE_LIMITED);
+  }
 }
