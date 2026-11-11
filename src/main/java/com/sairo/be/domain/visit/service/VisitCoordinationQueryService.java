@@ -6,16 +6,24 @@ import com.sairo.be.domain.property.service.PropertyReferenceService;
 import com.sairo.be.domain.property.service.PropertyReferenceService.PropertySummary;
 import com.sairo.be.domain.visit.dto.response.VisitCoordinationDetailResponse;
 import com.sairo.be.domain.visit.dto.response.VisitCoordinationListResponse;
+import com.sairo.be.domain.visit.entity.ConditionStatus;
 import com.sairo.be.domain.visit.entity.CoordinationStatus;
+import com.sairo.be.domain.visit.entity.PropertyAccessApproval;
+import com.sairo.be.domain.visit.entity.VisitApproverCondition;
 import com.sairo.be.domain.visit.entity.VisitCandidateProperty;
 import com.sairo.be.domain.visit.entity.VisitCoordination;
 import com.sairo.be.domain.visit.entity.VisitCustomerLink;
 import com.sairo.be.domain.visit.entity.VisitCustomerTimeSlot;
 import com.sairo.be.domain.visit.mapper.VisitCoordinationMapper;
+import com.sairo.be.domain.visit.repository.PropertyAccessApprovalRepository;
+import com.sairo.be.domain.visit.repository.ScheduleItemRepository;
+import com.sairo.be.domain.visit.repository.ScheduleItemRepository.ItemRow;
+import com.sairo.be.domain.visit.repository.VisitApproverConditionRepository;
 import com.sairo.be.domain.visit.repository.VisitCandidatePropertyRepository;
 import com.sairo.be.domain.visit.repository.VisitCoordinationReadRepository;
 import com.sairo.be.domain.visit.repository.VisitCustomerLinkRepository;
 import com.sairo.be.domain.visit.repository.VisitCustomerTimeSlotRepository;
+import com.sairo.be.domain.visit.service.VisitRequestChecker.Slot;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
@@ -23,6 +31,8 @@ import com.sairo.be.global.error.FieldErrorItem;
 import com.sairo.be.global.port.OfficeDirectory;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.PageQuery;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -48,6 +58,12 @@ public class VisitCoordinationQueryService {
   private final CustomerReferenceService customerReferences;
   private final ManagingMemberDirectory memberDirectory;
   private final OfficeDirectory officeDirectory;
+  private final ScheduleItemRepository itemRepository;
+  private final PropertyAccessApprovalRepository approvalRepository;
+  private final VisitApproverConditionRepository conditionRepository;
+  private final FeasibilityContextFactory contextFactory;
+  private final ScheduleSlotCalculator slotCalculator;
+  private final Clock clock;
 
   public VisitCoordinationQueryService(
       CoordinationAccess access,
@@ -58,7 +74,13 @@ public class VisitCoordinationQueryService {
       PropertyReferenceService propertyReferences,
       CustomerReferenceService customerReferences,
       ManagingMemberDirectory memberDirectory,
-      OfficeDirectory officeDirectory) {
+      OfficeDirectory officeDirectory,
+      ScheduleItemRepository itemRepository,
+      PropertyAccessApprovalRepository approvalRepository,
+      VisitApproverConditionRepository conditionRepository,
+      FeasibilityContextFactory contextFactory,
+      ScheduleSlotCalculator slotCalculator,
+      Clock clock) {
     this.access = access;
     this.readRepository = readRepository;
     this.candidateRepository = candidateRepository;
@@ -68,6 +90,12 @@ public class VisitCoordinationQueryService {
     this.customerReferences = customerReferences;
     this.memberDirectory = memberDirectory;
     this.officeDirectory = officeDirectory;
+    this.itemRepository = itemRepository;
+    this.approvalRepository = approvalRepository;
+    this.conditionRepository = conditionRepository;
+    this.contextFactory = contextFactory;
+    this.slotCalculator = slotCalculator;
+    this.clock = clock;
   }
 
   public VisitCoordinationListResponse list(
@@ -141,6 +169,8 @@ public class VisitCoordinationQueryService {
                     slotRepository.findByCustomerLinkIdAndResponseVersionOrderByStartsAtAscIdAsc(
                         found.getId(), found.getResponseVersion()))
             .orElse(List.of());
+    List<ItemRow> items = itemRepository.listByCoordination(coordinationId);
+    Map<Long, List<Slot>> applicable = applicableSlots(coordination, candidates, items);
     String customerName =
         customerReferences
             .names(List.of(coordination.getCustomerId()))
@@ -158,7 +188,60 @@ public class VisitCoordinationQueryService {
         link.orElse(null),
         slots,
         customerName,
-        managerName);
+        managerName,
+        items,
+        itemRepository.scheduleVersion(coordinationId),
+        applicable);
+  }
+
+  private Map<Long, List<Slot>> applicableSlots(
+      VisitCoordination coordination,
+      List<VisitCandidateProperty> candidates,
+      List<ItemRow> items) {
+    Map<Long, List<Slot>> result = new LinkedHashMap<>();
+    CoordinationStatus status = coordination.getStatus();
+    if (status != CoordinationStatus.FINAL_CONFIRMATION_REQUIRED
+        && status != CoordinationStatus.APPLYING) {
+      return result;
+    }
+    Instant now = clock.instant();
+    Set<Long> confirmed = new LinkedHashSet<>();
+    for (ItemRow item : items) {
+      if (item.kept()) {
+        confirmed.add(item.candidatePropertyId());
+      }
+    }
+    for (VisitCandidateProperty candidate : candidates) {
+      if (confirmed.contains(candidate.getId())) {
+        continue;
+      }
+      Optional<PropertyAccessApproval> approval =
+          approvalRepository.findUsablePrimaries(candidate.getPropertyId(), now).stream()
+              .findFirst();
+      Optional<VisitApproverCondition> condition =
+          approval.flatMap(
+              found ->
+                  conditionRepository.findFirstByApprovalIdAndStatus(
+                      found.getId(), ConditionStatus.ACTIVE));
+      if (condition.isEmpty() || !now.isBefore(condition.get().getAppliesUntil())) {
+        continue;
+      }
+      List<Slot> slots =
+          slotCalculator.applicable(
+              contextFactory.build(
+                  coordination,
+                  candidate,
+                  approval.get(),
+                  condition.get(),
+                  coordination.getManagerMembershipId()),
+              candidate.getVisitDurationMinutes(),
+              now,
+              now);
+      if (!slots.isEmpty()) {
+        result.put(candidate.getId(), slots);
+      }
+    }
+    return result;
   }
 
   private Map<Long, String> managerNames(List<VisitCoordinationReadRepository.ListRow> rows) {

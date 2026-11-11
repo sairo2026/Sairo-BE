@@ -13,20 +13,14 @@ import com.sairo.be.domain.visit.entity.StatusChangeSource;
 import com.sairo.be.domain.visit.entity.VisitApproverCondition;
 import com.sairo.be.domain.visit.entity.VisitCandidateProperty;
 import com.sairo.be.domain.visit.entity.VisitCoordination;
-import com.sairo.be.domain.visit.entity.VisitCustomerLink;
 import com.sairo.be.domain.visit.entity.VisitRequest;
 import com.sairo.be.domain.visit.mapper.VisitRequestMapper;
-import com.sairo.be.domain.visit.repository.ApproverConditionRowRepository;
-import com.sairo.be.domain.visit.repository.ConfirmedVisitRepository;
 import com.sairo.be.domain.visit.repository.PropertyAccessApprovalRepository;
 import com.sairo.be.domain.visit.repository.VisitApproverConditionRepository;
 import com.sairo.be.domain.visit.repository.VisitCandidatePropertyRepository;
-import com.sairo.be.domain.visit.repository.VisitCustomerLinkRepository;
-import com.sairo.be.domain.visit.repository.VisitCustomerTimeSlotRepository;
 import com.sairo.be.domain.visit.repository.VisitRequestRepository;
 import com.sairo.be.domain.visit.repository.VisitRequestStatusHistoryRepository;
-import com.sairo.be.domain.visit.service.VisitRequestChecker.Slot;
-import com.sairo.be.domain.visit.service.VisitRequestChecker.Subject;
+import com.sairo.be.domain.visit.service.VisitFeasibility.Context;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
@@ -40,7 +34,6 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.context.annotation.Profile;
@@ -71,10 +64,7 @@ public class VisitRequestSubmitService {
   private final CustomerReferenceService customerReferences;
   private final PropertyAccessApprovalRepository approvalRepository;
   private final VisitApproverConditionRepository conditionRepository;
-  private final ApproverConditionRowRepository rowRepository;
-  private final ConfirmedVisitRepository confirmedVisits;
-  private final VisitCustomerLinkRepository linkRepository;
-  private final VisitCustomerTimeSlotRepository slotRepository;
+  private final FeasibilityContextFactory feasibility;
   private final VisitRequestRepository requestRepository;
   private final VisitRequestStatusHistoryRepository historyRepository;
   private final CoordinationStatusService coordinationStatus;
@@ -91,10 +81,7 @@ public class VisitRequestSubmitService {
       CustomerReferenceService customerReferences,
       PropertyAccessApprovalRepository approvalRepository,
       VisitApproverConditionRepository conditionRepository,
-      ApproverConditionRowRepository rowRepository,
-      ConfirmedVisitRepository confirmedVisits,
-      VisitCustomerLinkRepository linkRepository,
-      VisitCustomerTimeSlotRepository slotRepository,
+      FeasibilityContextFactory feasibility,
       VisitRequestRepository requestRepository,
       VisitRequestStatusHistoryRepository historyRepository,
       CoordinationStatusService coordinationStatus,
@@ -109,10 +96,7 @@ public class VisitRequestSubmitService {
     this.customerReferences = customerReferences;
     this.approvalRepository = approvalRepository;
     this.conditionRepository = conditionRepository;
-    this.rowRepository = rowRepository;
-    this.confirmedVisits = confirmedVisits;
-    this.linkRepository = linkRepository;
-    this.slotRepository = slotRepository;
+    this.feasibility = feasibility;
     this.requestRepository = requestRepository;
     this.historyRepository = historyRepository;
     this.coordinationStatus = coordinationStatus;
@@ -211,19 +195,11 @@ public class VisitRequestSubmitService {
           null);
     }
 
+    Context context =
+        feasibility.build(
+            coordination, candidate, lockedApproval, condition, principal.membershipId());
     List<String> violated =
-        VisitRequestChecker.violatedRules(
-            specOf(condition),
-            new Subject(
-                input.start(),
-                input.end(),
-                coordinationId,
-                principal.membershipId(),
-                lockedApproval.getValidFrom(),
-                lockedApproval.getValidUntil()),
-            confirmedVisits.findByApproval(lockedApproval.getId()),
-            customerSlots(coordinationId),
-            now);
+        VisitFeasibility.violated(context, input.start(), input.end(), now, true);
     if (!violated.isEmpty()) {
       throw BusinessException.withDetails(
           ErrorCode.APPROVER_CONDITION_VIOLATED, Map.of("violatedRules", violated));
@@ -288,34 +264,6 @@ public class VisitRequestSubmitService {
       throw CustomerInput.invalid(
           "requestNote", FieldErrorCode.INVALID_VALUE, "고객 이름과 연락처는 넣을 수 없습니다.");
     }
-  }
-
-  private List<Slot> customerSlots(Long coordinationId) {
-    Optional<VisitCustomerLink> link =
-        linkRepository.findFirstByCoordinationIdOrderByIdDesc(coordinationId);
-    return link.filter(found -> found.getResponseVersion() > 0)
-        .map(
-            found ->
-                slotRepository
-                    .findByCustomerLinkIdAndResponseVersionOrderByStartsAtAscIdAsc(
-                        found.getId(), found.getResponseVersion())
-                    .stream()
-                    .map(slot -> new Slot(slot.getStartsAt(), slot.getEndsAt()))
-                    .toList())
-        .orElse(List.of());
-  }
-
-  private ConditionSpec specOf(VisitApproverCondition condition) {
-    return new ConditionSpec(
-        condition.getAppliesFrom(),
-        condition.getAppliesUntil(),
-        condition.getMaxVisitsPerDay(),
-        condition.getMinGapMinutes(),
-        condition.getMinLeadMinutes(),
-        condition.getSingleVisitMaxMinutes(),
-        condition.getGroupingPreference(),
-        rowRepository.windowsOf(condition.getId()),
-        rowRepository.dateRulesOf(condition.getId()));
   }
 
   private Input parse(JsonNode body) {

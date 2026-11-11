@@ -8,7 +8,9 @@ import com.sairo.be.domain.visit.entity.VisitCandidateProperty;
 import com.sairo.be.domain.visit.entity.VisitCoordination;
 import com.sairo.be.domain.visit.entity.VisitCustomerLink;
 import com.sairo.be.domain.visit.entity.VisitCustomerTimeSlot;
+import com.sairo.be.domain.visit.repository.ScheduleItemRepository.ItemRow;
 import com.sairo.be.domain.visit.repository.VisitCoordinationReadRepository.ListRow;
+import com.sairo.be.domain.visit.service.VisitRequestChecker.Slot;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.TimeRules;
 import java.util.LinkedHashMap;
@@ -73,7 +75,10 @@ public final class VisitCoordinationMapper {
       VisitCustomerLink link,
       List<VisitCustomerTimeSlot> slots,
       String customerName,
-      String managerName) {
+      String managerName,
+      List<ItemRow> items,
+      long scheduleVersion,
+      Map<Long, List<Slot>> applicableSlots) {
     return new VisitCoordinationDetailResponse(
         coordination.getId(),
         coordination.getStatus().name(),
@@ -81,7 +86,7 @@ public final class VisitCoordinationMapper {
         customerName,
         coordination.getManagerMembershipId(),
         managerName,
-        null,
+        scheduleVersion > 0 ? scheduleVersion : null,
         link == null ? null : customerLink(link),
         rescheduleAlert(coordination),
         coordination.getPeriodStartDate(),
@@ -100,9 +105,10 @@ public final class VisitCoordinationMapper {
                     candidate(
                         candidate,
                         properties.get(candidate.getPropertyId()),
-                        officeNames.getOrDefault(candidate.getPropertyOfficeId(), "")))
+                        officeNames.getOrDefault(candidate.getPropertyOfficeId(), ""),
+                        applicableSlots.getOrDefault(candidate.getId(), List.of())))
             .toList(),
-        List.of(),
+        scheduleItems(items),
         List.of(),
         TimeRules.toDisplayOffset(coordination.getCreatedAt()),
         TimeRules.toDisplayOffset(coordination.getUpdatedAt()),
@@ -132,7 +138,10 @@ public final class VisitCoordinationMapper {
   }
 
   private static VisitCoordinationDetailResponse.Candidate candidate(
-      VisitCandidateProperty candidate, PropertySummary property, String ownerOfficeName) {
+      VisitCandidateProperty candidate,
+      PropertySummary property,
+      String ownerOfficeName,
+      List<Slot> applicable) {
     boolean crossOffice = candidate.isCrossOffice();
     return new VisitCoordinationDetailResponse.Candidate(
         candidate.getId(),
@@ -148,7 +157,42 @@ public final class VisitCoordinationMapper {
         crossOffice || property == null ? null : property.addressDetail(),
         null,
         List.of(),
-        List.of());
+        applicable.stream()
+            .map(
+                slot ->
+                    new VisitCoordinationDetailResponse.TimeSlot(
+                        TimeRules.toDisplayOffset(slot.startsAt()),
+                        TimeRules.toDisplayOffset(slot.endsAt())))
+            .toList());
+  }
+
+  private static List<VisitCoordinationDetailResponse.ScheduleItem> scheduleItems(
+      List<ItemRow> items) {
+    List<ItemRow> kept = items.stream().filter(ItemRow::kept).toList();
+    List<VisitCoordinationDetailResponse.ScheduleItem> result = new java.util.ArrayList<>();
+    for (ItemRow item : items) {
+      Boolean feasible = null;
+      if (item.kept() && item.travelEndsAt() != null) {
+        int index = kept.indexOf(item);
+        if (index >= 0 && index + 1 < kept.size()) {
+          feasible = !item.travelEndsAt().isAfter(kept.get(index + 1).startAt());
+        }
+      }
+      result.add(
+          new VisitCoordinationDetailResponse.ScheduleItem(
+              item.id(),
+              item.candidatePropertyId(),
+              TimeRules.toDisplayOffset(item.startAt()),
+              TimeRules.toDisplayOffset(item.endAt()),
+              item.result(),
+              TimeRules.toDisplayOffset(item.resultRecordedAt()),
+              item.correctionCount(),
+              Boolean.FALSE.equals(feasible) && "SCHEDULED".equals(item.result())
+                  ? "RESCHEDULE_REQUIRED"
+                  : "VALID",
+              feasible));
+    }
+    return result;
   }
 
   private static String propertyName(Map<Long, PropertySummary> properties, Long propertyId) {
