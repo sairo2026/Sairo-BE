@@ -65,4 +65,10 @@ public class VisitCandidateProperty {
   public void moveTo(int sortOrder) {
     this.sortOrder = sortOrder;
   }
+
+  public void arrange(int sortOrder, int visitDurationMinutes, int travelDurationMinutes) {
+    this.sortOrder = sortOrder;
+    this.visitDurationMinutes = visitDurationMinutes;
+    this.travelDurationMinutes = travelDurationMinutes;
+  }
 }

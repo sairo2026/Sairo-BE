@@ -151,6 +151,11 @@ public class VisitCoordination {
         at);
   }
 
+  public void changeManager(Long membershipId, Instant at) {
+    this.managerMembershipId = membershipId;
+    touch(at);
+  }
+
   public void touch(Instant at) {
     this.updatedAt = at;
   }

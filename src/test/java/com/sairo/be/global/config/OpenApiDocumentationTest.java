@@ -231,6 +231,23 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/visit-coordinations/{coordinationId}/visit-requests", Set.of("200")),
           Map.entry("GET /api/visit-requests/{requestId}", Set.of("200")),
           Map.entry("POST /api/visit-requests/{requestId}/withdraw", Set.of("200")),
+          Map.entry("PUT /api/visit-coordinations/{coordinationId}/schedule", Set.of("200")),
+          Map.entry(
+              "GET /api/visit-coordinations/{coordinationId}/schedule/conflicts", Set.of("200")),
+          Map.entry("PATCH /api/visit-coordinations/{coordinationId}/manager", Set.of("200")),
+          Map.entry(
+              "GET /api/visit-coordinations/{coordinationId}/confirmation-messages", Set.of("200")),
+          Map.entry(
+              "POST /api/visit-coordinations/{coordinationId}/confirmation-deliveries",
+              Set.of("201")),
+          Map.entry(
+              "GET /api/visit-coordinations/{coordinationId}/confirmation-deliveries",
+              Set.of("200")),
+          Map.entry(
+              "GET /api/public/approver-property-links/{token}/visit-requests", Set.of("200")),
+          Map.entry(
+              "POST /api/public/approver-property-links/{token}/visit-requests/{requestId}/select",
+              Set.of("200")),
           Map.entry("GET /api/visit-request-notices", Set.of("200")),
           Map.entry("POST /api/visit-request-notices/{noticeId}/read", Set.of("204")),
           Map.entry("POST /api/properties/{propertyId}/owner-occupants", Set.of("201")),

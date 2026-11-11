@@ -17,5 +17,8 @@ public final class VisitRateLimits {
   public static final RateLimitRule REQUEST_SUBMIT_MEMBER =
       RateLimitRule.of("visit-request-submit-member", 20, Duration.ofSeconds(60));
 
+  public static final RateLimitRule APPROVER_SELECT_APPROVAL =
+      RateLimitRule.of("visit-approver-select-approval", 10, Duration.ofSeconds(60));
+
   private VisitRateLimits() {}
 }
