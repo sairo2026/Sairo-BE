@@ -23,6 +23,7 @@ import com.sairo.be.domain.visit.repository.VisitCandidatePropertyRepository;
 import com.sairo.be.domain.visit.repository.VisitCoordinationReadRepository;
 import com.sairo.be.domain.visit.repository.VisitCustomerLinkRepository;
 import com.sairo.be.domain.visit.repository.VisitCustomerTimeSlotRepository;
+import com.sairo.be.domain.visit.service.ScheduleStateService.ItemState;
 import com.sairo.be.domain.visit.service.VisitRequestChecker.Slot;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
@@ -63,6 +64,7 @@ public class VisitCoordinationQueryService {
   private final VisitApproverConditionRepository conditionRepository;
   private final FeasibilityContextFactory contextFactory;
   private final ScheduleSlotCalculator slotCalculator;
+  private final ScheduleStateService stateService;
   private final Clock clock;
 
   public VisitCoordinationQueryService(
@@ -80,6 +82,7 @@ public class VisitCoordinationQueryService {
       VisitApproverConditionRepository conditionRepository,
       FeasibilityContextFactory contextFactory,
       ScheduleSlotCalculator slotCalculator,
+      ScheduleStateService stateService,
       Clock clock) {
     this.access = access;
     this.readRepository = readRepository;
@@ -95,6 +98,7 @@ public class VisitCoordinationQueryService {
     this.conditionRepository = conditionRepository;
     this.contextFactory = contextFactory;
     this.slotCalculator = slotCalculator;
+    this.stateService = stateService;
     this.clock = clock;
   }
 
@@ -146,9 +150,6 @@ public class VisitCoordinationQueryService {
   public VisitCoordinationDetailResponse detail(
       StaffPrincipal principal, Long coordinationId, Long changeScheduleItemId) {
     VisitCoordination coordination = access.view(principal, coordinationId);
-    if (changeScheduleItemId != null) {
-      throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
-    }
     List<VisitCandidateProperty> candidates =
         candidateRepository.findByCoordinationIdOrderBySortOrderAscIdAsc(coordinationId);
     Map<Long, PropertySummary> properties =
@@ -170,7 +171,27 @@ public class VisitCoordinationQueryService {
                         found.getId(), found.getResponseVersion()))
             .orElse(List.of());
     List<ItemRow> items = itemRepository.listByCoordination(coordinationId);
-    Map<Long, List<Slot>> applicable = applicableSlots(coordination, candidates, items);
+    Map<Long, List<Slot>> applicable;
+    if (changeScheduleItemId != null) {
+      ItemRow target =
+          items.stream()
+              .filter(item -> item.id().equals(changeScheduleItemId))
+              .findFirst()
+              .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+      applicable = new LinkedHashMap<>();
+      if ("SCHEDULED".equals(target.result())) {
+        applicable.put(
+            target.candidatePropertyId(), stateService.changeSlots(coordination, target));
+      }
+    } else {
+      applicable = applicableSlots(coordination, candidates, items);
+    }
+    Map<Long, ItemState> states = stateService.states(coordination, items);
+    List<ScheduleStateService.Alternative> alternatives =
+        coordination.getStatus() == CoordinationStatus.RESCHEDULE_REQUIRED
+                || stateService.hasAffected(states)
+            ? stateService.plan(coordination, items, states).alternatives()
+            : List.of();
     String customerName =
         customerReferences
             .names(List.of(coordination.getCustomerId()))
@@ -191,7 +212,9 @@ public class VisitCoordinationQueryService {
         managerName,
         items,
         itemRepository.scheduleVersion(coordinationId),
-        applicable);
+        applicable,
+        states,
+        alternatives);
   }
 
   private Map<Long, List<Slot>> applicableSlots(

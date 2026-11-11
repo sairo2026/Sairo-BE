@@ -28,6 +28,16 @@ public class PublicLinkResolver {
   }
 
   public VisitCustomerLinkRepository.LinkHead resolve(String token, String clientIp) {
+    VisitCustomerLinkRepository.LinkHead link = resolveIncludingRevoked(token, clientIp);
+    if (link.getRevokedAt() != null) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    return link;
+  }
+
+  /** 확정 조회는 폐기된 토큰에도 재확인 안내를 돌려줘야 하므로 폐기 여부를 호출한 쪽이 판단한다. */
+  public VisitCustomerLinkRepository.LinkHead resolveIncludingRevoked(
+      String token, String clientIp) {
     rateLimiter.hit(VisitRateLimits.PUBLIC_LINK_IP, clientIp);
     if (token == null || token.isBlank() || token.length() > TOKEN_MAX_LENGTH) {
       throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
@@ -38,9 +48,6 @@ public class PublicLinkResolver {
         linkRepository
             .findHeadByTokenHash(hash)
             .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
-    if (link.getRevokedAt() != null) {
-      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
-    }
     return link;
   }
 }

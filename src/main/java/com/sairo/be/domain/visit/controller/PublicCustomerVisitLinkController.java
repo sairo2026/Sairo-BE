@@ -1,7 +1,9 @@
 package com.sairo.be.domain.visit.controller;
 
+import com.sairo.be.domain.visit.dto.response.ConfirmedScheduleResponses.PublicConfirmedVisitResponse;
 import com.sairo.be.domain.visit.dto.response.CustomerAvailableTimesResponse;
 import com.sairo.be.domain.visit.dto.response.PublicVisitLinkResponse;
+import com.sairo.be.domain.visit.service.PublicConfirmedScheduleService;
 import com.sairo.be.domain.visit.service.PublicCustomerLinkQueryService;
 import com.sairo.be.domain.visit.service.PublicCustomerLinkSubmitService;
 import com.sairo.be.global.security.access.AccessPermission;
@@ -30,11 +32,27 @@ public class PublicCustomerVisitLinkController {
 
   private final PublicCustomerLinkQueryService queryService;
   private final PublicCustomerLinkSubmitService submitService;
+  private final PublicConfirmedScheduleService confirmedService;
 
   public PublicCustomerVisitLinkController(
-      PublicCustomerLinkQueryService queryService, PublicCustomerLinkSubmitService submitService) {
+      PublicCustomerLinkQueryService queryService,
+      PublicCustomerLinkSubmitService submitService,
+      PublicConfirmedScheduleService confirmedService) {
     this.queryService = queryService;
     this.submitService = submitService;
+    this.confirmedService = confirmedService;
+  }
+
+  @Operation(
+      summary = "고객 확정 일정 조회",
+      description = "읽기 전용이며 마지막 방문 종료 후 24시간까지 연다. 취소·변경된 이전 버전은 재확인 안내로 대체한다.")
+  @GetMapping("/confirmed")
+  @RequiresAccess(AccessPermission.GUEST_LINK)
+  public ResponseEntity<PublicConfirmedVisitResponse> confirmed(
+      @PathVariable String token, HttpServletRequest request) {
+    PublicConfirmedVisitResponse body =
+        confirmedService.customer(token, ClientRequestInfo.from(request).ipAddress());
+    return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
   }
 
   @Operation(summary = "고객용 후보 매물·수집 상태 조회", description = "상세주소와 승인자 연락처는 돌려주지 않는다. 응답은 캐시하지 않는다.")

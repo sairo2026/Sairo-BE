@@ -134,6 +134,16 @@ public class VisitRequest {
     return request;
   }
 
+  public static VisitRequest submitChange(VisitRequest draft, Long replacesScheduleItemId) {
+    draft.requestKind = RequestKind.CHANGE;
+    draft.replacesScheduleItemId = replacesScheduleItemId;
+    return draft;
+  }
+
+  public boolean isChange() {
+    return requestKind == RequestKind.CHANGE;
+  }
+
   public boolean isCrossOffice() {
     return !applicantOfficeId.equals(propertyOfficeId);
   }

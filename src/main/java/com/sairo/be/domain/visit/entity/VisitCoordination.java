@@ -132,6 +132,16 @@ public class VisitCoordination {
       StatusChangeSource source,
       Long actorMembershipId,
       Instant at) {
+    return raiseReschedule(trigger, reason, null, source, actorMembershipId, at);
+  }
+
+  public VisitCoordinationStatusHistory raiseReschedule(
+      RescheduleTriggerType trigger,
+      String reason,
+      Long approvalId,
+      StatusChangeSource source,
+      Long actorMembershipId,
+      Instant at) {
     if (!status.canMoveTo(CoordinationStatus.RESCHEDULE_REQUIRED)) {
       throw new IllegalStateException("재조율 필요로 전이할 수 없는 상태다: " + status);
     }
@@ -140,6 +150,7 @@ public class VisitCoordination {
     rescheduleTriggerType = trigger;
     rescheduleReason = reason;
     rescheduleRaisedAt = at;
+    rescheduleApprovalId = trigger == RescheduleTriggerType.ACCESS_REVOKED ? approvalId : null;
     touch(at);
     return VisitCoordinationStatusHistory.record(
         id,

@@ -25,13 +25,23 @@ public enum CoordinationStatus {
         COORDINATABLE, EnumSet.of(TIME_COLLECTING, FINAL_CONFIRMATION_REQUIRED, CANCELLED));
     TRANSITIONS.put(
         FINAL_CONFIRMATION_REQUIRED,
-        EnumSet.of(TIME_COLLECTING, COORDINATABLE, APPLYING, CANCELLED));
-    TRANSITIONS.put(APPLYING, EnumSet.of(FINAL_CONFIRMATION_REQUIRED, CONFIRMED, CANCELLED));
+        EnumSet.of(
+            TIME_COLLECTING,
+            COORDINATABLE,
+            APPLYING,
+            VISIT_COMPLETED,
+            VISIT_INCOMPLETE,
+            CANCELLED));
+    TRANSITIONS.put(
+        APPLYING,
+        EnumSet.of(
+            FINAL_CONFIRMATION_REQUIRED, CONFIRMED, VISIT_COMPLETED, VISIT_INCOMPLETE, CANCELLED));
     TRANSITIONS.put(
         CONFIRMED, EnumSet.of(VISIT_COMPLETED, VISIT_INCOMPLETE, RESCHEDULE_REQUIRED, CANCELLED));
-    TRANSITIONS.put(RESCHEDULE_REQUIRED, EnumSet.of(CONFIRMED, CANCELLED));
-    TRANSITIONS.put(VISIT_COMPLETED, EnumSet.noneOf(CoordinationStatus.class));
-    TRANSITIONS.put(VISIT_INCOMPLETE, EnumSet.noneOf(CoordinationStatus.class));
+    TRANSITIONS.put(
+        RESCHEDULE_REQUIRED, EnumSet.of(CONFIRMED, VISIT_COMPLETED, VISIT_INCOMPLETE, CANCELLED));
+    TRANSITIONS.put(VISIT_COMPLETED, EnumSet.of(VISIT_INCOMPLETE));
+    TRANSITIONS.put(VISIT_INCOMPLETE, EnumSet.of(VISIT_COMPLETED));
     TRANSITIONS.put(CANCELLED, EnumSet.noneOf(CoordinationStatus.class));
   }
 
@@ -51,6 +61,10 @@ public enum CoordinationStatus {
         || this == COORDINATABLE
         || this == FINAL_CONFIRMATION_REQUIRED
         || this == APPLYING;
+  }
+
+  public boolean isFinished() {
+    return this == VISIT_COMPLETED || this == VISIT_INCOMPLETE || this == CANCELLED;
   }
 
   public boolean acceptsCandidateRemoval() {

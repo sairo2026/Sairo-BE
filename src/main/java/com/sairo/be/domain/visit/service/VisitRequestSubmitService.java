@@ -16,6 +16,8 @@ import com.sairo.be.domain.visit.entity.VisitCoordination;
 import com.sairo.be.domain.visit.entity.VisitRequest;
 import com.sairo.be.domain.visit.mapper.VisitRequestMapper;
 import com.sairo.be.domain.visit.repository.PropertyAccessApprovalRepository;
+import com.sairo.be.domain.visit.repository.ScheduleResultRepository;
+import com.sairo.be.domain.visit.repository.ScheduleResultRepository.ItemHead;
 import com.sairo.be.domain.visit.repository.VisitApproverConditionRepository;
 import com.sairo.be.domain.visit.repository.VisitCandidatePropertyRepository;
 import com.sairo.be.domain.visit.repository.VisitRequestRepository;
@@ -53,6 +55,13 @@ public class VisitRequestSubmitService {
           "expectedDurationMinutes",
           "partySize",
           "requestNote");
+  private static final Set<String> CHANGE_KEYS =
+      Set.of(
+          "requestedStartAt",
+          "requestedEndAt",
+          "expectedDurationMinutes",
+          "partySize",
+          "requestNote");
   private static final int NOTE_MAX = 500;
   private static final long QUOTA_RETRY_SECONDS = 60L;
   private static final Pattern PHONE_LIKE =
@@ -67,6 +76,7 @@ public class VisitRequestSubmitService {
   private final FeasibilityContextFactory feasibility;
   private final VisitRequestRepository requestRepository;
   private final VisitRequestStatusHistoryRepository historyRepository;
+  private final ScheduleResultRepository resultRepository;
   private final CoordinationStatusService coordinationStatus;
   private final ApplyGrantPort applyGrants;
   private final AdvisoryLock advisoryLock;
@@ -84,6 +94,7 @@ public class VisitRequestSubmitService {
       FeasibilityContextFactory feasibility,
       VisitRequestRepository requestRepository,
       VisitRequestStatusHistoryRepository historyRepository,
+      ScheduleResultRepository resultRepository,
       CoordinationStatusService coordinationStatus,
       ApplyGrantPort applyGrants,
       AdvisoryLock advisoryLock,
@@ -99,6 +110,7 @@ public class VisitRequestSubmitService {
     this.feasibility = feasibility;
     this.requestRepository = requestRepository;
     this.historyRepository = historyRepository;
+    this.resultRepository = resultRepository;
     this.coordinationStatus = coordinationStatus;
     this.applyGrants = applyGrants;
     this.advisoryLock = advisoryLock;
@@ -113,7 +125,7 @@ public class VisitRequestSubmitService {
 
   @Transactional
   public VisitRequestResponse submit(StaffPrincipal principal, Long coordinationId, JsonNode body) {
-    Input input = parse(body);
+    Input input = parse(body, true);
     VisitCoordination preview = access.view(principal, coordinationId);
     rateLimiter.hit(
         VisitRateLimits.REQUEST_SUBMIT_MEMBER, String.valueOf(principal.membershipId()));
@@ -122,6 +134,37 @@ public class VisitRequestSubmitService {
         candidateRepository
             .findByIdAndCoordinationId(input.candidatePropertyId(), coordinationId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    return submitFor(principal, coordinationId, candidate, input, null);
+  }
+
+  /** 확정 방문 변경 신청이다. 대체 대상 방문은 충돌·간격·횟수 계산에서 제외한다. */
+  @Transactional
+  public VisitRequestResponse submitChange(StaffPrincipal principal, Long itemId, JsonNode body) {
+    Input input = parse(body, false);
+    ItemHead item =
+        resultRepository
+            .findItem(itemId)
+            .filter(found -> found.officeId().equals(principal.officeId()))
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    VisitCoordination preview = access.view(principal, item.coordinationId());
+    rateLimiter.hit(
+        VisitRateLimits.REQUEST_SUBMIT_MEMBER, String.valueOf(principal.membershipId()));
+    if (!item.scheduled() || preview.getStatus().isFinished()) {
+      throw new BusinessException(ErrorCode.VISIT_REQUEST_INVALID_STATE);
+    }
+    VisitCandidateProperty candidate =
+        candidateRepository
+            .findByIdAndCoordinationId(item.candidatePropertyId(), item.coordinationId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.VISIT_REQUEST_INVALID_STATE));
+    return submitFor(principal, item.coordinationId(), candidate, input, item.id());
+  }
+
+  private VisitRequestResponse submitFor(
+      StaffPrincipal principal,
+      Long coordinationId,
+      VisitCandidateProperty candidate,
+      Input input,
+      Long replacedItemId) {
     PropertySummary property =
         propertyReferences
             .find(candidate.getPropertyId())
@@ -160,7 +203,12 @@ public class VisitRequestSubmitService {
               .orElseThrow(() -> new BusinessException(ErrorCode.APPLY_GRANT_INACTIVE));
     }
     VisitCoordination coordination = access.lock(principal, coordinationId);
-    requireAcceptingStatus(coordination.getStatus());
+    if (replacedItemId == null) {
+      requireAcceptingStatus(coordination.getStatus());
+    } else if (coordination.getStatus().isFinished()
+        || resultRepository.findItem(replacedItemId).filter(ItemHead::scheduled).isEmpty()) {
+      throw new BusinessException(ErrorCode.VISIT_REQUEST_INVALID_STATE);
+    }
 
     VisitApproverCondition condition =
         conditionRepository
@@ -197,7 +245,12 @@ public class VisitRequestSubmitService {
 
     Context context =
         feasibility.build(
-            coordination, candidate, lockedApproval, condition, principal.membershipId());
+            coordination,
+            candidate,
+            lockedApproval,
+            condition,
+            principal.membershipId(),
+            replacedItemId);
     List<String> violated =
         VisitFeasibility.violated(context, input.start(), input.end(), now, true);
     if (!violated.isEmpty()) {
@@ -205,26 +258,29 @@ public class VisitRequestSubmitService {
           ErrorCode.APPROVER_CONDITION_VIOLATED, Map.of("violatedRules", violated));
     }
 
+    VisitRequest draft =
+        VisitRequest.submitNew(
+            condition.getId(),
+            lockedApproval.getId(),
+            property.propertyId(),
+            property.officeId(),
+            grantId,
+            principal.officeId(),
+            principal.membershipId(),
+            coordinationId,
+            candidate.getId(),
+            input.start(),
+            input.end(),
+            input.durationMinutes(),
+            input.partySize(),
+            input.requestNote(),
+            now);
     VisitRequest saved =
         requestRepository.saveAndFlush(
-            VisitRequest.submitNew(
-                condition.getId(),
-                lockedApproval.getId(),
-                property.propertyId(),
-                property.officeId(),
-                grantId,
-                principal.officeId(),
-                principal.membershipId(),
-                coordinationId,
-                candidate.getId(),
-                input.start(),
-                input.end(),
-                input.durationMinutes(),
-                input.partySize(),
-                input.requestNote(),
-                now));
+            replacedItemId == null ? draft : VisitRequest.submitChange(draft, replacedItemId));
     historyRepository.save(saved.openingHistory(principal.membershipId()));
-    if (coordination.getStatus() == CoordinationStatus.FINAL_CONFIRMATION_REQUIRED) {
+    if (replacedItemId == null
+        && coordination.getStatus() == CoordinationStatus.FINAL_CONFIRMATION_REQUIRED) {
       coordinationStatus.move(
           coordination,
           CoordinationStatus.APPLYING,
@@ -266,9 +322,10 @@ public class VisitRequestSubmitService {
     }
   }
 
-  private Input parse(JsonNode body) {
-    CustomerInput.requireObject(body, KEYS);
-    Long candidateId = CustomerInput.requiredLong(body, "candidatePropertyId");
+  private Input parse(JsonNode body, boolean withCandidate) {
+    CustomerInput.requireObject(body, withCandidate ? KEYS : CHANGE_KEYS);
+    Long candidateId =
+        withCandidate ? CustomerInput.requiredLong(body, "candidatePropertyId") : null;
     OffsetDateTime start = CustomerInput.requiredDateTime(body, "requestedStartAt");
     OffsetDateTime end = CustomerInput.requiredDateTime(body, "requestedEndAt");
     Long duration = CustomerInput.requiredLong(body, "expectedDurationMinutes");

@@ -43,6 +43,19 @@ public class CoordinationStatusService {
   }
 
   @Transactional(propagation = Propagation.MANDATORY)
+  public void raiseAccessRevoked(
+      VisitCoordination coordination, Long approvalId, Long actorMembershipId, String reason) {
+    historyRepository.save(
+        coordination.raiseReschedule(
+            RescheduleTriggerType.ACCESS_REVOKED,
+            reason,
+            approvalId,
+            StatusChangeSource.STAFF,
+            actorMembershipId,
+            clock.instant()));
+  }
+
+  @Transactional(propagation = Propagation.MANDATORY)
   public void move(
       VisitCoordination coordination,
       CoordinationStatus next,
