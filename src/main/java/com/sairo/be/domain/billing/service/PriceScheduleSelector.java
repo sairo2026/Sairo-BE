@@ -27,7 +27,10 @@ public class PriceScheduleSelector {
   }
 
   public Optional<PriceSelection> find(long officeId, Instant at) {
-    Optional<ApprovedAgreementRow> agreement = queryRepository.findApprovedAgreement(officeId);
+    Optional<ApprovedAgreementRow> agreement =
+        queryRepository
+            .findApprovedAgreement(officeId)
+            .or(() -> queryRepository.findRevokedAgreementStillPriced(officeId, at));
     if (agreement.isPresent()
         && !at.isBefore(agreement.get().priceStartsAt())
         && at.isBefore(agreement.get().priceEndsAt())) {

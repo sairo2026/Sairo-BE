@@ -12,15 +12,19 @@ import org.springframework.stereotype.Component;
 public class BillingScheduler {
 
   private final BillingJobService jobService;
+  private final PlanNoticeJobService planNoticeJobService;
   private final Clock clock;
 
-  public BillingScheduler(BillingJobService jobService, Clock clock) {
+  public BillingScheduler(
+      BillingJobService jobService, PlanNoticeJobService planNoticeJobService, Clock clock) {
     this.jobService = jobService;
+    this.planNoticeJobService = planNoticeJobService;
     this.clock = clock;
   }
 
   @Scheduled(fixedDelayString = "PT5M")
   public void run() {
     jobService.runAll(clock.instant());
+    planNoticeJobService.runAll(clock.instant());
   }
 }

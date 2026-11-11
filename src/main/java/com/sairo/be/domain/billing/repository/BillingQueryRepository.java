@@ -56,6 +56,47 @@ public class BillingQueryRepository {
         .optional();
   }
 
+  /** 예약된 버전까지 포함해 기준 시각에 적용될 표준 요금표다. 시행 처리 전인 새 버전도 안내 대상이 된다. */
+  public Optional<PriceScheduleRow> findStandardPriceIncludingScheduledAt(Instant at) {
+    return jdbcClient
+        .sql(
+            "SELECT "
+                + PRICE_COLUMNS
+                + " FROM price_schedule WHERE audience = 'STANDARD'"
+                + " AND status IN ('SCHEDULED','ACTIVE') AND effective_at <= :at"
+                + " ORDER BY effective_at DESC LIMIT 1")
+        .param("at", Timestamp.from(at))
+        .query(BillingQueryRepository::mapPrice)
+        .optional();
+  }
+
+  /** 취소한 시작 고객 합의라도 그 취소로 만든 가격 변경 안내가 적용되기 전이면 합의 가격을 계속 쓴다. 안내 없이 바로 표준 가격으로 바뀌지 않게 하려는 것이다. */
+  public Optional<ApprovedAgreementRow> findRevokedAgreementStillPriced(long officeId, Instant at) {
+    return jdbcClient
+        .sql(
+            """
+            SELECT a.id, a.price_schedule_id, a.price_starts_at, a.price_ends_at
+            FROM billing_start_customer_agreement a
+            WHERE a.office_id = :officeId AND a.status = 'REVOKED'
+              AND a.price_starts_at <= :at AND a.price_ends_at > :at
+              AND EXISTS (SELECT 1 FROM pricing_change_notice n
+                          WHERE n.office_id = a.office_id
+                            AND n.from_price_schedule_id = a.price_schedule_id
+                            AND n.applies_from_period_start > :at)
+            ORDER BY a.revoked_at DESC LIMIT 1
+            """)
+        .param("officeId", officeId)
+        .param("at", Timestamp.from(at))
+        .query(
+            (rs, n) ->
+                new ApprovedAgreementRow(
+                    rs.getLong("id"),
+                    rs.getLong("price_schedule_id"),
+                    rs.getTimestamp("price_starts_at").toInstant(),
+                    rs.getTimestamp("price_ends_at").toInstant()))
+        .optional();
+  }
+
   public Optional<PriceScheduleRow> findPriceById(long id) {
     return jdbcClient
         .sql("SELECT " + PRICE_COLUMNS + " FROM price_schedule WHERE id = :id")
