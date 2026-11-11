@@ -41,6 +41,7 @@ public class OfficeWithdrawalService {
     Timestamp at = Timestamp.from(now);
     cancelOpenRegistrations(userId, at);
     cancelPendingMemberships(userId, at);
+    rejectCandidateTransfers(userId, at);
     revokeApprovedMemberships(userId, at);
     assignWithdrawnAliases(userId);
   }
@@ -74,6 +75,19 @@ public class OfficeWithdrawalService {
           .param("at", at)
           .update();
     }
+  }
+
+  private void rejectCandidateTransfers(Long userId, Timestamp at) {
+    jdbcClient
+        .sql(
+            "UPDATE office_owner_transfer SET status = 'REJECTED', rejected_at = :at,"
+                + " rejected_reason = :reason WHERE status IN ('PENDING','UNDER_REVIEW')"
+                + " AND to_membership_id IN (SELECT id FROM office_membership WHERE user_id ="
+                + " :userId)")
+        .param("at", at)
+        .param("reason", REASON)
+        .param("userId", userId)
+        .update();
   }
 
   private void cancelPendingMemberships(Long userId, Timestamp at) {

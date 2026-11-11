@@ -26,6 +26,12 @@ public class PolicyDocument {
   @Column(nullable = false, length = 12)
   private String status;
 
+  @Column(nullable = false, columnDefinition = "text")
+  private String body;
+
+  @Column(name = "requires_consent", nullable = false)
+  private boolean requiresConsent;
+
   @Column(name = "effective_at")
   private Instant effectiveAt;
 }

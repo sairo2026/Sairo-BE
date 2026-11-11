@@ -82,6 +82,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       HttpHeaders headers,
       HttpStatusCode statusCode,
       WebRequest request) {
+    if (statusCode.value() == HttpStatus.CONTENT_TOO_LARGE.value()
+        && request.getDescription(false).startsWith("uri=/api/support-inquiries/")) {
+      return ResponseEntity.status(ErrorCode.ATTACHMENT_TOO_LARGE.getStatus())
+          .body(
+              ErrorResponse.of(
+                  ErrorCode.ATTACHMENT_TOO_LARGE,
+                  ErrorCode.ATTACHMENT_TOO_LARGE.getMessage(),
+                  TraceIds.currentOrNew()));
+    }
     ErrorCode errorCode = errorCodeFor(statusCode);
     ErrorResponse response =
         ErrorResponse.of(errorCode, errorCode.getMessage(), TraceIds.currentOrNew());
