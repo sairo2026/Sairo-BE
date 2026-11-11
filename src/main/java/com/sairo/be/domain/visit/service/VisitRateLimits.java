@@ -14,6 +14,8 @@ public final class VisitRateLimits {
       RateLimitRule.of("visit-privacy-intake-link", 3, Duration.ofDays(1));
   public static final RateLimitRule PRIVACY_INTAKE_IP =
       RateLimitRule.of("visit-privacy-intake-ip", 5, Duration.ofHours(1));
+  public static final RateLimitRule REQUEST_SUBMIT_MEMBER =
+      RateLimitRule.of("visit-request-submit-member", 20, Duration.ofSeconds(60));
 
   private VisitRateLimits() {}
 }

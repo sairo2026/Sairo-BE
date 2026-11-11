@@ -216,6 +216,12 @@ class OpenApiDocumentationTest {
           Map.entry(
               "POST /api/public/approver-property-links/{token}/conditions/impact-preview",
               Set.of("200")),
+          Map.entry("POST /api/visit-coordinations/{coordinationId}/visit-requests", Set.of("201")),
+          Map.entry("GET /api/visit-coordinations/{coordinationId}/visit-requests", Set.of("200")),
+          Map.entry("GET /api/visit-requests/{requestId}", Set.of("200")),
+          Map.entry("POST /api/visit-requests/{requestId}/withdraw", Set.of("200")),
+          Map.entry("GET /api/visit-request-notices", Set.of("200")),
+          Map.entry("POST /api/visit-request-notices/{noticeId}/read", Set.of("204")),
           Map.entry("POST /api/properties/{propertyId}/owner-occupants", Set.of("201")),
           Map.entry("PATCH /api/owner-occupants/{linkId}", Set.of("200")),
           Map.entry("POST /api/customers/{customerId}/property-interests", Set.of("201")),
