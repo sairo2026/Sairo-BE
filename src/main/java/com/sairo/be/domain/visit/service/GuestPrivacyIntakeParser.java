@@ -3,6 +3,7 @@ package com.sairo.be.domain.visit.service;
 import com.sairo.be.domain.customer.service.CustomerInput;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
+import com.sairo.be.global.support.ContactMasking;
 import com.sairo.be.global.support.PhoneNumbers;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -83,14 +84,9 @@ public final class GuestPrivacyIntakeParser {
   }
 
   public static String mask(ContactChannel channel, String contact) {
-    if (channel == ContactChannel.PHONE) {
-      String[] parts = contact.split("-");
-      return parts[0] + "-****-" + parts[2];
-    }
-    int at = contact.indexOf('@');
-    String local = contact.substring(0, at);
-    String visible = local.substring(0, Math.min(2, Math.max(1, local.length() - 1)));
-    return visible + "***" + contact.substring(at);
+    return channel == ContactChannel.PHONE
+        ? ContactMasking.phone(contact)
+        : ContactMasking.email(contact);
   }
 
   private static String normalizeContact(ContactChannel channel, String contact) {

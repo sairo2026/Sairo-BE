@@ -102,4 +102,30 @@ public class PrivacyRequest {
     request.handlerType = PrivacyHandlerType.SAIRO;
     return request;
   }
+
+  /**
+   * 비회원 링크 접수를 운영자가 본인 확인한 뒤 권리 요청으로 바꾼 것이다. 요청자 회원 ID 없이 링크 발급 사무소가 처리 책임을 지고(OFFICE) 접수 시각은 비회원
+   * 접수 시각을 쓴다.
+   */
+  public static PrivacyRequest receiveFromGuest(
+      Long officeId,
+      PrivacyRequestType requestType,
+      String requestScope,
+      String legalBasis,
+      Instant receivedAt,
+      Instant legalDueAt,
+      Instant internalDueAt) {
+    PrivacyRequest request = new PrivacyRequest();
+    request.officeId = officeId;
+    request.requestType = requestType;
+    request.identityStatus = IdentityStatus.VERIFIED;
+    request.receivedAt = receivedAt.truncatedTo(ChronoUnit.MICROS);
+    request.legalBasis = legalBasis;
+    request.legalDueAt = legalDueAt.truncatedTo(ChronoUnit.MICROS);
+    request.internalDueAt = internalDueAt.truncatedTo(ChronoUnit.MICROS);
+    request.requestScope = requestScope;
+    request.status = PrivacyRequestStatus.RECEIVED;
+    request.handlerType = PrivacyHandlerType.OFFICE;
+    return request;
+  }
 }
