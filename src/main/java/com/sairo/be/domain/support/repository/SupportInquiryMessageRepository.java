@@ -16,6 +16,11 @@ public interface SupportInquiryMessageRepository
           + " order by m.createdAt asc, m.id asc")
   List<SupportInquiryMessage> findPublicByInquiry(@Param("inquiryId") Long inquiryId);
 
+  List<SupportInquiryMessage> findByInquiryIdOrderByCreatedAtAscIdAsc(Long inquiryId);
+
+  Optional<SupportInquiryMessage> findByIdAndInquiryIdAndAuthorOperatorIdIsNotNull(
+      Long id, Long inquiryId);
+
   @Query(
       "select m from SupportInquiryMessage m where m.id = :messageId and m.inquiryId = :inquiryId"
           + " and m.authorUserId = :userId"

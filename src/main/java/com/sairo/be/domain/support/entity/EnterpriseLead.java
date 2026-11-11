@@ -80,6 +80,25 @@ public class EnterpriseLead {
   @Column(nullable = false)
   private Long version = 1L;
 
+  @Column(name = "contract_reference", length = 100)
+  private String contractReference;
+
+  @Column(name = "contracted_at")
+  private Instant contractedAt;
+
+  @Column(name = "closed_reason", length = 20)
+  private String closedReason;
+
+  @Column(name = "closed_note", columnDefinition = "text")
+  private String closedNote;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "closed_from_status", length = 15)
+  private LeadStatus closedFromStatus;
+
+  @Column(name = "closed_at")
+  private Instant closedAt;
+
   public static EnterpriseLead receive(
       String companyName,
       String contactName,
@@ -117,6 +136,75 @@ public class EnterpriseLead {
   public void customerRejected(Instant now) {
     requireQuoted();
     status = LeadStatus.REJECTED;
+    updatedAt = now.truncatedTo(ChronoUnit.MICROS);
+  }
+
+  /** 담당을 정한다. 접수 상태면 배정으로 바꾸고 그 밖에는 상태를 유지한다. */
+  public void assign(Long operatorId, Instant now) {
+    if (status == LeadStatus.CONTRACTED || status == LeadStatus.CLOSED) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    assignedOperatorId = operatorId;
+    if (status == LeadStatus.RECEIVED) {
+      status = LeadStatus.ASSIGNED;
+    }
+    updatedAt = now.truncatedTo(ChronoUnit.MICROS);
+  }
+
+  public void startConsultation(Instant now) {
+    if (status != LeadStatus.ASSIGNED) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    status = LeadStatus.CONSULTING;
+    updatedAt = now.truncatedTo(ChronoUnit.MICROS);
+  }
+
+  public void quoted(long amount, Instant expiresAt, Instant now) {
+    if (status != LeadStatus.CONSULTING
+        && status != LeadStatus.QUOTED
+        && status != LeadStatus.REJECTED) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    status = LeadStatus.QUOTED;
+    quoteAmount = amount;
+    quoteExpiresAt = expiresAt.truncatedTo(ChronoUnit.MICROS);
+    updatedAt = now.truncatedTo(ChronoUnit.MICROS);
+  }
+
+  public void contract(String reference, Instant signedAt, Instant now) {
+    if (status != LeadStatus.ACCEPTED) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    status = LeadStatus.CONTRACTED;
+    contractReference = reference;
+    contractedAt = signedAt.truncatedTo(ChronoUnit.MICROS);
+    updatedAt = now.truncatedTo(ChronoUnit.MICROS);
+  }
+
+  public void close(String reason, String note, Instant now) {
+    if (status == LeadStatus.CONTRACTED || status == LeadStatus.CLOSED) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    Instant at = now.truncatedTo(ChronoUnit.MICROS);
+    closedFromStatus = status;
+    closedReason = reason;
+    closedNote = note;
+    closedAt = at;
+    status = LeadStatus.CLOSED;
+    updatedAt = at;
+  }
+
+  /** 종료 정보를 비우고 정한 단계로 되돌린다. 접수로 돌아가면 담당을 비운다. */
+  public void reopen(LeadStatus target, Long operatorId, Instant now) {
+    if (status != LeadStatus.CLOSED) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    status = target;
+    assignedOperatorId = target == LeadStatus.RECEIVED ? null : operatorId;
+    closedFromStatus = null;
+    closedReason = null;
+    closedNote = null;
+    closedAt = null;
     updatedAt = now.truncatedTo(ChronoUnit.MICROS);
   }
 

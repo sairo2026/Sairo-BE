@@ -41,6 +41,12 @@ public class EnterpriseLeadStatusHistory {
   @Column(name = "actor_type", nullable = false, length = 10, updatable = false)
   private String actorType;
 
+  @Column(name = "actor_operator_id", updatable = false)
+  private Long actorOperatorId;
+
+  @Column(name = "assigned_operator_id", updatable = false)
+  private Long assignedOperatorId;
+
   @Column(name = "quote_id", updatable = false)
   private Long quoteId;
 
@@ -60,6 +66,25 @@ public class EnterpriseLeadStatusHistory {
 
   public static EnterpriseLeadStatusHistory quoteRejected(Long leadId, Long quoteId, Instant now) {
     return of(leadId, "QUOTE_REJECTED", LeadStatus.QUOTED, LeadStatus.REJECTED, quoteId, now);
+  }
+
+  /** 운영자 처리 사건이다. 배정 사건이 아니면 assignedOperatorId는 비운다. */
+  public static EnterpriseLeadStatusHistory byOperator(
+      Long leadId,
+      String eventType,
+      LeadStatus from,
+      LeadStatus to,
+      Long operatorId,
+      Long assignedOperatorId,
+      Long quoteId,
+      String reason,
+      Instant now) {
+    EnterpriseLeadStatusHistory history = of(leadId, eventType, from, to, quoteId, now);
+    history.actorType = "OPERATOR";
+    history.actorOperatorId = operatorId;
+    history.assignedOperatorId = assignedOperatorId;
+    history.reason = reason;
+    return history;
   }
 
   private static EnterpriseLeadStatusHistory of(

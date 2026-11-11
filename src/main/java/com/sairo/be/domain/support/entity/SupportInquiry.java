@@ -145,6 +145,23 @@ public class SupportInquiry {
     touch(now);
   }
 
+  public void changePriority(InquiryPriority next, Instant recalculatedDueAt, Instant now) {
+    if (status == InquiryStatus.CLOSED) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    priority = next;
+    if (recalculatedDueAt != null) {
+      responseDueAt = recalculatedDueAt.truncatedTo(ChronoUnit.MICROS);
+    }
+    touch(now);
+  }
+
+  public void requireOpenForOperator() {
+    if (status == InquiryStatus.CLOSED) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+  }
+
   public void touch(Instant now) {
     updatedAt = now.truncatedTo(ChronoUnit.MICROS);
   }
