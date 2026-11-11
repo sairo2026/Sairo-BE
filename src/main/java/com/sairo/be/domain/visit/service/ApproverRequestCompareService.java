@@ -57,6 +57,7 @@ public class ApproverRequestCompareService {
   private final OfficeDirectory officeDirectory;
   private final PropertyReferenceService propertyReferences;
   private final ApproverLinkNoticeProvider noticeProvider;
+  private final ApproverPortalAccess portalAccess;
   private final Clock clock;
 
   public ApproverRequestCompareService(
@@ -71,6 +72,7 @@ public class ApproverRequestCompareService {
       OfficeDirectory officeDirectory,
       PropertyReferenceService propertyReferences,
       ApproverLinkNoticeProvider noticeProvider,
+      ApproverPortalAccess portalAccess,
       Clock clock) {
     this.linkResolver = linkResolver;
     this.accessRecorder = accessRecorder;
@@ -83,6 +85,7 @@ public class ApproverRequestCompareService {
     this.officeDirectory = officeDirectory;
     this.propertyReferences = propertyReferences;
     this.noticeProvider = noticeProvider;
+    this.portalAccess = portalAccess;
     this.clock = clock;
   }
 
@@ -97,6 +100,16 @@ public class ApproverRequestCompareService {
     if (!approval.isPrimary()) {
       throw new BusinessException(ErrorCode.APPROVER_READ_ONLY);
     }
+    return listFor(approval);
+  }
+
+  /** 승인자 세션으로 신청 비교 목록을 본다. 대표 승인자 출입승인만 볼 수 있다. */
+  @Transactional(readOnly = true)
+  public ApproverVisitRequestCompareResponse listForProfile(Long profileId, Long approvalId) {
+    return listFor(portalAccess.primary(profileId, approvalId));
+  }
+
+  private ApproverVisitRequestCompareResponse listFor(PropertyAccessApproval approval) {
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     Optional<VisitApproverCondition> condition =
         conditionRepository.findFirstByApprovalIdAndStatus(

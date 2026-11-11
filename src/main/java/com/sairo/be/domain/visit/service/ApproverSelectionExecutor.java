@@ -60,6 +60,7 @@ public class ApproverSelectionExecutor {
   public record Input(
       Long approvalId,
       Long linkId,
+      Long profileId,
       Long requestId,
       Long expectedVersion,
       boolean idempotent,
@@ -201,7 +202,8 @@ public class ApproverSelectionExecutor {
     if (in.idempotent()
         && (request.getStatus() == RequestStatus.CONFIRMED
             || request.getStatus() == RequestStatus.REVALIDATION_FAILED)) {
-      Optional<Outcome> prior = selectionRepository.priorOutcome(request.getId(), in.linkId());
+      Optional<Outcome> prior =
+          selectionRepository.priorOutcome(request.getId(), in.linkId(), in.profileId());
       if (prior.isPresent()) {
         return Result.ok(replay(request, prior.get()));
       }
@@ -230,7 +232,7 @@ public class ApproverSelectionExecutor {
 
     Long selectionId =
         selectionRepository.insertSelection(
-            request.getId(), in.linkId(), in.comparedCount(), in.note(), now);
+            request.getId(), in.linkId(), in.profileId(), in.comparedCount(), in.note(), now);
     Set<Long> preferred = selectionRepository.preferredMembers(approval.getId());
     for (PendingRow row : selectionRepository.pendingOfApproval(approval.getId())) {
       selectionRepository.insertSnapshot(

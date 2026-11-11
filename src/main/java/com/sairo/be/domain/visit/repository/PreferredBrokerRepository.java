@@ -133,18 +133,20 @@ public class PreferredBrokerRepository {
       Long approvalId,
       Long membershipId,
       Long linkId,
+      Long profileId,
       Long sourceRequestId,
       Long sourceScheduleItemId,
       Instant now) {
     return jdbcClient
         .sql(
             "INSERT INTO visit_preferred_broker (approval_id, broker_membership_id,"
-                + " designated_via_link_id, source_request_id, source_schedule_item_id,"
-                + " designated_at) VALUES (:approval, :member, :link, :request, :item, :now)"
-                + " RETURNING id")
+                + " designated_via_link_id, designated_via_profile_id, source_request_id,"
+                + " source_schedule_item_id, designated_at) VALUES (:approval, :member, :link,"
+                + " :profile, :request, :item, :now) RETURNING id")
         .param("approval", approvalId)
         .param("member", membershipId)
         .param("link", linkId)
+        .param("profile", profileId)
         .param("request", sourceRequestId)
         .param("item", sourceScheduleItemId)
         .param("now", Timestamp.from(now))
@@ -152,13 +154,14 @@ public class PreferredBrokerRepository {
         .single();
   }
 
-  public void release(Long preferredId, Long linkId, Instant now) {
+  public void release(Long preferredId, Long linkId, Long profileId, Instant now) {
     jdbcClient
         .sql(
-            "UPDATE visit_preferred_broker SET released_at = :now, released_via_link_id = :link"
-                + " WHERE id = :id")
+            "UPDATE visit_preferred_broker SET released_at = :now, released_via_link_id = :link,"
+                + " released_via_profile_id = :profile WHERE id = :id")
         .param("now", Timestamp.from(now))
         .param("link", linkId)
+        .param("profile", profileId)
         .param("id", preferredId)
         .update();
   }

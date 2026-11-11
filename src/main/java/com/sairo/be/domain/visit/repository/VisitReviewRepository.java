@@ -176,14 +176,15 @@ public class VisitReviewRepository {
   }
 
   public Optional<Long> insert(
-      Target target, Answers answers, Long linkId, Instant deadline, Instant now) {
+      Target target, Answers answers, Long linkId, Long profileId, Instant deadline, Instant now) {
     return jdbcClient
         .sql(
             "INSERT INTO visit_review (schedule_item_id, request_id, approval_id,"
-                + " reviewed_membership_id, reviewed_office_id, approver_link_id, punctuality,"
-                + " advance_contact, as_requested, status, review_deadline_at, submitted_at,"
-                + " last_revised_at, revision_count, updated_at, version) VALUES (:item,"
-                + " :request, :approval, :member, :office, :link, :punctuality, :contact,"
+                + " reviewed_membership_id, reviewed_office_id, approver_link_id,"
+                + " approver_profile_id, punctuality, advance_contact, as_requested, status,"
+                + " review_deadline_at, submitted_at, last_revised_at, revision_count, updated_at,"
+                + " version) VALUES (:item, :request, :approval, :member, :office, :link,"
+                + " :profile, :punctuality, :contact,"
                 + " :asRequested, 'ACTIVE', :deadline, :now, :now, 0, :now, 1) ON CONFLICT"
                 + " (schedule_item_id) DO NOTHING RETURNING id")
         .param("item", target.itemId())
@@ -192,6 +193,7 @@ public class VisitReviewRepository {
         .param("member", target.applicantMembershipId())
         .param("office", target.applicantOfficeId())
         .param("link", linkId)
+        .param("profile", profileId)
         .param("punctuality", answers.punctuality())
         .param("contact", answers.advanceContact())
         .param("asRequested", answers.asRequested())
@@ -201,30 +203,33 @@ public class VisitReviewRepository {
         .optional();
   }
 
-  public void revise(Long reviewId, Answers answers, Long linkId, Instant now) {
+  public void revise(Long reviewId, Answers answers, Long linkId, Long profileId, Instant now) {
     jdbcClient
         .sql(
             "UPDATE visit_review SET punctuality = :punctuality, advance_contact = :contact,"
                 + " as_requested = :asRequested, status = 'ACTIVE', withdrawn_at = NULL,"
-                + " approver_link_id = :link, approver_profile_id = NULL, last_revised_at = :now,"
+                + " approver_link_id = :link, approver_profile_id = :profile, last_revised_at ="
+                + " :now,"
                 + " revision_count = revision_count + 1, updated_at = :now, version = version +"
                 + " 1 WHERE id = :id")
         .param("punctuality", answers.punctuality())
         .param("contact", answers.advanceContact())
         .param("asRequested", answers.asRequested())
         .param("link", linkId)
+        .param("profile", profileId)
         .param("now", Timestamp.from(now))
         .param("id", reviewId)
         .update();
   }
 
-  public void withdraw(Long reviewId, Long linkId, Instant now) {
+  public void withdraw(Long reviewId, Long linkId, Long profileId, Instant now) {
     jdbcClient
         .sql(
             "UPDATE visit_review SET status = 'WITHDRAWN', withdrawn_at = :now, approver_link_id"
-                + " = :link, approver_profile_id = NULL, last_revised_at = :now, updated_at ="
-                + " :now, version = version + 1 WHERE id = :id")
+                + " = :link, approver_profile_id = :profile, last_revised_at = :now, updated_at"
+                + " = :now, version = version + 1 WHERE id = :id")
         .param("link", linkId)
+        .param("profile", profileId)
         .param("now", Timestamp.from(now))
         .param("id", reviewId)
         .update();

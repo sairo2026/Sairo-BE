@@ -18,6 +18,7 @@ import com.sairo.be.domain.visit.entity.StatusChangeSource;
 import com.sairo.be.domain.visit.entity.VisitApproverCondition;
 import com.sairo.be.domain.visit.entity.VisitCoordination;
 import com.sairo.be.domain.visit.repository.ApproverConditionRowRepository;
+import com.sairo.be.domain.visit.repository.ApproverProfileRepository;
 import com.sairo.be.domain.visit.repository.ConfirmedVisitRepository;
 import com.sairo.be.domain.visit.repository.ConsentGuestNoticeAckRepository;
 import com.sairo.be.domain.visit.repository.PropertyAccessApprovalRepository;
@@ -46,6 +47,7 @@ import java.util.Optional;
 import java.util.TreeSet;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 
@@ -69,6 +71,8 @@ public class ApproverConditionService {
   private final PublicApproverLinkResolver linkResolver;
   private final ApproverLinkAccessRecorder accessRecorder;
   private final AdvisoryLock advisoryLock;
+  private final ApproverPortalAccess portalAccess;
+  private final ApproverProfileRepository profileRepository;
   private final Clock clock;
 
   public ApproverConditionService(
@@ -86,6 +90,8 @@ public class ApproverConditionService {
       PublicApproverLinkResolver linkResolver,
       ApproverLinkAccessRecorder accessRecorder,
       AdvisoryLock advisoryLock,
+      ApproverPortalAccess portalAccess,
+      ApproverProfileRepository profileRepository,
       Clock clock) {
     this.access = access;
     this.approvalRepository = approvalRepository;
@@ -101,6 +107,8 @@ public class ApproverConditionService {
     this.linkResolver = linkResolver;
     this.accessRecorder = accessRecorder;
     this.advisoryLock = advisoryLock;
+    this.portalAccess = portalAccess;
+    this.profileRepository = profileRepository;
     this.clock = clock;
   }
 
@@ -166,6 +174,7 @@ public class ApproverConditionService {
         InputSource.PROXY,
         principal.membershipId(),
         null,
+        null,
         noticeProvider.current(),
         now,
         principal.membershipId());
@@ -179,6 +188,16 @@ public class ApproverConditionService {
         approvalRepository
             .findById(head.getApprovalId())
             .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    return activeView(approval);
+  }
+
+  /** 승인자 세션으로 활성 조건을 읽는다. 공동 승인자는 대표 승인자 출입승인의 조건을 읽는다. */
+  @Transactional(readOnly = true)
+  public ApproverConditionResponse getForProfile(Long profileId, Long approvalId) {
+    return activeView(portalAccess.linked(profileId, approvalId));
+  }
+
+  private ApproverConditionResponse activeView(PropertyAccessApproval approval) {
     Long conditionApprovalId = approval.getId();
     if (!approval.isPrimary()) {
       conditionApprovalId =
@@ -216,7 +235,95 @@ public class ApproverConditionService {
       return response(
           active.get(), parsed.normalizedRanges(), parsed.dateRuleReplacedCount(), notice);
     }
-    return save(approval, parsed, InputSource.DIRECT, null, head.getId(), notice, now, null);
+    return save(approval, parsed, InputSource.DIRECT, null, head.getId(), null, notice, now, null);
+  }
+
+  /** 승인자 세션으로 조건 새 버전을 등록한다. 입력한 프로필을 조건 버전과 안내 확인 기록에 남긴다. */
+  @Transactional
+  public ApproverConditionResponse putForProfile(
+      Long profileId, Long approvalId, JsonNode body, String idempotencyKey) {
+    Parsed parsed = ApproverConditionParser.parse(body, Mode.LINK_SAVE);
+    PropertyAccessApproval approval = portalAccess.lockForWrite(profileId, approvalId);
+    ApproverLinkNoticeProvider.Notice notice = noticeProvider.current();
+    if (!notice.noticeVersion().equals(parsed.acknowledgedNoticeVersion())) {
+      throw new BusinessException(ErrorCode.NOTICE_VERSION_CHANGED);
+    }
+    Instant now = now();
+    if (!approval.isUsableAt(now)) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    Optional<VisitApproverCondition> active =
+        conditionRepository.findFirstByApprovalIdAndStatus(
+            approval.getId(), ConditionStatus.ACTIVE);
+    if (isRetry(idempotencyKey, active, parsed)) {
+      return response(
+          active.get(), parsed.normalizedRanges(), parsed.dateRuleReplacedCount(), notice);
+    }
+    return save(approval, parsed, InputSource.DIRECT, null, null, profileId, notice, now, null);
+  }
+
+  @Transactional
+  public ApproverConditionImpactPreviewResponse previewForProfile(
+      Long profileId, Long approvalId, JsonNode body) {
+    Parsed parsed = ApproverConditionParser.parse(body, Mode.LINK_PREVIEW);
+    PropertyAccessApproval approval = portalAccess.lockForWrite(profileId, approvalId);
+    List<AffectedItem> affected = affectedFor(approval.getId(), parsed.spec());
+    return new ApproverConditionImpactPreviewResponse(!affected.isEmpty(), affected);
+  }
+
+  /** 출입승인 한 건에 새 조건을 적용했을 때 영향받는 확정 방문이다. 저장하지 않는다. */
+  @Transactional(readOnly = true)
+  public List<AffectedItem> affectedFor(Long approvalId, ConditionSpec spec) {
+    return affectedItems(
+        ApproverConditionEvaluator.evaluate(
+            spec, confirmedVisits.findByApproval(approvalId), now()));
+  }
+
+  public record BulkItemOutcome(
+      String result,
+      Long conditionId,
+      Integer versionNo,
+      String failureCode,
+      int affectedItemCount) {}
+
+  /** 일괄 적용의 출입승인 한 건이다. 출입승인마다 독립 트랜잭션이며 이 출입승인의 잠금 키 하나만 잡는다. 영향 방문이 있는데 확인 목록에 없으면 적용하지 않는다. */
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public BulkItemOutcome applyBulkItem(
+      Long profileId,
+      Long approvalId,
+      Parsed parsed,
+      boolean impactAcknowledged,
+      ApproverLinkNoticeProvider.Notice notice) {
+    if (!profileRepository.isLinked(profileId, approvalId)) {
+      return new BulkItemOutcome("FAILED", null, null, "NOT_LINKED", 0);
+    }
+    advisoryLock.lockForTransaction(ApprovalAccess.lockKey(approvalId));
+    Optional<PropertyAccessApproval> locked = approvalRepository.findForUpdateById(approvalId);
+    if (locked.isEmpty() || !profileRepository.isLinked(profileId, approvalId)) {
+      return new BulkItemOutcome("FAILED", null, null, "NOT_LINKED", 0);
+    }
+    PropertyAccessApproval approval = locked.get();
+    if (!approval.isPrimary()) {
+      return new BulkItemOutcome("FAILED", null, null, "NOT_PRIMARY", 0);
+    }
+    Instant now = now();
+    if (!approval.isUsableAt(now)) {
+      return new BulkItemOutcome("FAILED", null, null, "APPROVAL_INACTIVE", 0);
+    }
+    int affected = affectedFor(approvalId, parsed.spec()).size();
+    if (affected > 0 && !impactAcknowledged) {
+      return new BulkItemOutcome("NEEDS_IMPACT_ACK", null, null, null, affected);
+    }
+    Parsed acknowledged =
+        new Parsed(
+            parsed.spec(),
+            parsed.normalizedRanges(),
+            parsed.dateRuleReplacedCount(),
+            true,
+            notice.noticeVersion());
+    ApproverConditionResponse saved =
+        save(approval, acknowledged, InputSource.DIRECT, null, null, profileId, notice, now, null);
+    return new BulkItemOutcome("APPLIED", saved.conditionId(), saved.versionNo(), null, affected);
   }
 
   @Transactional
@@ -254,6 +361,7 @@ public class ApproverConditionService {
       InputSource source,
       Long recordedByMembershipId,
       Long linkId,
+      Long profileId,
       ApproverLinkNoticeProvider.Notice notice,
       Instant now,
       Long actorMembershipId) {
@@ -273,32 +381,44 @@ public class ApproverConditionService {
               conditionRepository.saveAndFlush(previous);
             });
     int versionNo = conditionRepository.maxVersionNo(approval.getId()) + 1;
-    VisitApproverCondition saved =
-        conditionRepository.saveAndFlush(
-            VisitApproverCondition.register(
-                approval.getId(),
-                versionNo,
-                spec.appliesFrom().truncatedTo(ChronoUnit.MICROS),
-                spec.appliesUntil().truncatedTo(ChronoUnit.MICROS),
-                spec.maxVisitsPerDay(),
-                spec.minGapMinutes(),
-                spec.minLeadMinutes(),
-                spec.singleVisitMaxMinutes(),
-                spec.groupingPreference(),
-                source,
-                recordedByMembershipId,
-                now));
+    VisitApproverCondition registered =
+        VisitApproverCondition.register(
+            approval.getId(),
+            versionNo,
+            spec.appliesFrom().truncatedTo(ChronoUnit.MICROS),
+            spec.appliesUntil().truncatedTo(ChronoUnit.MICROS),
+            spec.maxVisitsPerDay(),
+            spec.minGapMinutes(),
+            spec.minLeadMinutes(),
+            spec.singleVisitMaxMinutes(),
+            spec.groupingPreference(),
+            source,
+            recordedByMembershipId,
+            now);
+    if (profileId != null) {
+      registered.enteredBy(profileId);
+    }
+    VisitApproverCondition saved = conditionRepository.saveAndFlush(registered);
     rowRepository.saveWindows(saved.getId(), spec.windows());
     rowRepository.saveDateRules(saved.getId(), spec.dateRules());
-    if (linkId != null) {
+    if (linkId != null || profileId != null) {
       Long officeId =
           propertyReferences
               .find(approval.getPropertyId())
               .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND))
               .officeId();
       ackRepository.save(
-          ConsentGuestNoticeAck.approverConditionSave(
-              officeId, linkId, notice.noticeCode(), notice.noticeVersion(), versionNo, now));
+          linkId != null
+              ? ConsentGuestNoticeAck.approverConditionSave(
+                  officeId, linkId, notice.noticeCode(), notice.noticeVersion(), versionNo, now)
+              : ConsentGuestNoticeAck.portal(
+                  officeId,
+                  profileId,
+                  notice.noticeCode(),
+                  notice.noticeVersion(),
+                  ConsentGuestNoticeAck.ACTION_CONDITION_SAVE,
+                  versionNo,
+                  now));
     }
     markImpact(violations, source, actorMembershipId);
     return response(saved, parsed.normalizedRanges(), parsed.dateRuleReplacedCount(), notice);

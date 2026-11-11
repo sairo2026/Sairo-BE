@@ -59,6 +59,7 @@ public class PublicConfirmedScheduleService {
   private final ManagingMemberDirectory memberDirectory;
   private final MembershipNameRepository nameRepository;
   private final OfficeDirectory officeDirectory;
+  private final ApproverPortalAccess portalAccess;
   private final Clock clock;
 
   public PublicConfirmedScheduleService(
@@ -75,6 +76,7 @@ public class PublicConfirmedScheduleService {
       ManagingMemberDirectory memberDirectory,
       MembershipNameRepository nameRepository,
       OfficeDirectory officeDirectory,
+      ApproverPortalAccess portalAccess,
       Clock clock) {
     this.customerResolver = customerResolver;
     this.approverResolver = approverResolver;
@@ -89,6 +91,7 @@ public class PublicConfirmedScheduleService {
     this.memberDirectory = memberDirectory;
     this.nameRepository = nameRepository;
     this.officeDirectory = officeDirectory;
+    this.portalAccess = portalAccess;
     this.clock = clock;
   }
 
@@ -181,6 +184,17 @@ public class PublicConfirmedScheduleService {
         approvalRepository
             .findById(head.getApprovalId())
             .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    return approverFor(approval, ErrorCode.PUBLIC_LINK_NOT_FOUND);
+  }
+
+  /** 승인자 세션으로 확정 일정을 읽는다. 링크 경로와 같은 응답이며 공동 승인자도 읽는다. */
+  @Transactional(readOnly = true)
+  public ApproverConfirmedScheduleResponse approverForProfile(Long profileId, Long approvalId) {
+    return approverFor(portalAccess.linked(profileId, approvalId), ErrorCode.RESOURCE_NOT_FOUND);
+  }
+
+  private ApproverConfirmedScheduleResponse approverFor(
+      PropertyAccessApproval approval, ErrorCode missing) {
     Instant now = clock.instant();
     Optional<Long> primaryId =
         approval.isPrimary()
@@ -219,7 +233,7 @@ public class PublicConfirmedScheduleService {
         propertyReferences
             .find(approval.getPropertyId())
             .map(PropertySummary::officeId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+            .orElseThrow(() -> new BusinessException(missing));
     Optional<OfficeDirectory.OfficeSummary> office = officeDirectory.find(ownerOffice);
     return new ApproverConfirmedScheduleResponse(
         items,

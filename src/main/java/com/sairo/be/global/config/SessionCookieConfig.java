@@ -13,6 +13,7 @@ public class SessionCookieConfig {
 
   public static final String MEMBER_COOKIE_NAME = "__Host-sairo_session";
   public static final String OPERATOR_COOKIE_NAME = "__Host-sairo_ops_session";
+  public static final String APPROVER_COOKIE_NAME = "APPROVER_SESSION";
 
   @Bean
   DefaultCookieSerializer cookieSerializer() {
@@ -21,7 +22,8 @@ public class SessionCookieConfig {
 
   @Bean
   HttpSessionIdResolver httpSessionIdResolver(DefaultCookieSerializer cookieSerializer) {
-    return new PathAwareSessionIdResolver(cookieSerializer, serializer(OPERATOR_COOKIE_NAME));
+    return new PathAwareSessionIdResolver(
+        cookieSerializer, serializer(OPERATOR_COOKIE_NAME), serializer(APPROVER_COOKIE_NAME));
   }
 
   private static DefaultCookieSerializer serializer(String name) {

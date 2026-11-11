@@ -34,6 +34,7 @@ public class ApproverSelectionService {
   private final ApproverLinkNoticeProvider noticeProvider;
   private final ApproverSelectionExecutor executor;
   private final RequestRateLimiter rateLimiter;
+  private final ApproverPortalAccess portalAccess;
 
   public ApproverSelectionService(
       PublicApproverLinkResolver linkResolver,
@@ -41,13 +42,15 @@ public class ApproverSelectionService {
       PropertyAccessApprovalRepository approvalRepository,
       ApproverLinkNoticeProvider noticeProvider,
       ApproverSelectionExecutor executor,
-      RequestRateLimiter rateLimiter) {
+      RequestRateLimiter rateLimiter,
+      ApproverPortalAccess portalAccess) {
     this.linkResolver = linkResolver;
     this.accessRecorder = accessRecorder;
     this.approvalRepository = approvalRepository;
     this.noticeProvider = noticeProvider;
     this.executor = executor;
     this.rateLimiter = rateLimiter;
+    this.portalAccess = portalAccess;
   }
 
   public ApproverSelectionResponse select(
@@ -66,6 +69,29 @@ public class ApproverSelectionService {
     if (!approval.isPrimary()) {
       throw new BusinessException(ErrorCode.APPROVER_READ_ONLY);
     }
+    return run(approval, head.getId(), null, requestId, ifMatch, idempotencyKey, body);
+  }
+
+  /** 승인자 세션으로 신청을 선택한다. 대표 승인자 출입승인에 연결된 프로필만 선택한다. */
+  public ApproverSelectionResponse selectForProfile(
+      Long profileId,
+      Long approvalId,
+      Long requestId,
+      String ifMatch,
+      String idempotencyKey,
+      JsonNode body) {
+    PropertyAccessApproval approval = portalAccess.primary(profileId, approvalId);
+    return run(approval, null, profileId, requestId, ifMatch, idempotencyKey, body);
+  }
+
+  private ApproverSelectionResponse run(
+      PropertyAccessApproval approval,
+      Long linkId,
+      Long profileId,
+      Long requestId,
+      String ifMatch,
+      String idempotencyKey,
+      JsonNode body) {
     rateLimiter.hit(VisitRateLimits.APPROVER_SELECT_APPROVAL, String.valueOf(approval.getId()));
     Parsed parsed = parse(body, requestId);
     long expectedVersion = IfMatchVersion.parse(ifMatch);
@@ -76,7 +102,8 @@ public class ApproverSelectionService {
     Input input =
         new Input(
             approval.getId(),
-            head.getId(),
+            linkId,
+            profileId,
             requestId,
             expectedVersion,
             idempotencyKey != null && !idempotencyKey.isBlank(),

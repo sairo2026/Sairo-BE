@@ -106,6 +106,11 @@ public class VisitApproverCondition {
     return condition;
   }
 
+  /** 승인자 계정(프로필)으로 입력한 조건 버전이면 그 프로필을 남긴다. 출처는 DIRECT여야 한다. */
+  public void enteredBy(Long profileId) {
+    this.enteredByProfileId = profileId;
+  }
+
   public void supersede(Instant at) {
     status = ConditionStatus.SUPERSEDED;
     supersededAt = at;

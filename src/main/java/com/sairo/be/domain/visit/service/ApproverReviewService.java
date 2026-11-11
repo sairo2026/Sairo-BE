@@ -72,7 +72,16 @@ public class ApproverReviewService {
 
   @Transactional
   public ApproverVisitReviewListResponse list(String token, String clientIp) {
-    Opened opened = context.open(token, clientIp);
+    return list(context.open(token, clientIp));
+  }
+
+  /** 승인자 세션으로 평가 대상 목록을 본다. 공동 승인자는 읽기 전용이다. */
+  @Transactional(readOnly = true)
+  public ApproverVisitReviewListResponse listForProfile(Long profileId, Long approvalId) {
+    return list(context.openForProfile(profileId, approvalId));
+  }
+
+  private ApproverVisitReviewListResponse list(Opened opened) {
     Instant now = now();
     List<TargetWithReview> rows =
         opened
@@ -134,7 +143,29 @@ public class ApproverReviewService {
       String idempotencyKey,
       JsonNode body,
       String clientIp) {
-    Opened opened = context.openForWrite(token, clientIp);
+    return upsert(
+        context.openForWrite(token, clientIp), scheduleItemId, ifMatch, idempotencyKey, body);
+  }
+
+  /** 승인자 세션으로 평가를 입력하거나 수정한다. 대표 승인자 출입승인만 가능하다. */
+  @Transactional
+  public Upserted upsertForProfile(
+      Long profileId,
+      Long approvalId,
+      Long scheduleItemId,
+      String ifMatch,
+      String idempotencyKey,
+      JsonNode body) {
+    return upsert(
+        context.openForProfileWrite(profileId, approvalId),
+        scheduleItemId,
+        ifMatch,
+        idempotencyKey,
+        body);
+  }
+
+  private Upserted upsert(
+      Opened opened, Long scheduleItemId, String ifMatch, String idempotencyKey, JsonNode body) {
     Answers answers = parse(body);
     requireNotice(body);
     Long approvalId = opened.approval().getId();
@@ -153,7 +184,7 @@ public class ApproverReviewService {
         throw new BusinessException(ErrorCode.VISIT_REVIEW_WINDOW_CLOSED);
       }
       reviewRepository
-          .insert(target, answers, opened.link().getId(), deadline, now)
+          .insert(target, answers, opened.linkId(), opened.profileId(), deadline, now)
           .orElseThrow(() -> BusinessException.versionConflict(1));
       return new Upserted(
           true, response(reviewRepository.findByItem(scheduleItemId).orElseThrow()));
@@ -172,14 +203,23 @@ public class ApproverReviewService {
     if (expected != existing.version()) {
       throw BusinessException.versionConflict(existing.version());
     }
-    reviewRepository.revise(existing.id(), answers, opened.link().getId(), now);
+    reviewRepository.revise(existing.id(), answers, opened.linkId(), opened.profileId(), now);
     return new Upserted(false, response(reviewRepository.findByItem(scheduleItemId).orElseThrow()));
   }
 
   @Transactional
   public ApproverVisitReviewResponse withdraw(
       String token, Long scheduleItemId, String ifMatch, String clientIp) {
-    Opened opened = context.openForWrite(token, clientIp);
+    return withdraw(context.openForWrite(token, clientIp), scheduleItemId, ifMatch);
+  }
+
+  @Transactional
+  public ApproverVisitReviewResponse withdrawForProfile(
+      Long profileId, Long approvalId, Long scheduleItemId, String ifMatch) {
+    return withdraw(context.openForProfileWrite(profileId, approvalId), scheduleItemId, ifMatch);
+  }
+
+  private ApproverVisitReviewResponse withdraw(Opened opened, Long scheduleItemId, String ifMatch) {
     long expected = IfMatchVersion.parse(ifMatch);
     reviewRepository
         .lockTarget(scheduleItemId, opened.approval().getId())
@@ -199,7 +239,7 @@ public class ApproverReviewService {
     if (expected != existing.version()) {
       throw BusinessException.versionConflict(existing.version());
     }
-    reviewRepository.withdraw(existing.id(), opened.link().getId(), now);
+    reviewRepository.withdraw(existing.id(), opened.linkId(), opened.profileId(), now);
     return response(reviewRepository.findByItem(scheduleItemId).orElseThrow());
   }
 
