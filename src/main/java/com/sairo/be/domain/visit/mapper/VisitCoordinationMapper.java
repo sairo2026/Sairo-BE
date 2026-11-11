@@ -10,6 +10,8 @@ import com.sairo.be.domain.visit.entity.VisitCustomerLink;
 import com.sairo.be.domain.visit.entity.VisitCustomerTimeSlot;
 import com.sairo.be.domain.visit.repository.ScheduleItemRepository.ItemRow;
 import com.sairo.be.domain.visit.repository.VisitCoordinationReadRepository.ListRow;
+import com.sairo.be.domain.visit.service.ScheduleStateService;
+import com.sairo.be.domain.visit.service.ScheduleStateService.ItemState;
 import com.sairo.be.domain.visit.service.VisitRequestChecker.Slot;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.TimeRules;
@@ -18,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 
 public final class VisitCoordinationMapper {
+
+  private static final String PASSED = "PASSED";
 
   private VisitCoordinationMapper() {}
 
@@ -78,7 +82,9 @@ public final class VisitCoordinationMapper {
       String managerName,
       List<ItemRow> items,
       long scheduleVersion,
-      Map<Long, List<Slot>> applicableSlots) {
+      Map<Long, List<Slot>> applicableSlots,
+      Map<Long, ItemState> states,
+      List<ScheduleStateService.Alternative> alternatives) {
     return new VisitCoordinationDetailResponse(
         coordination.getId(),
         coordination.getStatus().name(),
@@ -108,8 +114,8 @@ public final class VisitCoordinationMapper {
                         officeNames.getOrDefault(candidate.getPropertyOfficeId(), ""),
                         applicableSlots.getOrDefault(candidate.getId(), List.of())))
             .toList(),
-        scheduleItems(items),
-        List.of(),
+        scheduleItems(items, states),
+        alternatives(alternatives),
         TimeRules.toDisplayOffset(coordination.getCreatedAt()),
         TimeRules.toDisplayOffset(coordination.getUpdatedAt()),
         coordination.getVersion(),
@@ -166,8 +172,24 @@ public final class VisitCoordinationMapper {
             .toList());
   }
 
+  public static List<VisitCoordinationDetailResponse.Alternative> alternatives(
+      List<ScheduleStateService.Alternative> alternatives) {
+    VisitCoordinationDetailResponse.Checks passed =
+        new VisitCoordinationDetailResponse.Checks(PASSED, PASSED, PASSED, PASSED, PASSED);
+    return alternatives.stream()
+        .map(
+            alternative ->
+                new VisitCoordinationDetailResponse.Alternative(
+                    alternative.scheduleItemId(),
+                    alternative.candidatePropertyId(),
+                    TimeRules.toDisplayOffset(alternative.startAt()),
+                    TimeRules.toDisplayOffset(alternative.endAt()),
+                    passed))
+        .toList();
+  }
+
   private static List<VisitCoordinationDetailResponse.ScheduleItem> scheduleItems(
-      List<ItemRow> items) {
+      List<ItemRow> items, Map<Long, ItemState> states) {
     List<ItemRow> kept = items.stream().filter(ItemRow::kept).toList();
     List<VisitCoordinationDetailResponse.ScheduleItem> result = new java.util.ArrayList<>();
     for (ItemRow item : items) {
@@ -178,6 +200,7 @@ public final class VisitCoordinationMapper {
           feasible = !item.travelEndsAt().isAfter(kept.get(index + 1).startAt());
         }
       }
+      ItemState state = states.get(item.id());
       result.add(
           new VisitCoordinationDetailResponse.ScheduleItem(
               item.id(),
@@ -187,9 +210,7 @@ public final class VisitCoordinationMapper {
               item.result(),
               TimeRules.toDisplayOffset(item.resultRecordedAt()),
               item.correctionCount(),
-              Boolean.FALSE.equals(feasible) && "SCHEDULED".equals(item.result())
-                  ? "RESCHEDULE_REQUIRED"
-                  : "VALID",
+              state == null ? ScheduleStateService.VALID : state.state(),
               feasible));
     }
     return result;

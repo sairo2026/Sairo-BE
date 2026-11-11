@@ -20,6 +20,8 @@ import com.sairo.be.domain.visit.repository.ApproverSelectionRepository.PendingR
 import com.sairo.be.domain.visit.repository.PropertyAccessApprovalRepository;
 import com.sairo.be.domain.visit.repository.ScheduleBusyRepository;
 import com.sairo.be.domain.visit.repository.ScheduleItemRepository;
+import com.sairo.be.domain.visit.repository.ScheduleResultRepository;
+import com.sairo.be.domain.visit.repository.ScheduleResultRepository.ItemHead;
 import com.sairo.be.domain.visit.repository.TrustSummaryRepository;
 import com.sairo.be.domain.visit.repository.VisitApproverConditionRepository;
 import com.sairo.be.domain.visit.repository.VisitCandidatePropertyRepository;
@@ -29,6 +31,7 @@ import com.sairo.be.domain.visit.repository.VisitRequestRepository;
 import com.sairo.be.domain.visit.repository.VisitRequestStatusHistoryRepository;
 import com.sairo.be.domain.visit.service.ConditionSpec.RuleItem;
 import com.sairo.be.domain.visit.service.VisitFeasibility.Context;
+import com.sairo.be.domain.visit.service.VisitRequestChecker.Slot;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.port.ApplyGrantPort;
@@ -99,6 +102,8 @@ public class ApproverSelectionExecutor {
   private final CoordinationStatusService coordinationStatusService;
   private final ApproverSelectionRepository selectionRepository;
   private final ScheduleItemRepository itemRepository;
+  private final ScheduleResultRepository resultRepository;
+  private final ScheduleOutcomeService outcomeService;
   private final ScheduleBusyRepository busyRepository;
   private final TrustSummaryRepository trustRepository;
   private final FeasibilityContextFactory contextFactory;
@@ -119,6 +124,8 @@ public class ApproverSelectionExecutor {
       CoordinationStatusService coordinationStatusService,
       ApproverSelectionRepository selectionRepository,
       ScheduleItemRepository itemRepository,
+      ScheduleResultRepository resultRepository,
+      ScheduleOutcomeService outcomeService,
       ScheduleBusyRepository busyRepository,
       TrustSummaryRepository trustRepository,
       FeasibilityContextFactory contextFactory,
@@ -137,6 +144,8 @@ public class ApproverSelectionExecutor {
     this.coordinationStatusService = coordinationStatusService;
     this.selectionRepository = selectionRepository;
     this.itemRepository = itemRepository;
+    this.resultRepository = resultRepository;
+    this.outcomeService = outcomeService;
     this.busyRepository = busyRepository;
     this.trustRepository = trustRepository;
     this.contextFactory = contextFactory;
@@ -197,11 +206,13 @@ public class ApproverSelectionExecutor {
         return Result.ok(replay(request, prior.get()));
       }
     }
+    boolean change = request.getRequestKind() == RequestKind.CHANGE;
     if (request.getStatus() != RequestStatus.PENDING
-        || request.getRequestKind() != RequestKind.NEW
-        || coordination.getStatus() != CoordinationStatus.APPLYING) {
+        || (!change && coordination.getStatus() != CoordinationStatus.APPLYING)
+        || (change && coordination.getStatus().isFinished())) {
       throw new BusinessException(ErrorCode.VISIT_REQUEST_INVALID_STATE);
     }
+    ItemHead replaced = change ? replacedItem(request) : null;
     if (!in.expectedVersion().equals(request.getVersion())) {
       throw BusinessException.versionConflict(request.getVersion());
     }
@@ -243,7 +254,15 @@ public class ApproverSelectionExecutor {
         candidateRepository
             .findById(request.getCandidatePropertyId())
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
-    Failure failure = revalidate(request, approval, coordination, candidate, active, now);
+    Failure failure =
+        revalidate(
+            request,
+            approval,
+            coordination,
+            candidate,
+            active,
+            now,
+            replaced == null ? null : replaced.id());
     if (failure != null) {
       selectionRepository.insertRevalidation(
           request.getId(),
@@ -276,11 +295,23 @@ public class ApproverSelectionExecutor {
     historyRepository.save(
         request.moveTo(RequestStatus.CONFIRMED, RequestStatusSource.APPROVER, null, null, now));
     requestRepository.saveAndFlush(request);
+    if (replaced != null) {
+      outcomeService.cancelItem(
+          replaced,
+          ScheduleOutcomeService.CHANGE_REPLACED,
+          request.getApplicantMembershipId(),
+          RequestStatusSource.SYSTEM,
+          null,
+          now,
+          new Slot(request.getRequestedStartAt(), request.getRequestedEndAt()));
+    }
     confirmVisit(request, coordination, candidate, now);
     notice(request, RequestNoticeType.CONFIRMED, now);
     List<Long> closed = closeOverlapping(request, condition, selectionId, now);
     long confirmed = itemRepository.confirmedCandidateCount(coordination.getId());
-    if (confirmed >= candidateRepository.countByCoordinationId(coordination.getId())) {
+    if (change) {
+      outcomeService.settle(coordination, StatusChangeSource.APPROVER, null, "변경 신청 확정");
+    } else if (confirmed >= candidateRepository.countByCoordinationId(coordination.getId())) {
       coordinationStatusService.move(
           coordination,
           CoordinationStatus.CONFIRMED,
@@ -299,6 +330,15 @@ public class ApproverSelectionExecutor {
             new ApproverSelectionResponse.Revalidation(
                 "PASSED", null, null, TimeRules.toDisplayOffset(now)),
             closed));
+  }
+
+  private ItemHead replacedItem(VisitRequest request) {
+    return resultRepository
+        .findItem(request.getReplacesScheduleItemId())
+        .filter(ItemHead::scheduled)
+        .filter(item -> item.coordinationId().equals(request.getCoordinationId()))
+        .filter(item -> item.candidatePropertyId().equals(request.getCandidatePropertyId()))
+        .orElseThrow(() -> new BusinessException(ErrorCode.VISIT_REQUEST_INVALID_STATE));
   }
 
   private ApproverSelectionResponse replay(VisitRequest request, Outcome outcome) {
@@ -322,7 +362,8 @@ public class ApproverSelectionExecutor {
       VisitCoordination coordination,
       VisitCandidateProperty candidate,
       Optional<VisitApproverCondition> active,
-      Instant now) {
+      Instant now,
+      Long excludedItemId) {
     List<String> violated = new ArrayList<>();
     boolean usable = approval.isPrimary() && approval.isUsableAt(now);
     boolean grantLost =
@@ -342,7 +383,12 @@ public class ApproverSelectionExecutor {
     } else {
       Context context =
           contextFactory.build(
-              coordination, candidate, approval, active.get(), request.getApplicantMembershipId());
+              coordination,
+              candidate,
+              approval,
+              active.get(),
+              request.getApplicantMembershipId(),
+              excludedItemId);
       violated.addAll(
           VisitFeasibility.violated(
               context, request.getRequestedStartAt(), request.getRequestedEndAt(), now, false));

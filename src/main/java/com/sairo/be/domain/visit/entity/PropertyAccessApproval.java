@@ -115,6 +115,13 @@ public class PropertyAccessApproval {
     return approval;
   }
 
+  public void revoke(Instant revokedAt, String reason, Instant recordedAt, Long userId) {
+    this.revokedAt = revokedAt;
+    this.revocationReason = reason;
+    this.revocationRecordedAt = recordedAt;
+    this.revokedByUserId = userId;
+  }
+
   public boolean isRevoked() {
     return revokedAt != null;
   }

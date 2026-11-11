@@ -6,7 +6,10 @@ import com.sairo.be.domain.customer.service.CustomerReferenceService.CustomerSum
 import com.sairo.be.domain.office.service.DeputyQuotaService;
 import com.sairo.be.domain.property.service.ManagingMemberDirectory;
 import com.sairo.be.domain.property.service.PropertyReferenceService.PropertySummary;
+import com.sairo.be.domain.visit.dto.response.ScheduleOutcomeResponses;
+import com.sairo.be.domain.visit.dto.response.ScheduleOutcomeResponses.VisitCoordinationCloneResponse;
 import com.sairo.be.domain.visit.dto.response.VisitCoordinationCreateResponse;
+import com.sairo.be.domain.visit.entity.CoordinationStatus;
 import com.sairo.be.domain.visit.entity.StatusChangeSource;
 import com.sairo.be.domain.visit.entity.VisitCandidateProperty;
 import com.sairo.be.domain.visit.entity.VisitCoordination;
@@ -42,6 +45,7 @@ public class VisitCoordinationCommandService {
           "managerMembershipId",
           "periodStartDate",
           "periodEndDate");
+  private static final Set<String> CLONE_KEYS = Set.of("periodStartDate", "periodEndDate");
 
   private final VisitCoordinationRepository coordinationRepository;
   private final VisitCandidatePropertyRepository candidateRepository;
@@ -50,6 +54,7 @@ public class VisitCoordinationCommandService {
   private final CustomerReferenceService customerReferences;
   private final ManagingMemberDirectory memberDirectory;
   private final DeputyQuotaService deputyQuotaService;
+  private final CoordinationAccess access;
   private final Clock clock;
 
   public VisitCoordinationCommandService(
@@ -60,6 +65,7 @@ public class VisitCoordinationCommandService {
       CustomerReferenceService customerReferences,
       ManagingMemberDirectory memberDirectory,
       DeputyQuotaService deputyQuotaService,
+      CoordinationAccess access,
       Clock clock) {
     this.coordinationRepository = coordinationRepository;
     this.candidateRepository = candidateRepository;
@@ -68,6 +74,7 @@ public class VisitCoordinationCommandService {
     this.customerReferences = customerReferences;
     this.memberDirectory = memberDirectory;
     this.deputyQuotaService = deputyQuotaService;
+    this.access = access;
     this.clock = clock;
   }
 
@@ -127,6 +134,76 @@ public class VisitCoordinationCommandService {
     }
     candidateRepository.flush();
     return new VisitCoordinationCreateResponse(
+        coordination.getId(),
+        coordination.getStatus().name(),
+        saved,
+        coordination.getOfficeId(),
+        TimeRules.toDisplayOffset(coordination.getCreatedAt()),
+        TimeRules.toDisplayOffset(coordination.getUpdatedAt()),
+        coordination.getVersion());
+  }
+
+  /** 취소된 조율 건의 고객·담당자·후보 매물로 새 기간의 조율 건을 만든다. 링크와 출입승인 응답은 복제하지 않는다. */
+  @Transactional
+  public VisitCoordinationCloneResponse cloneCancelled(
+      StaffPrincipal principal, Long coordinationId, JsonNode body) {
+    CustomerInput.requireObject(body, CLONE_KEYS);
+    LocalDate start = CustomerInput.requiredDate(body, "periodStartDate");
+    LocalDate end = CustomerInput.requiredDate(body, "periodEndDate");
+    VisitCoordination source = access.view(principal, coordinationId);
+    if (source.getStatus() != CoordinationStatus.CANCELLED) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    LocalDate today = TimeRules.displayDate(clock.instant());
+    if (start.isBefore(today)) {
+      throw CustomerInput.invalid("periodStartDate", FieldErrorCode.OUT_OF_RANGE, "오늘 이후여야 합니다.");
+    }
+    if (end.isBefore(start)) {
+      throw CustomerInput.invalid("periodEndDate", FieldErrorCode.OUT_OF_RANGE, "시작일 이후여야 합니다.");
+    }
+    if (end.isAfter(today.plusDays(MAX_PERIOD_DAYS))) {
+      throw new BusinessException(ErrorCode.PERIOD_TOO_LONG);
+    }
+    Long managerId = source.getManagerMembershipId();
+    requireDeputyAllowed(principal, managerId);
+    CustomerSummary customer =
+        customerReferences.resolveFinal(principal.officeId(), source.getCustomerId());
+    if (customer.archived()) {
+      throw new BusinessException(ErrorCode.CUSTOMER_ARCHIVED);
+    }
+    requireAssignableManager(principal.officeId(), managerId);
+    List<VisitCandidateProperty> sourceCandidates =
+        candidateRepository.findByCoordinationIdOrderBySortOrderAscIdAsc(coordinationId);
+    List<PropertySummary> properties = new ArrayList<>();
+    for (VisitCandidateProperty candidate : sourceCandidates) {
+      properties.add(candidateAdmission.admit(principal, candidate.getPropertyId()));
+    }
+    VisitCoordination coordination =
+        coordinationRepository.saveAndFlush(
+            VisitCoordination.open(
+                principal.officeId(), customer.customerId(), managerId, start, end));
+    statusService.recordOpening(coordination, StatusChangeSource.STAFF, principal.membershipId());
+    List<ScheduleOutcomeResponses.CandidateRef> saved = new ArrayList<>();
+    for (int index = 0; index < properties.size(); index++) {
+      VisitCandidateProperty origin = sourceCandidates.get(index);
+      VisitCandidateProperty candidate =
+          VisitCandidateProperty.of(
+              coordination.getId(),
+              principal.officeId(),
+              properties.get(index).propertyId(),
+              properties.get(index).officeId(),
+              origin.getSortOrder());
+      candidate.arrange(
+          origin.getSortOrder(),
+          origin.getVisitDurationMinutes(),
+          origin.getTravelDurationMinutes());
+      candidate = candidateRepository.save(candidate);
+      saved.add(
+          new ScheduleOutcomeResponses.CandidateRef(
+              candidate.getId(), candidate.getPropertyId(), candidate.getSortOrder()));
+    }
+    candidateRepository.flush();
+    return new VisitCoordinationCloneResponse(
         coordination.getId(),
         coordination.getStatus().name(),
         saved,

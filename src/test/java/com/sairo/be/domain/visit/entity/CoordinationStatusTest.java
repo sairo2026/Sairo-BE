@@ -31,17 +31,31 @@ class CoordinationStatusTest {
   }
 
   @Test
-  void 종료_상태에서는_어디로도_전이할_수_없다() {
-    for (CoordinationStatus terminal :
-        new CoordinationStatus[] {
-          CoordinationStatus.VISIT_COMPLETED,
-          CoordinationStatus.VISIT_INCOMPLETE,
-          CoordinationStatus.CANCELLED
-        }) {
-      for (CoordinationStatus next : CoordinationStatus.values()) {
-        assertThat(terminal.canMoveTo(next)).as(terminal + " to " + next).isFalse();
-      }
+  void 취소는_어디로도_가지_않고_방문_종결_두_상태는_결과_정정으로만_서로_오간다() {
+    for (CoordinationStatus next : CoordinationStatus.values()) {
+      assertThat(CoordinationStatus.CANCELLED.canMoveTo(next)).as("CANCELLED to " + next).isFalse();
+      assertThat(CoordinationStatus.VISIT_COMPLETED.canMoveTo(next))
+          .as("VISIT_COMPLETED to " + next)
+          .isEqualTo(next == CoordinationStatus.VISIT_INCOMPLETE);
+      assertThat(CoordinationStatus.VISIT_INCOMPLETE.canMoveTo(next))
+          .as("VISIT_INCOMPLETE to " + next)
+          .isEqualTo(next == CoordinationStatus.VISIT_COMPLETED);
     }
+  }
+
+  @Test
+  void 재조율_필요와_신청_진행에서도_결과가_모두_기록되면_방문_종결로_간다() {
+    for (CoordinationStatus from :
+        new CoordinationStatus[] {
+          CoordinationStatus.APPLYING,
+          CoordinationStatus.CONFIRMED,
+          CoordinationStatus.RESCHEDULE_REQUIRED
+        }) {
+      assertThat(from.canMoveTo(CoordinationStatus.VISIT_COMPLETED)).isTrue();
+      assertThat(from.canMoveTo(CoordinationStatus.VISIT_INCOMPLETE)).isTrue();
+    }
+    assertThat(CoordinationStatus.RESCHEDULE_REQUIRED.canMoveTo(CoordinationStatus.CONFIRMED))
+        .isTrue();
   }
 
   @Test

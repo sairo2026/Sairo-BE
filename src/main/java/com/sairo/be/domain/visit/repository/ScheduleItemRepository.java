@@ -22,7 +22,8 @@ public class ScheduleItemRepository {
       Instant travelEndsAt,
       Long confirmedRequestId,
       int sortOrder,
-      int correctionCount) {
+      int correctionCount,
+      Instant createdAt) {
 
     public boolean kept() {
       return !"CANCELLED".equals(result);
@@ -72,7 +73,7 @@ public class ScheduleItemRepository {
                 + " si.scheduled_end_at, si.result, si.result_recorded_at, si.travel_starts_at,"
                 + " si.travel_ends_at, si.confirmed_request_id, si.sort_order, (SELECT count(*)"
                 + " FROM visit_schedule_item_result_history h WHERE h.schedule_item_id = si.id"
-                + " AND h.supersedes_history_id IS NOT NULL) AS corrections FROM"
+                + " AND h.supersedes_history_id IS NOT NULL) AS corrections, si.created_at FROM"
                 + " visit_schedule_item si WHERE si.coordination_id = :coordination ORDER BY"
                 + " si.scheduled_start_at NULLS LAST, si.id")
         .param("coordination", coordinationId)
@@ -89,7 +90,8 @@ public class ScheduleItemRepository {
                     instant(rs.getTimestamp("travel_ends_at")),
                     nullable(rs.getLong("confirmed_request_id"), rs),
                     rs.getInt("sort_order"),
-                    rs.getInt("corrections")))
+                    rs.getInt("corrections"),
+                    instant(rs.getTimestamp("created_at"))))
         .list();
   }
 
@@ -111,7 +113,11 @@ public class ScheduleItemRepository {
                 + " r.id = h.request_id WHERE r.coordination_id = :coordination AND h.to_status ="
                 + " 'CONFIRMED') + (SELECT count(*) FROM visit_coordination_status_history c"
                 + " WHERE c.coordination_id = :coordination AND c.to_status IN"
-                + " ('RESCHEDULE_REQUIRED', 'CANCELLED'))")
+                + " ('RESCHEDULE_REQUIRED', 'CANCELLED')) + (SELECT count(*) FROM"
+                + " visit_schedule_item_result_history h JOIN visit_schedule_item si ON si.id ="
+                + " h.schedule_item_id WHERE si.coordination_id = :coordination AND h.result ="
+                + " 'CANCELLED' AND h.previous_result = 'SCHEDULED' AND h.cancel_reason_code IS"
+                + " DISTINCT FROM 'CHANGE_REPLACED')")
         .param("coordination", coordinationId)
         .query(Long.class)
         .single();

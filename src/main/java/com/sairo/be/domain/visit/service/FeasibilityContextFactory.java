@@ -8,6 +8,7 @@ import com.sairo.be.domain.visit.entity.VisitCustomerLink;
 import com.sairo.be.domain.visit.repository.ApproverConditionRowRepository;
 import com.sairo.be.domain.visit.repository.ConfirmedVisitRepository;
 import com.sairo.be.domain.visit.repository.ScheduleBusyRepository;
+import com.sairo.be.domain.visit.repository.ScheduleBusyRepository.BusyVisit;
 import com.sairo.be.domain.visit.repository.VisitCandidatePropertyRepository;
 import com.sairo.be.domain.visit.repository.VisitCustomerLinkRepository;
 import com.sairo.be.domain.visit.repository.VisitCustomerTimeSlotRepository;
@@ -83,6 +84,16 @@ public class FeasibilityContextFactory {
       PropertyAccessApproval approval,
       VisitApproverCondition condition,
       Long membershipId) {
+    return build(coordination, candidate, approval, condition, membershipId, null);
+  }
+
+  public Context build(
+      VisitCoordination coordination,
+      VisitCandidateProperty candidate,
+      PropertyAccessApproval approval,
+      VisitApproverCondition condition,
+      Long membershipId,
+      Long excludedItemId) {
     List<VisitCandidateProperty> all =
         candidateRepository.findByCoordinationIdOrderBySortOrderAscIdAsc(coordination.getId());
     boolean last = all.isEmpty() || all.get(all.size() - 1).getId().equals(candidate.getId());
@@ -91,12 +102,21 @@ public class FeasibilityContextFactory {
         approval.getValidFrom(),
         approval.getValidUntil(),
         customerSlots(coordination.getId()),
-        confirmedVisits.findByApproval(approval.getId()),
-        busyRepository.forManager(coordination.getManagerMembershipId()),
-        busyRepository.forCustomers(customerGroup(coordination)),
-        busyRepository.forProperty(candidate.getPropertyId()),
+        confirmedVisits.findByApproval(approval.getId()).stream()
+            .filter(visit -> !visit.scheduleItemId().equals(excludedItemId))
+            .toList(),
+        without(busyRepository.forManager(coordination.getManagerMembershipId()), excludedItemId),
+        without(busyRepository.forCustomers(customerGroup(coordination)), excludedItemId),
+        without(busyRepository.forProperty(candidate.getPropertyId()), excludedItemId),
         coordination.getId(),
         membershipId,
         last ? 0 : candidate.getTravelDurationMinutes());
+  }
+
+  private static List<BusyVisit> without(List<BusyVisit> busy, Long excludedItemId) {
+    if (excludedItemId == null) {
+      return busy;
+    }
+    return busy.stream().filter(visit -> !visit.itemId().equals(excludedItemId)).toList();
   }
 }
