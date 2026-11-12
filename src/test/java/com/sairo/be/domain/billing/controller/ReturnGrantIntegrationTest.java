@@ -43,6 +43,7 @@ class ReturnGrantIntegrationTest extends GrantTestBase {
         .perform(getRequest(CURRENT).apply(session.cookie()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.grantId").value(session.grantId()))
+        .andExpect(jsonPath("$.officeId").value(session.holder().former().office().getId()))
         .andExpect(jsonPath("$.expiresAt").exists())
         .andExpect(jsonPath("$.revoked").value(false));
     Map<String, Object> row =
@@ -117,6 +118,7 @@ class ReturnGrantIntegrationTest extends GrantTestBase {
             .andExpect(jsonPath("$.downloadUrl").value(nullValue()))
             .andExpect(jsonPath("$.expiresAt").value(nullValue()))
             .andExpect(jsonPath("$.fileExpiresAt").exists())
+            .andExpect(jsonPath("$.failureReason").value(nullValue()))
             .andReturn();
     long exportId = AuthFlowSupport.json(result).get("exportId").asLong();
     Map<String, Object> row =
@@ -172,7 +174,23 @@ class ReturnGrantIntegrationTest extends GrantTestBase {
         .andExpect(jsonPath("$.status").value("COMPLETED"))
         .andExpect(jsonPath("$.downloadUrl").isString())
         .andExpect(jsonPath("$.expiresAt").exists())
-        .andExpect(jsonPath("$.fileExpiresAt").exists());
+        .andExpect(jsonPath("$.fileExpiresAt").exists())
+        .andExpect(jsonPath("$.failureReason").value(nullValue()));
+  }
+
+  @Test
+  void 실패한_내보내기는_주소_없이_실패_사유를_준다() throws Exception {
+    Session session = session();
+    long exportId = createExport(session);
+    jdbcTemplate.update(
+        "UPDATE export_job SET status = 'FAILED', failure_reason = '파일 생성 실패' WHERE id = ?",
+        exportId);
+    mockMvc
+        .perform(getRequest(exportUrl(session, exportId)).apply(session.cookie()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("FAILED"))
+        .andExpect(jsonPath("$.downloadUrl").value(nullValue()))
+        .andExpect(jsonPath("$.failureReason").value("파일 생성 실패"));
   }
 
   @Test

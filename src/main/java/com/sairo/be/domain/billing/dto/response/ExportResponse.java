@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 public record ExportResponse(
     Long exportId,
     String status,
-    String downloadUrl,
-    OffsetDateTime expiresAt,
-    OffsetDateTime fileExpiresAt) {}
+    @Schema(nullable = true) String downloadUrl,
+    @Schema(nullable = true) OffsetDateTime expiresAt,
+    OffsetDateTime fileExpiresAt,
+    @Schema(description = "생성 실패 사유. FAILED일 때만 값이 있다", nullable = true) String failureReason) {}

@@ -251,6 +251,7 @@ public final class BillingMapper {
         request.getRefundAmount(),
         request.getRejectionReason(),
         request.getFailureReason(),
-        calculation);
+        calculation,
+        TimeRules.toDisplayOffset(request.getRequestedAt()));
   }
 }

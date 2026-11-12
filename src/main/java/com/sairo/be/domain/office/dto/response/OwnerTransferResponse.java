@@ -16,4 +16,6 @@ public record OwnerTransferResponse(
     OffsetDateTime completedAt,
     OffsetDateTime withdrawnAt,
     String rejectionReason,
-    OffsetDateTime rejectedAt) {}
+    OffsetDateTime rejectedAt,
+    @Schema(description = "사무소 집계의 마지막 변경 시각") OffsetDateTime updatedAt,
+    @Schema(description = "사무소 집계의 낙관적 잠금 버전") long version) {}
