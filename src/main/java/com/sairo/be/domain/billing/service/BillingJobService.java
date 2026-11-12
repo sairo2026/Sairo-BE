@@ -242,6 +242,42 @@ public class BillingJobService {
     }
   }
 
+  /** 운영자가 다시 실행할 수 있는 청구 작업 이름이다. 첫 청구, 갱신, 청구 재시도다. */
+  public static final List<String> RERUNNABLE_CHARGE_JOBS =
+      List.of("billing-first-charge", "billing-renewal", "billing-retry");
+
+  /**
+   * 실패한 청구 작업의 원래 멱등키에서 대상을 복원해 다시 실행할 작업을 만든다. 작업은 구독·청구서의 현재 상태를 다시 검사하므로 이미 성공한 결제를 다시 청구하지 않는다.
+   * 키를 해석할 수 없으면 비어 있다.
+   */
+  public Optional<Runnable> rerunWork(String jobName, String idempotencyKey, Instant now) {
+    String[] parts = idempotencyKey.split(":");
+    if (parts.length != 3) {
+      return Optional.empty();
+    }
+    long targetId;
+    try {
+      targetId = Long.parseLong(parts[1]);
+    } catch (NumberFormatException e) {
+      return Optional.empty();
+    }
+    return switch (jobName) {
+      case "billing-first-charge" ->
+          parts[0].equals("first-charge")
+              ? Optional.of(() -> firstCharge(targetId, now))
+              : Optional.empty();
+      case "billing-renewal" ->
+          parts[0].equals("renewal") ? Optional.of(() -> renew(targetId, now)) : Optional.empty();
+      case "billing-retry" ->
+          parts[0].equals("retry")
+              ? invoiceRepository
+                  .findById(targetId)
+                  .map(invoice -> () -> retry(invoice.getId(), invoice.getSubscriptionId()))
+              : Optional.empty();
+      default -> Optional.empty();
+    };
+  }
+
   /** KST 전일 승인·취소 거래의 PG 대사다. 영업일마다 한 번만 만든다. */
   public void runDailyReconciliation(Instant now) {
     reconciliationService.runForPreviousDay(now);
