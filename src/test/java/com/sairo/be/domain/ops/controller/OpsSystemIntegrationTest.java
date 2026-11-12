@@ -558,7 +558,7 @@ class OpsSystemIntegrationTest extends OpsConsoleTestBase {
         fixtures
             .subscription(owner.office().getId())
             .status("ACTIVE")
-            .period(periodEnd.minus(30, ChronoUnit.DAYS), periodEnd)
+            .period(periodEnd.minus(20, ChronoUnit.DAYS), periodEnd)
             .insert();
     fixtures.consent(
         subscriptionId, owner.user().getId(), owner.office().getId(), 39_900, 3_627, 39_900);
