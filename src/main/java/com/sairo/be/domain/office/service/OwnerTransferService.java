@@ -222,6 +222,15 @@ public class OwnerTransferService {
   }
 
   private OwnerTransferResponse response(OwnerTransferRepository.Row row) {
+    OfficeAggregate office =
+        jdbcClient
+            .sql("SELECT updated_at, version FROM office WHERE id = :id")
+            .param("id", row.officeId())
+            .query(
+                (rs, i) ->
+                    new OfficeAggregate(
+                        rs.getTimestamp("updated_at").toInstant(), rs.getLong("version")))
+            .single();
     return new OwnerTransferResponse(
         row.id(),
         row.officeId(),
@@ -234,8 +243,12 @@ public class OwnerTransferService {
         TimeRules.toDisplayOffset(row.completedAt()),
         TimeRules.toDisplayOffset(row.withdrawnAt()),
         row.rejectedReason(),
-        TimeRules.toDisplayOffset(row.rejectedAt()));
+        TimeRules.toDisplayOffset(row.rejectedAt()),
+        TimeRules.toDisplayOffset(office.updatedAt()),
+        office.version());
   }
+
+  private record OfficeAggregate(Instant updatedAt, long version) {}
 
   private String displayName(long membershipId) {
     return jdbcClient

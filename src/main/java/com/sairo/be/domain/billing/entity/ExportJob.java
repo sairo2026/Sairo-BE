@@ -36,6 +36,10 @@ public class ExportJob {
   @Column(name = "file_object_key", length = 500)
   private String fileObjectKey;
 
+  /** 생성 실패 사유다. 생성 작업(migration ExportJobJdbcRepository)이 기록하고 여기서는 읽기만 한다. */
+  @Column(name = "failure_reason", columnDefinition = "text", insertable = false, updatable = false)
+  private String failureReason;
+
   @Column(name = "file_expires_at", nullable = false, updatable = false)
   private Instant fileExpiresAt;
 

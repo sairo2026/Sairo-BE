@@ -15,11 +15,13 @@ public record RefundRequestStatusResponse(
     Long refundAmount,
     String rejectionReason,
     String failureReason,
-    Calculation calculation) {
+    Calculation calculation,
+    @Schema(description = "신청 일시") OffsetDateTime createdAt) {
 
   public record Calculation(
       long originalApprovedAmount,
-      Long totalPeriodSeconds,
+      @Schema(description = "청구 기간 전체 초. 청구 기간이 없는 일회성 청구서는 null", nullable = true)
+          Long totalPeriodSeconds,
       Long remainingPeriodSeconds,
       long couponExcludedAmount,
       long priorCompensationAmount,

@@ -346,10 +346,15 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
         .andExpect(jsonPath("$.toDisplayName").exists());
     mockMvc
         .perform(get("/api/offices/current/owner-transfer").cookie(agentCookie))
-        .andExpect(jsonPath("$.status").value("UNDER_REVIEW"));
+        .andExpect(jsonPath("$.status").value("UNDER_REVIEW"))
+        .andExpect(jsonPath("$.updatedAt").isString())
+        .andExpect(jsonPath("$.version").value(officeVersion()));
     mockMvc
         .perform(get("/api/owner-transfers/" + id).cookie(ownerCookie))
-        .andExpect(jsonPath("$.transferId").value(id));
+        .andExpect(jsonPath("$.transferId").value(id))
+        .andExpect(jsonPath("$.officeId").value(office.getId()))
+        .andExpect(jsonPath("$.updatedAt").isString())
+        .andExpect(jsonPath("$.version").value(officeVersion()));
   }
 
   @Test
@@ -365,7 +370,11 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
         ErrorCode.INVALID_REQUEST);
     assertError(post(url, "{\"toUserId\":99999}", ownerCookie), ErrorCode.RESOURCE_NOT_FOUND);
     assertError(post(url, "{}", ownerCookie), ErrorCode.INVALID_REQUEST);
-    post(url, body, ownerCookie).andExpect(status().isCreated());
+    post(url, body, ownerCookie)
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.status").value("PENDING"))
+        .andExpect(jsonPath("$.updatedAt").isString())
+        .andExpect(jsonPath("$.version").value(officeVersion()));
     grantStepUp(ownerCookie);
     assertError(post(url, body, ownerCookie), ErrorCode.TRANSFER_IN_PROGRESS);
     assertError(post(url, body, cookieOf(agent)), ErrorCode.FORBIDDEN);
@@ -439,7 +448,9 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
     post(url, "", ownerCookie)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("WITHDRAWN"))
-        .andExpect(jsonPath("$.withdrawnAt").exists());
+        .andExpect(jsonPath("$.withdrawnAt").exists())
+        .andExpect(jsonPath("$.updatedAt").isString())
+        .andExpect(jsonPath("$.version").value(officeVersion()));
     assertError(post(url, "", ownerCookie), ErrorCode.INVALID_TRANSITION);
   }
 

@@ -71,7 +71,10 @@ public class ReturnGrantService {
   public GrantStatusResponse current(GrantPrincipal principal) {
     ReturnGrant grant = requireUsable(principal, null);
     return new GrantStatusResponse(
-        grant.getId(), toDisplayOffset(grant.getExpiresAt()), grant.getRevokedAt() != null);
+        grant.getId(),
+        grant.getOfficeId(),
+        toDisplayOffset(grant.getExpiresAt()),
+        grant.getRevokedAt() != null);
   }
 
   @Transactional
@@ -86,7 +89,12 @@ public class ReturnGrantService {
         exportJobRepository.saveAndFlush(
             ExportJob.fullExport(grant.getOfficeId(), membershipId, now, now.plus(FILE_RETENTION)));
     return new ExportResponse(
-        job.getId(), job.getStatus(), null, null, toDisplayOffset(job.getFileExpiresAt()));
+        job.getId(),
+        job.getStatus(),
+        null,
+        null,
+        toDisplayOffset(job.getFileExpiresAt()),
+        job.getFailureReason());
   }
 
   @Transactional(readOnly = true)
@@ -112,7 +120,8 @@ public class ReturnGrantService {
         job.getStatus(),
         url,
         toDisplayOffset(urlExpiresAt),
-        toDisplayOffset(job.getFileExpiresAt()));
+        toDisplayOffset(job.getFileExpiresAt()),
+        job.getFailureReason());
   }
 
   /** 반환권한으로 기존 방문을 고치는 사람이다. 기록자는 반환권한 사용자의 보존된 사무소 소속이다. */

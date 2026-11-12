@@ -361,7 +361,8 @@ class RefundRequestIntegrationTest extends BillingIntegrationTestBase {
         .andExpect(jsonPath("$.calculation.remainingPeriodSeconds").value(nullValue()))
         .andExpect(jsonPath("$.calculation.couponExcludedAmount").value(0))
         .andExpect(jsonPath("$.calculation.priorCompensationAmount").value(0))
-        .andExpect(jsonPath("$.calculation.effectiveEndAt").value(nullValue()));
+        .andExpect(jsonPath("$.calculation.effectiveEndAt").value(nullValue()))
+        .andExpect(jsonPath("$.createdAt").isString());
     mockMvc
         .perform(getRequest(URL + "/" + pending).apply(cookieOf(owner)))
         .andExpect(status().isOk())

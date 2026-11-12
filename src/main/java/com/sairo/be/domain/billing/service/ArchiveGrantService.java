@@ -47,7 +47,10 @@ public class ArchiveGrantService {
                 request.contractReference().strip(),
                 clock.instant().truncatedTo(ChronoUnit.MICROS)));
     return new ArchiveGrantCreateResponse(
-        grant.getId(), toDisplayOffset(grant.getExpiresAt()), grant.getTerminatedAt() != null);
+        grant.getId(),
+        grant.getOfficeId(),
+        toDisplayOffset(grant.getExpiresAt()),
+        grant.getTerminatedAt() != null);
   }
 
   @Transactional(readOnly = true)
@@ -62,6 +65,9 @@ public class ArchiveGrantService {
             .filter(found -> found.isUsable(clock.instant()))
             .orElseThrow(() -> new BusinessException(ErrorCode.ARCHIVE_GRANT_INVALID));
     return new GrantStatusResponse(
-        grant.getId(), toDisplayOffset(grant.getExpiresAt()), grant.getTerminatedAt() != null);
+        grant.getId(),
+        grant.getOfficeId(),
+        toDisplayOffset(grant.getExpiresAt()),
+        grant.getTerminatedAt() != null);
   }
 }

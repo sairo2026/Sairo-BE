@@ -64,6 +64,7 @@ class ArchiveGrantIntegrationTest extends OpsIntegrationTestBase {
                     operator()))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.grantId").isNumber())
+            .andExpect(jsonPath("$.officeId").value(owner.office().getId()))
             .andExpect(jsonPath("$.expiresAt").value(nullValue()))
             .andExpect(jsonPath("$.revoked").value(false))
             .andReturn();
@@ -134,6 +135,7 @@ class ArchiveGrantIntegrationTest extends OpsIntegrationTestBase {
         .perform(get(URL + "/current").cookie(cookie))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.grantId").value(grantId))
+        .andExpect(jsonPath("$.officeId").value(owner.office().getId()))
         .andExpect(jsonPath("$.expiresAt").value(nullValue()))
         .andExpect(jsonPath("$.revoked").value(false));
     jdbcTemplate.update(

@@ -639,6 +639,25 @@ class OpenApiDocumentationTest {
     assertThat(fieldProperties).containsExactlyInAnyOrder("field", "code", "message");
   }
 
+  @Test
+  void 명세에_맞춘_응답_필드가_스키마에_있다() throws Exception {
+    JsonNode schemas = objectMapper.readTree(apiDocs()).get("components").get("schemas");
+
+    assertThat(properties(schemas, "OwnerTransferResponse")).contains("updatedAt", "version");
+    assertThat(properties(schemas, "RefundRequestStatusResponse")).contains("createdAt");
+    assertThat(properties(schemas, "GrantStatusResponse")).contains("officeId");
+    assertThat(properties(schemas, "ArchiveGrantCreateResponse")).contains("officeId");
+    assertThat(properties(schemas, "ExportResponse")).contains("failureReason");
+  }
+
+  private Set<String> properties(JsonNode schemas, String name) {
+    JsonNode schema = schemas.get(name);
+    assertThat(schema).as(name).isNotNull();
+    Set<String> names = new HashSet<>();
+    schema.get("properties").propertyNames().forEach(names::add);
+    return names;
+  }
+
   private String apiDocs() throws Exception {
     return mockMvc
         .perform(get("/v3/api-docs"))
