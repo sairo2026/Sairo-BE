@@ -30,6 +30,7 @@ class KakaoUnlinkDispatchIntegrationTest extends AuthIntegrationTestBase {
   @Autowired private Clock clock;
   @Autowired private KakaoUnlinkEventService eventService;
   @Autowired private KakaoUnlinkDispatchService stubDispatchService;
+  @Autowired private RetentionRuleLookup ruleLookup;
 
   private AppUser user;
 
@@ -41,7 +42,8 @@ class KakaoUnlinkDispatchIntegrationTest extends AuthIntegrationTestBase {
   }
 
   private KakaoUnlinkDispatchService serviceWith(KakaoUnlinkPort port) {
-    return new KakaoUnlinkDispatchService(repository, port, textCipher, transactionTemplate, clock);
+    return new KakaoUnlinkDispatchService(
+        repository, port, textCipher, transactionTemplate, ruleLookup, clock);
   }
 
   private Map<String, Object> event() {
@@ -148,6 +150,24 @@ class KakaoUnlinkDispatchIntegrationTest extends AuthIntegrationTestBase {
     assertThat(row.get("target_key_encrypted")).isNull();
     assertThat(row.get("completed_at")).isNotNull();
     assertThat(row.get("next_attempt_at")).isNull();
+  }
+
+  @Test
+  void 보관_상한은_보관_기간_규칙_값을_읽어_바꾸면_다음_실행부터_따른다() {
+    jdbcTemplate.update(
+        "INSERT INTO legal_retention_rule (rule_code, data_group_label, retention_days,"
+            + " anchor_event, basis_note) VALUES ('KAKAO_UNLINK_KEY_MAX', '식별자 보관 상한', 3,"
+            + " 'RECORDED_AT', '시험')");
+    eventService.enqueueOutbound(user.getId(), "3001001");
+    jdbcTemplate.update(
+        "UPDATE legal_kakao_unlink_event SET occurred_at = now() - interval '4 days',"
+            + " next_attempt_at = now() - interval '1 day'");
+    List<String> called = new ArrayList<>();
+
+    serviceWith(called::add).dispatchDue();
+
+    assertThat(called).isEmpty();
+    assertThat(event().get("status")).isEqualTo("ABANDONED");
   }
 
   @Test
