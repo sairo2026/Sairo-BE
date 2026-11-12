@@ -241,11 +241,25 @@ public class OpsContentRepository {
   }
 
   /** 예약 시각이 지난 예약 공지를 게시한다. 게시 시각은 예약 시각이다. */
-  public int publishDueAnnouncements(Instant now) {
+  public record DueAnnouncement(long id, Instant scheduledAt) {}
+
+  public List<DueAnnouncement> dueAnnouncements(Instant now) {
+    return jdbcClient
+        .sql(
+            "SELECT id, scheduled_at FROM platform_announcement WHERE status = 'SCHEDULED' AND"
+                + " scheduled_at <= :now ORDER BY scheduled_at, id")
+        .param("now", Timestamp.from(now))
+        .query((rs, i) -> new DueAnnouncement(rs.getLong("id"), rs.getTimestamp(2).toInstant()))
+        .list();
+  }
+
+  /** 아직 예약 상태이고 예약 시각이 지난 공지 하나를 예약 시각으로 게시한다. */
+  public int publishDueAnnouncement(long id, Instant now) {
     return jdbcClient
         .sql(
             "UPDATE platform_announcement SET status = 'PUBLISHED', published_at = scheduled_at"
-                + " WHERE status = 'SCHEDULED' AND scheduled_at <= :now")
+                + " WHERE id = :id AND status = 'SCHEDULED' AND scheduled_at <= :now")
+        .param("id", id)
         .param("now", Timestamp.from(now))
         .update();
   }

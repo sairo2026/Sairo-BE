@@ -2,6 +2,7 @@ package com.sairo.be.domain.ops.service;
 
 import static com.sairo.be.global.support.TimeRules.toDisplayOffset;
 
+import com.sairo.be.domain.billing.service.SystemJobRunService;
 import com.sairo.be.domain.ops.dto.request.OpsContentRequests.AnnouncementPublishRequest;
 import com.sairo.be.domain.ops.dto.request.OpsContentRequests.AnnouncementRequest;
 import com.sairo.be.domain.ops.dto.request.OpsContentRequests.CompanyServiceInfoRequest;
@@ -85,19 +86,27 @@ public class OpsContentService {
   static final String MISSING_REVIEW = "REVIEW";
   private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
+  /** 예약 공지 게시 배치의 system_job_run 작업 이름이다. */
+  public static final String ANNOUNCEMENT_PUBLISH_JOB = "ops-announcement-publish";
+
+  private static final String ANNOUNCEMENT_PUBLISH_KEY = "announcement-publish:";
+
   private final OpsContentRepository repository;
   private final OpsAuditLogRepository auditLog;
   private final AdvisoryLock advisoryLock;
+  private final SystemJobRunService jobRunService;
   private final Clock clock;
 
   public OpsContentService(
       OpsContentRepository repository,
       OpsAuditLogRepository auditLog,
       AdvisoryLock advisoryLock,
+      SystemJobRunService jobRunService,
       Clock clock) {
     this.repository = repository;
     this.auditLog = auditLog;
     this.advisoryLock = advisoryLock;
+    this.jobRunService = jobRunService;
     this.clock = clock;
   }
 
@@ -204,10 +213,39 @@ public class OpsContentService {
     return new AnnouncementRevisionResponse(newId, versionNo, id, "DRAFT");
   }
 
-  /** 예약 시각이 지난 예약 공지를 게시한다. 배치가 부른다. */
-  @Transactional
+  /**
+   * 예약 시각이 지난 예약 공지를 게시한다. 배치가 부른다. 공지마다 `announcement-publish:{공지ID}:{예약 시각}` 키로 한 번만 실행하고 실패하면 운영
+   * 콘솔에서 다시 실행할 수 있다(OPS-09).
+   */
   public int publishDueAnnouncements(Instant now) {
-    return repository.publishDueAnnouncements(now);
+    int published = 0;
+    for (OpsContentRepository.DueAnnouncement due : repository.dueAnnouncements(now)) {
+      boolean done =
+          jobRunService.runOnce(
+              ANNOUNCEMENT_PUBLISH_JOB,
+              null,
+              ANNOUNCEMENT_PUBLISH_KEY + due.id() + ":" + due.scheduledAt().getEpochSecond(),
+              due.scheduledAt(),
+              () -> repository.publishDueAnnouncement(due.id(), now));
+      if (done) {
+        published++;
+      }
+    }
+    return published;
+  }
+
+  /** 예약 공지 게시 작업의 재실행이다. 키에서 공지를 찾고 아직 예약 상태이며 예약 시각이 지났을 때만 게시한다. */
+  public Optional<Runnable> announcementPublishRerunWork(String idempotencyKey, Instant now) {
+    String[] parts = idempotencyKey.split(":");
+    if (parts.length != 3 || !idempotencyKey.startsWith(ANNOUNCEMENT_PUBLISH_KEY)) {
+      return Optional.empty();
+    }
+    try {
+      long id = Long.parseLong(parts[1]);
+      return Optional.of(() -> repository.publishDueAnnouncement(id, now));
+    } catch (NumberFormatException e) {
+      return Optional.empty();
+    }
   }
 
   private NewAnnouncement newAnnouncement(
@@ -374,6 +412,17 @@ public class OpsContentService {
         repository.infos(page.size(), (long) page.page() * page.size()).stream()
             .map(OpsContentService::toItem)
             .toList();
+    List<String> missing = missingLaunchItems();
+    return new CompanyServiceInfoResponse(
+        items, missing.isEmpty(), missing, page.page(), page.size(), repository.countInfos());
+  }
+
+  /**
+   * 운영 출시 준비에 빠진 회사 제공 정보 항목이다. 비어 있으면 출시 준비가 된 것이다. 게시 버전, 문의 수신 시험, 검토자를 본다. 운영 연동 활성화(OPS-09)도 이
+   * 판정을 쓴다.
+   */
+  @Transactional(readOnly = true)
+  public List<String> missingLaunchItems() {
     List<String> missing = new ArrayList<>();
     Optional<InfoRow> published = repository.latestPublishedInfo();
     if (published.isEmpty()) {
@@ -386,8 +435,7 @@ public class OpsContentService {
     if (basis == null || basis.reviewedByOperatorId() == null) {
       missing.add(MISSING_REVIEW);
     }
-    return new CompanyServiceInfoResponse(
-        items, missing.isEmpty(), missing, page.page(), page.size(), repository.countInfos());
+    return missing;
   }
 
   @Transactional
