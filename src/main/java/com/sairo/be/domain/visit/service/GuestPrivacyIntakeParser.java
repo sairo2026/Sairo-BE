@@ -83,6 +83,42 @@ public final class GuestPrivacyIntakeParser {
         acknowledged);
   }
 
+  /** 승인자 세션 접수(COMMON-05)의 본문이다. 링크 종류와 토큰 대신 출입승인 ID를 받는다. */
+  public record PortalIntake(Long approvalId, Intake intake) {}
+
+  private static final Set<String> PORTAL_KEYS =
+      Set.of(
+          "approvalId",
+          "requestType",
+          "requesterRole",
+          "contactChannel",
+          "contact",
+          "requestNote",
+          "acknowledgedNoticeVersion");
+
+  public static PortalIntake parsePortal(JsonNode body) {
+    CustomerInput.requireObject(body, PORTAL_KEYS);
+    Long approvalId = CustomerInput.requiredLong(body, "approvalId");
+    RequestType requestType = CustomerInput.requiredEnum(body, "requestType", RequestType.class);
+    RequesterRole role = CustomerInput.requiredEnum(body, "requesterRole", RequesterRole.class);
+    ContactChannel channel =
+        CustomerInput.requiredEnum(body, "contactChannel", ContactChannel.class);
+    String contact = CustomerInput.requiredText(body, "contact", 100, false);
+    String note = CustomerInput.optionalText(body, "requestNote", NOTE_MAX, true);
+    String acknowledged = CustomerInput.requiredText(body, "acknowledgedNoticeVersion", 50, false);
+    return new PortalIntake(
+        approvalId,
+        new Intake(
+            null,
+            null,
+            requestType,
+            role,
+            channel,
+            normalizeContact(channel, contact),
+            note,
+            acknowledged));
+  }
+
   public static String mask(ContactChannel channel, String contact) {
     return channel == ContactChannel.PHONE
         ? ContactMasking.phone(contact)

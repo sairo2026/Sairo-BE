@@ -2,6 +2,7 @@ package com.sairo.be.domain.legal.service;
 
 import com.sairo.be.global.port.ObjectStorage;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,8 +11,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
 /**
- * 파기 큐 대상별 저장소 대상 산정과 실행이다(OPS-13). 지금은 회원 탈퇴(MEMBER)만 처리기가 있다. 회원 행은 지우지 않고 식별 값을 비우거나 대체해 업무 기록의
- * 참조를 유지한다. 파일은 ObjectStorage 포트로만 지운다.
+ * 파기 큐 대상별 저장소 대상 산정과 실행이다(OPS-13). 회원 탈퇴(MEMBER)와 보관 기한 만료 데이터군({@link RetentionDeletionTargets})의
+ * 처리기가 있다. 회원 행은 지우지 않고 식별 값을 비우거나 대체해 업무 기록의 참조를 유지한다. 파일은 ObjectStorage 포트로만 지운다.
  */
 @Profile("!migrate")
 @Service
@@ -28,10 +29,29 @@ public class DeletionTargetService {
       List<Target> searchIndexTargets,
       List<String> fileTargets,
       List<String> temporaryExportTargets,
-      List<String> holdReasons) {
+      List<String> holdReasons,
+      long storageRowCount) {
 
+    public Plan(
+        boolean supported,
+        List<Target> storageTargets,
+        List<Target> searchIndexTargets,
+        List<String> fileTargets,
+        List<String> temporaryExportTargets,
+        List<String> holdReasons) {
+      this(
+          supported,
+          storageTargets,
+          searchIndexTargets,
+          fileTargets,
+          temporaryExportTargets,
+          holdReasons,
+          storageTargets.size());
+    }
+
+    /** 운영 저장소 대상은 묶음 한 건으로 보이더라도 건수는 실제 행 수로 센다. */
     public long targetCount() {
-      return storageTargets.size() + fileTargets.size() + temporaryExportTargets.size();
+      return storageRowCount + fileTargets.size() + temporaryExportTargets.size();
     }
   }
 
@@ -43,13 +63,32 @@ public class DeletionTargetService {
 
   private final JdbcClient jdbcClient;
   private final ObjectStorage objectStorage;
+  private final RetentionDeletionTargets retentionTargets;
+  private final Clock clock;
 
-  public DeletionTargetService(JdbcClient jdbcClient, ObjectStorage objectStorage) {
+  public DeletionTargetService(
+      JdbcClient jdbcClient,
+      ObjectStorage objectStorage,
+      RetentionDeletionTargets retentionTargets,
+      Clock clock) {
     this.jdbcClient = jdbcClient;
     this.objectStorage = objectStorage;
+    this.retentionTargets = retentionTargets;
+    this.clock = clock;
   }
 
   public Plan plan(String targetType, long targetId, Instant now) {
+    if (retentionTargets.supports(targetType)) {
+      long due = retentionTargets.dueCount(targetType, targetId, now);
+      return new Plan(
+          true,
+          due == 0 ? List.of() : List.of(new Target(targetType, targetId)),
+          List.of(),
+          List.of(),
+          List.of(),
+          List.of(),
+          due);
+    }
     if (!DeletionQueueService.MEMBER_TARGET.equals(targetType)) {
       return new Plan(
           false,
@@ -89,6 +128,10 @@ public class DeletionTargetService {
 
   /** 계획한 대상을 지운다. 회원이 탈퇴 상태가 아니면 운영 저장소는 건드리지 않고 실패로 남긴다. */
   public Outcome execute(String targetType, long targetId, Plan plan) {
+    if (retentionTargets.supports(targetType)) {
+      retentionTargets.execute(targetType, targetId, clock.instant());
+      return new Outcome(RESULT_SUCCESS, RESULT_SUCCESS, RESULT_SUCCESS, RESULT_SUCCESS);
+    }
     String storage = RESULT_SUCCESS;
     if (!plan.storageTargets().isEmpty()) {
       int updated =

@@ -270,6 +270,7 @@ class OpenApiDocumentationTest {
           Map.entry(
               "PATCH /api/return-grants/{grantId}/visit-schedule-items/{itemId}/result",
               Set.of("200")),
+          Map.entry("POST /api/approver-portal/privacy-intakes", Set.of("201")),
           Map.entry("POST /api/memberships/me/leave", Set.of("204")),
           Map.entry("GET /api/public/pricing", Set.of("200")),
           Map.entry("GET /api/public/company-info", Set.of("200")),

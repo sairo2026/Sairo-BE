@@ -13,7 +13,9 @@ public final class OpsSystemResponses {
   public record SystemJobItem(
       Long runId,
       String jobName,
-      @Schema(description = "CHARGE_RETRY, ANNOUNCEMENT_PUBLISH, INTEGRATION_CHECK, OTHER")
+      @Schema(
+              description =
+                  "CHARGE_RETRY, ANNOUNCEMENT_PUBLISH, INTEGRATION_CHECK, LEGAL_RETENTION, OTHER")
           String jobType,
       @Schema(description = "이 작업을 재실행할 수 있는 운영 역할. 재실행 대상이 아니면 빈 배열") List<String> rerunRoles,
       Long officeId,

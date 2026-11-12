@@ -92,7 +92,11 @@ public class GuestPrivacyIntakeRepository {
 
   public void insertAck(AckRow row) {
     String linkColumn =
-        "CUSTOMER".equals(row.linkKind()) ? "customer_link_id" : "approver_property_link_id";
+        switch (row.linkKind()) {
+          case "CUSTOMER" -> "customer_link_id";
+          case "APPROVER_PORTAL" -> "approver_profile_id";
+          default -> "approver_property_link_id";
+        };
     jdbcClient
         .sql(
             "INSERT INTO consent_guest_notice_ack (office_id, link_kind, "

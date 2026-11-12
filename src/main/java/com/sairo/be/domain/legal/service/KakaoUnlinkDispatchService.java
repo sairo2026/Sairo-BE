@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.OptionalInt;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.PageRequest;
@@ -20,6 +21,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class KakaoUnlinkDispatchService {
 
   public static final Duration KEY_MAX_RETENTION = Duration.ofDays(7);
+  public static final String KEY_MAX_RULE = "KAKAO_UNLINK_KEY_MAX";
   public static final int BATCH_SIZE = 50;
   private static final List<Duration> RETRY_DELAYS =
       List.of(
@@ -35,6 +37,7 @@ public class KakaoUnlinkDispatchService {
   private final KakaoUnlinkPort kakaoUnlinkPort;
   private final TextCipher textCipher;
   private final TransactionTemplate transactionTemplate;
+  private final RetentionRuleLookup ruleLookup;
   private final Clock clock;
 
   public KakaoUnlinkDispatchService(
@@ -42,11 +45,13 @@ public class KakaoUnlinkDispatchService {
       KakaoUnlinkPort kakaoUnlinkPort,
       TextCipher textCipher,
       TransactionTemplate transactionTemplate,
+      RetentionRuleLookup ruleLookup,
       Clock clock) {
     this.repository = repository;
     this.kakaoUnlinkPort = kakaoUnlinkPort;
     this.textCipher = textCipher;
     this.transactionTemplate = transactionTemplate;
+    this.ruleLookup = ruleLookup;
     this.clock = clock;
   }
 
@@ -73,11 +78,17 @@ public class KakaoUnlinkDispatchService {
 
   private void abandonExpired() {
     Instant now = clock.instant();
-    for (Long id : repository.findExpiredIds(now.minus(KEY_MAX_RETENTION))) {
+    for (Long id : repository.findExpiredIds(now.minus(keyMaxRetention()))) {
       transactionTemplate.executeWithoutResult(
           status -> repository.findById(id).ifPresent(event -> event.abandon(now)));
       log.warn("카카오 연결 끊기 작업을 보관 상한 초과로 포기했습니다. eventId={}", id);
     }
+  }
+
+  /** 식별자 보관 상한이다. 보관 기간 규칙 KAKAO_UNLINK_KEY_MAX를 읽고 규칙이 없으면 문서 확정값 7일을 쓴다. */
+  Duration keyMaxRetention() {
+    OptionalInt days = ruleLookup.retentionDays(KEY_MAX_RULE);
+    return days.isPresent() ? Duration.ofDays(days.getAsInt()) : KEY_MAX_RETENTION;
   }
 
   private boolean dispatch(Long id) {

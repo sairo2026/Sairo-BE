@@ -45,6 +45,7 @@ public class OpsSystemJobService {
     CHARGE_RETRY(OperatorRole.BILLING),
     ANNOUNCEMENT_PUBLISH(OperatorRole.OPS),
     INTEGRATION_CHECK(OperatorRole.OPS),
+    LEGAL_RETENTION(OperatorRole.PRIVACY),
     OTHER(null);
 
     private final OperatorRole rerunRole;
@@ -63,6 +64,9 @@ public class OpsSystemJobService {
       if (OpsIntegrationService.CHECK_JOB.equals(jobName)) {
         return INTEGRATION_CHECK;
       }
+      if (LegalRetentionJobService.JOBS.contains(jobName)) {
+        return LEGAL_RETENTION;
+      }
       return OTHER;
     }
 
@@ -78,6 +82,7 @@ public class OpsSystemJobService {
   private final BillingJobService billingJobService;
   private final OpsContentService contentService;
   private final OpsIntegrationService integrationService;
+  private final LegalRetentionJobService legalRetentionJobService;
   private final Clock clock;
 
   public OpsSystemJobService(
@@ -88,6 +93,7 @@ public class OpsSystemJobService {
       BillingJobService billingJobService,
       OpsContentService contentService,
       OpsIntegrationService integrationService,
+      LegalRetentionJobService legalRetentionJobService,
       Clock clock) {
     this.repository = repository;
     this.accounts = accounts;
@@ -96,6 +102,7 @@ public class OpsSystemJobService {
     this.billingJobService = billingJobService;
     this.contentService = contentService;
     this.integrationService = integrationService;
+    this.legalRetentionJobService = legalRetentionJobService;
     this.clock = clock;
   }
 
@@ -162,6 +169,8 @@ public class OpsSystemJobService {
       case ANNOUNCEMENT_PUBLISH ->
           contentService.announcementPublishRerunWork(run.idempotencyKey(), now);
       case INTEGRATION_CHECK -> integrationService.checkRerunWork(run.idempotencyKey());
+      case LEGAL_RETENTION ->
+          legalRetentionJobService.rerunWork(run.jobName(), run.idempotencyKey());
       case OTHER -> Optional.empty();
     };
   }
