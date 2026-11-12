@@ -250,7 +250,7 @@ class LaunchScenarioBillingIntegrationTest extends OpsConsoleTestBase {
 
   private Owner renewalDue() throws Exception {
     Owner owner = paidOffice();
-    // 시간 경과: 현재 이용 기간이 1분 전에 끝난 것으로 당긴다.
+    // 시간 경과: 현재 이용 기간과 그 청구서의 청구기간이 1분 전에 끝난 것으로 당긴다.
     Instant end = Instant.now().minus(Duration.ofMinutes(1));
     Instant start = end.minus(Duration.ofDays(30));
     jdbcTemplate.update(
@@ -259,6 +259,12 @@ class LaunchScenarioBillingIntegrationTest extends OpsConsoleTestBase {
         Timestamp.from(start),
         Timestamp.from(end),
         Timestamp.from(start),
+        owner.officeId());
+    jdbcTemplate.update(
+        "UPDATE billing_invoice SET billing_period_start = ?, billing_period_end = ? WHERE"
+            + " office_id = ?",
+        Timestamp.from(start),
+        Timestamp.from(end),
         owner.officeId());
     return owner;
   }
