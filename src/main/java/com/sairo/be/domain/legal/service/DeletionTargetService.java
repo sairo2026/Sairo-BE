@@ -96,12 +96,18 @@ public class DeletionTargetService {
               .sql(
                   "UPDATE app_user SET email = NULL, password_hash = NULL, email_verified_at ="
                       + " NULL, kakao_reference_email = NULL, phone = NULL, phone_verified_at ="
-                      + " NULL, kakao_provider_key = 'deleted-' || id, name = '탈퇴한 회원',"
+                      + " NULL, kakao_provider_key = 'deleted-' || id, name = '탈퇴한 구성원',"
                       + " failed_login_locked_until = NULL WHERE id = :id AND account_status ="
                       + " 'WITHDRAWN'")
               .param("id", targetId)
               .update();
       storage = updated == 1 ? RESULT_SUCCESS : RESULT_FAILED;
+      if (updated == 1) {
+        jdbcClient
+            .sql("DELETE FROM app_user_notification_preference WHERE user_id = :id")
+            .param("id", targetId)
+            .update();
+      }
     }
     String exports = RESULT_SUCCESS;
     for (String key : plan.temporaryExportTargets()) {

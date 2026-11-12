@@ -122,7 +122,7 @@ class OpsDeletionQueueIntegrationTest extends OpsConsoleTestBase {
     assertThat(
             count(
                 "SELECT count(*) FROM app_user WHERE id = ? AND email IS NULL AND phone IS NULL AND"
-                    + " name = '탈퇴한 회원' AND kakao_provider_key LIKE 'deleted-%'",
+                    + " name = '탈퇴한 구성원' AND kakao_provider_key LIKE 'deleted-%'",
                 userId))
         .isEqualTo(1);
     assertThat(objectStorage.find(exportKey)).isEmpty();
@@ -286,6 +286,6 @@ class OpsDeletionQueueIntegrationTest extends OpsConsoleTestBase {
     jdbcTemplate.update(
         "UPDATE deletion_queue SET scheduled_at = now() + interval '1 day' WHERE id = ?", future);
     assertError(post(BASE + "/" + future + "/execute", "", cookie), ErrorCode.INVALID_TRANSITION);
-    assertThat(count("SELECT count(*) FROM app_user WHERE name = '탈퇴한 회원'")).isZero();
+    assertThat(count("SELECT count(*) FROM app_user WHERE name = '탈퇴한 구성원'")).isZero();
   }
 }

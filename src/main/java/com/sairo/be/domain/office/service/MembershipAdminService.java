@@ -12,7 +12,6 @@ import com.sairo.be.domain.office.repository.OfficeMembershipHistoryRepository.A
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
-import com.sairo.be.global.port.ContractAssignments;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StepUpState;
 import com.sairo.be.global.support.AdvisoryLock;
@@ -34,7 +33,7 @@ public class MembershipAdminService {
   private final MemberSessionRefreshService sessionRefreshService;
   private final StepUpState stepUpState;
   private final AdvisoryLock advisoryLock;
-  private final ContractAssignments contractAssignments;
+  private final MemberWorkHandoverService workHandoverService;
   private final Clock clock;
 
   public MembershipAdminService(
@@ -43,14 +42,14 @@ public class MembershipAdminService {
       MemberSessionRefreshService sessionRefreshService,
       StepUpState stepUpState,
       AdvisoryLock advisoryLock,
-      ContractAssignments contractAssignments,
+      MemberWorkHandoverService workHandoverService,
       Clock clock) {
     this.repository = repository;
     this.historyRepository = historyRepository;
     this.sessionRefreshService = sessionRefreshService;
     this.stepUpState = stepUpState;
     this.advisoryLock = advisoryLock;
-    this.contractAssignments = contractAssignments;
+    this.workHandoverService = workHandoverService;
     this.clock = clock;
   }
 
@@ -78,7 +77,7 @@ public class MembershipAdminService {
     Instant now = clock.instant();
     repository.changeRole(membershipId, role, now);
     if (role == OfficeMembershipRole.DEPUTY) {
-      contractAssignments.handOverToOwner(owner.officeId(), membershipId, now);
+      workHandoverService.handOverToOwner(owner.officeId(), membershipId, now);
     }
     stepUpState.consume(session);
     sessionRefreshService.refreshAfterCommit(row.userId());
@@ -94,7 +93,7 @@ public class MembershipAdminService {
     }
     Instant now = clock.instant();
     repository.suspend(membershipId, reason.strip(), now);
-    contractAssignments.handOverToOwner(owner.officeId(), membershipId, now);
+    workHandoverService.handOverToOwner(owner.officeId(), membershipId, now);
     historyRepository.insert(
         membershipId,
         OfficeMembershipStatus.APPROVED,
@@ -141,7 +140,7 @@ public class MembershipAdminService {
     }
     Instant now = clock.instant();
     repository.revoke(membershipId, "OWNER", reason.strip(), now);
-    contractAssignments.handOverToOwner(owner.officeId(), membershipId, now);
+    workHandoverService.handOverToOwner(owner.officeId(), membershipId, now);
     historyRepository.insert(
         membershipId,
         row.status(),
@@ -167,7 +166,7 @@ public class MembershipAdminService {
     requireNotLastOwner(row);
     Instant now = clock.instant();
     repository.revoke(row.id(), "SELF", null, now);
-    contractAssignments.handOverToOwner(principal.officeId(), row.id(), now);
+    workHandoverService.handOverToOwner(principal.officeId(), row.id(), now);
     historyRepository.insert(
         row.id(),
         OfficeMembershipStatus.APPROVED,
