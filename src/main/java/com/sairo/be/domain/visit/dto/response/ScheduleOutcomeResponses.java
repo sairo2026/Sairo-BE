@@ -100,6 +100,22 @@ public final class ScheduleOutcomeResponses {
       String status,
       Long version) {}
 
+  @Schema(description = "반환권한으로 기존 방문을 취소한 뒤의 조율 상태")
+  public record ReturnVisitCancelResponse(
+      Long coordinationId, Long officeId, String status, Long version) {}
+
+  @Schema(description = "반환권한으로 사후 기록한 방문 결과와 조율 상태")
+  public record ReturnVisitResultResponse(
+      Long itemId,
+      Long coordinationId,
+      Long officeId,
+      String result,
+      @Schema(nullable = true) OffsetDateTime actualVisitedAt,
+      OffsetDateTime effectiveAt,
+      OffsetDateTime recordedAt,
+      String status,
+      Long version) {}
+
   public record VisitCoordinationCloneResponse(
       Long coordinationId,
       String status,

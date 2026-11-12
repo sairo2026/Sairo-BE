@@ -35,6 +35,8 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class SupportInquiryService {
 
+  static final String ARCHIVE_REQUEST_CONTENT = "사무소 종료에 따른 장기 문서 보관계약 신청";
+
   private final SupportInquiryRepository inquiryRepository;
   private final SupportInquiryMessageRepository messageRepository;
   private final SupportInquiryAttachmentRepository attachmentRepository;
@@ -79,6 +81,23 @@ public class SupportInquiryService {
         inquiryRepository.saveAndFlush(
             SupportInquiry.open(
                 userId, officeId, InquiryCategory.PRIVACY, content, requestScope, legalDueAt, now));
+    return inquiry.getId();
+  }
+
+  /** 사무소 종료 때 장기 문서 보관계약을 신청하면 운영자가 계약 절차를 이어가도록 결제 문의 한 건을 연다(SETTING-03). */
+  @Transactional
+  public Long openForArchiveRequest(Long userId, Long officeId) {
+    Instant now = clock.instant();
+    SupportInquiry inquiry =
+        inquiryRepository.saveAndFlush(
+            SupportInquiry.open(
+                userId,
+                officeId,
+                InquiryCategory.BILLING,
+                ARCHIVE_REQUEST_CONTENT,
+                null,
+                ResponseDueCalculator.firstResponseDue(now),
+                now));
     return inquiry.getId();
   }
 

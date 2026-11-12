@@ -192,6 +192,18 @@ public class BillingQueryRepository {
         .optional();
   }
 
+  /** 사무소 인증이 운영자에 의해 회수됐는지다. 회수된 사무소의 반환권한은 지원 접수 경로만 쓴다. */
+  public boolean isOfficeRegistrationRevoked(long officeId) {
+    return jdbcClient
+            .sql(
+                "SELECT count(*) FROM office_registration WHERE resulting_office_id = :officeId"
+                    + " AND status = 'REVOKED'")
+            .param("officeId", officeId)
+            .query(Long.class)
+            .single()
+        > 0;
+  }
+
   public Optional<Integer> findPublishedSupplierVersion() {
     return jdbcClient
         .sql(
