@@ -259,6 +259,7 @@ class OpenApiDocumentationTest {
           Map.entry("PUT /api/ops/retention-rules/{ruleCode}", Set.of("200")),
           Map.entry("GET /api/ops/kakao-unlink-events", Set.of("200")),
           Map.entry("POST /api/ops/kakao-unlink-events/{eventId}/retry", Set.of("200")),
+          Map.entry("POST /api/approver-portal/privacy-intakes", Set.of("201")),
           Map.entry("POST /api/memberships/me/leave", Set.of("204")),
           Map.entry("GET /api/public/pricing", Set.of("200")),
           Map.entry("GET /api/public/company-info", Set.of("200")),
