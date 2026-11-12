@@ -258,6 +258,7 @@ class VisitCoordinationCreateIntegrationTest extends VisitIntegrationTestBase {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     var foreignOwner = newStaff(OfficeMembershipRole.OWNER);
     var deputy = staffIn(owner.office(), OfficeMembershipRole.DEPUTY);
+    addAgentToRoster(owner.office().getId());
     Cookie cookie = cookieOf(owner);
     long customer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
     long property = newProperty(cookie);
@@ -331,6 +332,29 @@ class VisitCoordinationCreateIntegrationTest extends VisitIntegrationTestBase {
             Long.class,
             created.get("coordinationId").longValue());
     assertThat(manager).isEqualTo(deputy.membership().getId());
+  }
+
+  @Test
+  void 대표가_중개보조원을_담당자로_지정해도_한도_초과_중에는_잠긴다() throws Exception {
+    var owner = newStaff(OfficeMembershipRole.OWNER);
+    var deputy = staffIn(owner.office(), OfficeMembershipRole.DEPUTY);
+    Cookie ownerCookie = cookieOf(owner);
+    long customer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
+    long property = newProperty(ownerCookie);
+    String body =
+        createBody(
+            customer, deputy.membership().getId(), today(), today().plusDays(2), List.of(property));
+
+    assertError(
+        mockMvc.perform(jsonPostAs("/api/visit-coordinations", body, ownerCookie)),
+        ErrorCode.DEPUTY_VISIT_LOCKED);
+    assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM visit_coordination", Long.class))
+        .isZero();
+
+    addAgentToRoster(owner.office().getId());
+    mockMvc
+        .perform(jsonPostAs("/api/visit-coordinations", body, ownerCookie))
+        .andExpect(status().isCreated());
   }
 
   @Test

@@ -18,9 +18,11 @@ import com.sairo.be.global.security.OperatorRole;
 import com.sairo.be.support.AuthFlowSupport;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.OpsIntegrationTestBase;
+import com.sairo.be.support.fixture.BillingFixtures;
 import com.sairo.be.support.fixture.TestData;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -373,6 +375,42 @@ class OperatorRegistrationReviewIntegrationTest extends OpsIntegrationTestBase {
         .perform(get("/api/offices/current").cookie(applicantSession))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.name").value("사이로공인중개사"));
+    assertThat(
+            jdbcTemplate.queryForMap(
+                "SELECT status, trial_event_id FROM subscription WHERE office_id = ?",
+                ((Number) office.get("id")).longValue()))
+        .containsEntry("status", "PRE_PAYMENT")
+        .containsEntry("trial_event_id", null);
+  }
+
+  @Test
+  void 승인은_진행_중인_일반_체험_이벤트가_있으면_체험_구독을_시작한다() throws Exception {
+    Instant now = Instant.now();
+    long event =
+        new BillingFixtures(jdbcTemplate)
+            .trialEvent(
+                "GENERAL",
+                "DURATION",
+                now.minus(Duration.ofDays(1)),
+                now.plus(Duration.ofDays(30)),
+                null,
+                "ACTIVE");
+    long id = submittedRegistration(applicant().getId(), "PENDING_REVIEW");
+    checkAll(id);
+
+    post("/api/ops/office-registrations/" + id + "/approve", "", reviewSession)
+        .andExpect(status().isOk());
+
+    var subscription =
+        jdbcTemplate.queryForMap(
+            "SELECT status, trial_event_id, trial_ends_at - trial_started_at AS free_period FROM"
+                + " subscription WHERE office_id = (SELECT resulting_office_id FROM"
+                + " office_registration WHERE id = ?)",
+            id);
+    assertThat(subscription)
+        .containsEntry("status", "TRIAL")
+        .containsEntry("trial_event_id", event);
+    assertThat(subscription.get("free_period").toString()).contains("60 days");
   }
 
   @Test

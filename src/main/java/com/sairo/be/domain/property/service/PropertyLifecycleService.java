@@ -17,6 +17,7 @@ import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.error.FieldErrorItem;
+import com.sairo.be.global.port.ApplyGrantPort;
 import com.sairo.be.global.port.ObjectStorage;
 import com.sairo.be.global.security.StaffPrincipal;
 import java.time.Clock;
@@ -42,6 +43,7 @@ public class PropertyLifecycleService {
   private final PropertyViewAssembler assembler;
   private final ManagingMemberDirectory managingMemberDirectory;
   private final ObjectStorage objectStorage;
+  private final ApplyGrantPort applyGrants;
   private final Clock clock;
 
   public PropertyLifecycleService(
@@ -54,6 +56,7 @@ public class PropertyLifecycleService {
       PropertyViewAssembler assembler,
       ManagingMemberDirectory managingMemberDirectory,
       ObjectStorage objectStorage,
+      ApplyGrantPort applyGrants,
       Clock clock) {
     this.propertyRepository = propertyRepository;
     this.archiveRepository = archiveRepository;
@@ -64,6 +67,7 @@ public class PropertyLifecycleService {
     this.assembler = assembler;
     this.managingMemberDirectory = managingMemberDirectory;
     this.objectStorage = objectStorage;
+    this.applyGrants = applyGrants;
     this.clock = clock;
   }
 
@@ -92,7 +96,7 @@ public class PropertyLifecycleService {
     }
     Instant now = clock.instant();
     property.archive(now);
-    archiveRepository.revokeApplyGrants(propertyId, now);
+    applyGrants.revokeForArchivedProperty(propertyId);
     lifecycleEventRepository.save(
         EntityLifecycleEvent.propertyArchived(
             principal.officeId(), propertyId, now, principal.membershipId()));

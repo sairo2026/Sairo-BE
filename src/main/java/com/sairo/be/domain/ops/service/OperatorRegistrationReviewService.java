@@ -1,5 +1,7 @@
 package com.sairo.be.domain.ops.service;
 
+import com.sairo.be.domain.billing.service.SubscriptionAllocationService;
+import com.sairo.be.domain.billing.service.SubscriptionAllocationService.VerificationFacts;
 import com.sairo.be.domain.office.entity.EvidenceType;
 import com.sairo.be.domain.office.entity.Office;
 import com.sairo.be.domain.office.entity.OfficeMembership;
@@ -40,6 +42,7 @@ import com.sairo.be.global.support.PageResponse;
 import com.sairo.be.global.support.StatusFilter;
 import com.sairo.be.global.support.TimeRules;
 import java.net.URI;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -68,6 +71,7 @@ public class OperatorRegistrationReviewService {
   private final OpsAuditLogRepository auditLogRepository;
   private final MemberSessionRefreshService sessionRefreshService;
   private final ObjectStorage objectStorage;
+  private final SubscriptionAllocationService subscriptionAllocation;
   private final JdbcClient jdbcClient;
   private final Clock clock;
 
@@ -81,6 +85,7 @@ public class OperatorRegistrationReviewService {
       OpsAuditLogRepository auditLogRepository,
       MemberSessionRefreshService sessionRefreshService,
       ObjectStorage objectStorage,
+      SubscriptionAllocationService subscriptionAllocation,
       JdbcClient jdbcClient,
       Clock clock) {
     this.registrationRepository = registrationRepository;
@@ -92,6 +97,7 @@ public class OperatorRegistrationReviewService {
     this.auditLogRepository = auditLogRepository;
     this.sessionRefreshService = sessionRefreshService;
     this.objectStorage = objectStorage;
+    this.subscriptionAllocation = subscriptionAllocation;
     this.jdbcClient = jdbcClient;
     this.clock = clock;
   }
@@ -225,8 +231,25 @@ public class OperatorRegistrationReviewService {
         registrationId,
         null,
         now);
+    subscriptionAllocation.allocateOnVerification(
+        new VerificationFacts(
+            office.getId(), now, now, firstApplicationAt(registration.getApplicantUserId(), now)));
     sessionRefreshService.refreshAfterCommit(registration.getApplicantUserId());
     return OpsReviewMapper.toRegistrationResponse(registration);
+  }
+
+  /** 신청자가 처음 사무소 인증을 제출한 시각이다. 제출 기록이 없으면 승인 시각을 쓴다. */
+  private Instant firstApplicationAt(Long applicantUserId, Instant fallback) {
+    List<Timestamp> first =
+        jdbcClient
+            .sql(
+                "SELECT min(rv.submitted_at) FROM office_registration_revision rv JOIN"
+                    + " office_registration r ON r.id = rv.registration_id WHERE"
+                    + " r.applicant_user_id = :user")
+            .param("user", applicantUserId)
+            .query(Timestamp.class)
+            .list();
+    return first.isEmpty() || first.get(0) == null ? fallback : first.get(0).toInstant();
   }
 
   @Transactional

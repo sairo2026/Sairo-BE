@@ -456,6 +456,49 @@ class ApplyGrantIntegrationTest extends VisitOutcomeTestBase {
   }
 
   @Test
+  void 매물을_보관하면_허용을_회수하고_신청_대기_신청을_상태_이력과_알림을_남겨_종결한다() throws Exception {
+    CrossRequest c = crossRequest();
+    Granted g = c.granted();
+    RequestFixture owner = g.owner();
+    cancel(owner.cookie(), owner.coordinationId(), "{\"reason\":\"매물 거래 종료\"}")
+        .andExpect(status().isOk());
+
+    mockMvc
+        .perform(deleteAs("/api/properties/" + owner.propertyId(), owner.cookie()))
+        .andExpect(status().isNoContent());
+
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT revoke_reason FROM visit_property_apply_grant WHERE id = ? AND"
+                    + " revoke_source = 'SYSTEM' AND revoked_at IS NOT NULL",
+                String.class,
+                g.grantId()))
+        .isEqualTo("PROPERTY_ARCHIVED");
+    assertThat(requestStatus(c.requestId())).isEqualTo("EXPIRED");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT reason FROM visit_request_status_history WHERE request_id = ? AND"
+                    + " from_status = 'PENDING' AND to_status = 'EXPIRED' AND source = 'SYSTEM'",
+                String.class,
+                c.requestId()))
+        .isEqualTo("GRANT_REVOKED");
+    assertThat(
+            count(
+                "SELECT count(*) FROM visit_request_notice WHERE request_id = ? AND notice_type ="
+                    + " 'GRANT_REVOKED'",
+                c.requestId()))
+        .isEqualTo(1);
+    assertThat(coordinationStatus(c.coordinationId())).isEqualTo("FINAL_CONFIRMATION_REQUIRED");
+    assertThat(
+            count(
+                "SELECT affected_request_count FROM visit_property_apply_grant_event WHERE"
+                    + " grant_id = ? AND event_type = 'REVOKED' AND source = 'SYSTEM' AND reason ="
+                    + " 'PROPERTY_ARCHIVED'",
+                g.grantId()))
+        .isEqualTo(1);
+  }
+
+  @Test
   void 매물을_가진_사무소는_다른_사무소_신청과_확정_방문을_읽기_전용으로_본다() throws Exception {
     CrossRequest c = crossRequest();
     RequestFixture owner = c.granted().owner();

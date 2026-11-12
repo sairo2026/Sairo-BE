@@ -271,6 +271,7 @@ class CandidatePropertyIntegrationTest extends VisitIntegrationTestBase {
   void 배정된_중개보조원은_본인_조율에_후보를_추가할_수_있다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     var deputy = staffIn(owner.office(), OfficeMembershipRole.DEPUTY);
+    addAgentToRoster(owner.office().getId());
     Cookie ownerCookie = cookieOf(owner);
     long customer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
     long id =

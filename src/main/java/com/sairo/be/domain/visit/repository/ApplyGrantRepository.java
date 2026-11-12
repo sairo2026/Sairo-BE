@@ -293,6 +293,18 @@ public class ApplyGrantRepository {
         .list();
   }
 
+  public List<Long> activeIdsByProperty(Long propertyId, Instant now) {
+    return jdbcClient
+        .sql(
+            "SELECT id FROM visit_property_apply_grant WHERE property_id = :property AND"
+                + " revoked_at IS NULL AND (expires_at IS NULL OR expires_at > :now) ORDER BY id"
+                + " FOR UPDATE")
+        .param("property", propertyId)
+        .param("now", Timestamp.from(now))
+        .query(Long.class)
+        .list();
+  }
+
   public List<PendingRequest> pendingRequests(Long grantId) {
     return jdbcClient
         .sql(

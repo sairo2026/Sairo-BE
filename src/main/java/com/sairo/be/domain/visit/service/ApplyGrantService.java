@@ -54,6 +54,7 @@ public class ApplyGrantService {
 
   static final String REASON_REVOKED = "GRANT_REVOKED";
   static final String REASON_EXPIRED = "GRANT_EXPIRED";
+  static final String REASON_PROPERTY_ARCHIVED = "PROPERTY_ARCHIVED";
   private static final Set<String> CREATE_KEYS =
       Set.of("granteeOfficeId", "granteeMembershipId", "expiresAt");
   private static final Set<String> REVOKE_KEYS = Set.of("reason");
@@ -208,6 +209,23 @@ public class ApplyGrantService {
       closedCount += closed.size();
     }
     return closedCount;
+  }
+
+  /**
+   * 매물 보관 때 그 매물의 활성 허용을 시스템 회수(PROPERTY_ARCHIVED)하고 허용 근거 신청 대기 신청을 GRANT_REVOKED로 종결한다. 신청 상태 이력,
+   * 신청자 알림, 조율 상태 재계산은 사무소 회수와 같은 경로를 쓴다.
+   */
+  @Transactional(propagation = Propagation.MANDATORY)
+  public int revokeForArchivedProperty(Long propertyId) {
+    Instant now = now();
+    List<Long> grantIds = grantRepository.activeIdsByProperty(propertyId, now);
+    for (Long grantId : grantIds) {
+      grantRepository.revokeBySystem(grantId, REASON_PROPERTY_ARCHIVED, now);
+      List<Long> closed = closePending(grantId, REASON_REVOKED, now);
+      grantRepository.recordEvent(
+          grantId, "REVOKED", null, REASON_PROPERTY_ARCHIVED, closed.size(), now);
+    }
+    return grantIds.size();
   }
 
   @Transactional(readOnly = true)

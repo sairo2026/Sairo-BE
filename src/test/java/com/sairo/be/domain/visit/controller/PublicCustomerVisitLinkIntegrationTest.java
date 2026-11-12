@@ -112,6 +112,7 @@ class PublicCustomerVisitLinkIntegrationTest extends VisitIntegrationTestBase {
   void 담당자가_중개보조원이면_법적_역할이_보조원으로_나온다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     var deputy = staffIn(owner.office(), OfficeMembershipRole.DEPUTY);
+    addAgentToRoster(owner.office().getId());
     Cookie cookie = cookieOf(owner);
     long customer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
     long id =
