@@ -115,6 +115,26 @@ public class ReturnGrantService {
         toDisplayOffset(job.getFileExpiresAt()));
   }
 
+  /** 반환권한으로 기존 방문을 고치는 사람이다. 기록자는 반환권한 사용자의 보존된 사무소 소속이다. */
+  public record VisitActor(Long grantId, Long officeId, Long userId, Long membershipId) {}
+
+  /**
+   * 반환권한 방문 경로(VISIT-09)의 매 요청 재검사다. 경로의 권한이 세션의 권한이고 만료·회수되지 않았으며 사용자가 권한자여야 한다. 활성 소속은 요구하지 않는다.
+   * 사무소 인증이 회수됐으면 직접 변경을 거절한다.
+   */
+  public VisitActor requireVisitActor(GrantPrincipal principal, Long grantId) {
+    ReturnGrant grant = requireUsable(principal, grantId);
+    if (queryRepository.isOfficeRegistrationRevoked(grant.getOfficeId())) {
+      throw new BusinessException(ErrorCode.FORBIDDEN);
+    }
+    Long membershipId =
+        queryRepository
+            .findLatestMembershipId(grant.getGrantedToUserId(), grant.getOfficeId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN));
+    return new VisitActor(
+        grant.getId(), grant.getOfficeId(), grant.getGrantedToUserId(), membershipId);
+  }
+
   private ReturnGrant requireUsable(GrantPrincipal principal, Long pathGrantId) {
     if (principal.grantType() != GrantType.RETURN
         || (pathGrantId != null && !pathGrantId.equals(principal.grantId()))) {

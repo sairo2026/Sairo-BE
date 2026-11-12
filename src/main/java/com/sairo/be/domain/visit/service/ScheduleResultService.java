@@ -86,6 +86,19 @@ public class ScheduleResultService {
   @Transactional
   public VisitScheduleItemResultResponse record(
       StaffPrincipal principal, Long itemId, long expectedVersion, JsonNode body) {
+    return record(principal, itemId, expectedVersion, body, null);
+  }
+
+  /**
+   * 결과를 기록한다. effectiveAt이 있으면(반환권한 경로의 사후 기록) 결과 이력의 효력 시각으로 쓰고 없으면 실제 방문 시각, 그것도 없으면 기록 시각을 쓴다.
+   */
+  @Transactional
+  public VisitScheduleItemResultResponse record(
+      StaffPrincipal principal,
+      Long itemId,
+      long expectedVersion,
+      JsonNode body,
+      Instant effectiveAt) {
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     Input input = parse(body, now);
     ItemHead preview = ownItem(principal, itemId);
@@ -127,7 +140,9 @@ public class ScheduleResultService {
               input.result(),
               item.actualVisitedAt(),
               input.actualVisitedAt(),
-              input.actualVisitedAt() == null ? now : input.actualVisitedAt(),
+              effectiveAt != null
+                  ? effectiveAt
+                  : input.actualVisitedAt() == null ? now : input.actualVisitedAt(),
               now,
               principal.membershipId(),
               correction ? input.correctionReason() : null,

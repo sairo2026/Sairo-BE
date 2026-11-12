@@ -17,6 +17,7 @@ import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.port.ContractAssignments;
 import com.sairo.be.global.port.MailSender;
 import com.sairo.be.global.port.MailSender.MailMessage;
+import com.sairo.be.global.port.MemberWorkHandover.WorkKind;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.AdvisoryLock;
 import com.sairo.be.global.support.AfterCommit;
@@ -43,6 +44,7 @@ public class MembershipDecisionService {
   private final AdvisoryLock advisoryLock;
   private final MailSender mailSender;
   private final ContractAssignments contractAssignments;
+  private final MemberWorkHandoverService workHandoverService;
   private final Clock clock;
   private final String frontendBaseUrl;
 
@@ -56,6 +58,7 @@ public class MembershipDecisionService {
       MailSender mailSender,
       Clock clock,
       ContractAssignments contractAssignments,
+      MemberWorkHandoverService workHandoverService,
       @Value("${app.frontend-base-url:http://localhost:3000}") String frontendBaseUrl) {
     this.repository = repository;
     this.historyRepository = historyRepository;
@@ -66,6 +69,7 @@ public class MembershipDecisionService {
     this.mailSender = mailSender;
     this.clock = clock;
     this.contractAssignments = contractAssignments;
+    this.workHandoverService = workHandoverService;
     this.frontendBaseUrl = frontendBaseUrl;
   }
 
@@ -220,6 +224,8 @@ public class MembershipDecisionService {
     long customers = count("customer", membershipId);
     long properties = count("property", membershipId);
     long contracts = contractAssignments.countOpen(row.officeId(), membershipId);
+    long tasks = workHandoverService.countOpen(WorkKind.TASK, row.officeId(), membershipId);
+    long visits = workHandoverService.countOpen(WorkKind.VISIT, row.officeId(), membershipId);
     return new MembershipDetailResponse(
         row.id(),
         row.officeId(),
@@ -233,7 +239,8 @@ public class MembershipDecisionService {
         row.trainingConfirmed(),
         row.status() == OfficeMembershipStatus.APPROVED,
         TimeRules.toDisplayOffset(row.approvedAt()),
-        new MembershipDetailResponse.AssignedCounts(customers, properties, 0, contracts, 0),
+        new MembershipDetailResponse.AssignedCounts(
+            customers, properties, tasks, contracts, visits),
         TimeRules.toDisplayOffset(row.createdAt()),
         TimeRules.toDisplayOffset(row.updatedAt()),
         row.version());

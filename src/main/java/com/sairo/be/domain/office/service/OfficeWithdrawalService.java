@@ -17,10 +17,15 @@ public class OfficeWithdrawalService {
 
   private final JdbcClient jdbcClient;
   private final AdvisoryLock advisoryLock;
+  private final MemberWorkHandoverService workHandoverService;
 
-  public OfficeWithdrawalService(JdbcClient jdbcClient, AdvisoryLock advisoryLock) {
+  public OfficeWithdrawalService(
+      JdbcClient jdbcClient,
+      AdvisoryLock advisoryLock,
+      MemberWorkHandoverService workHandoverService) {
     this.jdbcClient = jdbcClient;
     this.advisoryLock = advisoryLock;
+    this.workHandoverService = workHandoverService;
   }
 
   @Transactional(readOnly = true)
@@ -42,6 +47,7 @@ public class OfficeWithdrawalService {
     cancelOpenRegistrations(userId, at);
     cancelPendingMemberships(userId, at);
     rejectCandidateTransfers(userId, at);
+    handOverWork(userId, now);
     revokeApprovedMemberships(userId, at);
     assignWithdrawnAliases(userId);
   }
@@ -100,6 +106,21 @@ public class OfficeWithdrawalService {
           .param("id", id)
           .update();
       recordMembershipHistory(id, "PENDING", "CANCELLED", at);
+    }
+  }
+
+  /** 승인 소속마다 진행 중 업무를 그 사무소 대표에게 넘긴다. 유일한 대표는 앞에서 409로 막혀 여기 오지 않는다. */
+  private void handOverWork(Long userId, Instant now) {
+    var rows =
+        jdbcClient
+            .sql(
+                "SELECT id, office_id FROM office_membership WHERE user_id = :userId AND status ="
+                    + " 'APPROVED' ORDER BY id")
+            .param("userId", userId)
+            .query((rs, i) -> new long[] {rs.getLong("id"), rs.getLong("office_id")})
+            .list();
+    for (long[] row : rows) {
+      workHandoverService.handOverToOwner(row[1], row[0], now);
     }
   }
 
