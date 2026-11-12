@@ -242,6 +242,7 @@ class CustomerLinkIntegrationTest extends VisitIntegrationTestBase {
   void 배정된_중개보조원은_본인_조율의_고객_링크를_발급하고_재발급한다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     var deputy = staffIn(owner.office(), OfficeMembershipRole.DEPUTY);
+    addAgentToRoster(owner.office().getId());
     Cookie ownerCookie = cookieOf(owner);
     long customer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
     long id =

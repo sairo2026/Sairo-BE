@@ -12,8 +12,11 @@ import com.sairo.be.global.security.OperatorRole;
 import com.sairo.be.support.AuthFlowSupport;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.OpsIntegrationTestBase;
+import com.sairo.be.support.fixture.BillingFixtures;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -77,6 +80,16 @@ class LaunchScenarioSignupIntegrationTest extends OpsIntegrationTestBase {
 
   @Test
   void 시나리오1_이메일_가입_사무소_등록_신청_운영자_승인_뒤_로그인하면_대표로_들어간다() throws Exception {
+    long trialEvent =
+        new BillingFixtures(jdbcTemplate)
+            .trialEvent(
+                "GENERAL",
+                "DURATION",
+                Instant.now().minus(Duration.ofDays(1)),
+                Instant.now().plus(Duration.ofDays(30)),
+                null,
+                "ACTIVE");
+
     // 1. 이메일·휴대폰 인증 뒤 이메일 가입
     String emailTicket = flow.sendAndVerifyEmail(EMAIL);
     String phoneTicket = flow.sendAndVerifyPhone(PHONE);
@@ -188,7 +201,13 @@ class LaunchScenarioSignupIntegrationTest extends OpsIntegrationTestBase {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.officeId").value(officeId))
         .andExpect(jsonPath("$.role").value("OWNER"))
+        .andExpect(jsonPath("$.accessCondition").value("ACTIVE"))
         .andExpect(jsonPath("$.pendingRegistrationId").doesNotExist());
+    assertThat(
+            jdbcTemplate.queryForMap(
+                "SELECT status, trial_event_id FROM subscription WHERE office_id = ?", officeId))
+        .containsEntry("status", "TRIAL")
+        .containsEntry("trial_event_id", trialEvent);
     mockMvc
         .perform(get("/api/offices/current").cookie(session))
         .andExpect(status().isOk())

@@ -113,6 +113,7 @@ class VisitCoordinationQueryIntegrationTest extends VisitIntegrationTestBase {
   void 중개보조원의_목록과_건수는_본인에게_배정된_조율만_센다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     var deputy = staffIn(owner.office(), OfficeMembershipRole.DEPUTY);
+    addAgentToRoster(owner.office().getId());
     Cookie ownerCookie = cookieOf(owner);
     long customer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
     createCoordination(
@@ -191,6 +192,7 @@ class VisitCoordinationQueryIntegrationTest extends VisitIntegrationTestBase {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     var foreign = newStaff(OfficeMembershipRole.OWNER);
     var deputy = staffIn(owner.office(), OfficeMembershipRole.DEPUTY);
+    addAgentToRoster(owner.office().getId());
     Cookie cookie = cookieOf(owner);
     long customer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
     long id =
@@ -239,6 +241,7 @@ class VisitCoordinationQueryIntegrationTest extends VisitIntegrationTestBase {
   void 배정된_중개보조원은_본인_조율_상세를_볼_수_있고_고객_안내_조회도_열린다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     var deputy = staffIn(owner.office(), OfficeMembershipRole.DEPUTY);
+    addAgentToRoster(owner.office().getId());
     Cookie ownerCookie = cookieOf(owner);
     long customer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
     long id =

@@ -235,6 +235,9 @@ public class VisitCoordinationCommandService {
       throw CustomerInput.invalid(
           "managerMembershipId", FieldErrorCode.NOT_ALLOWED, "승인된 소속만 담당자로 지정할 수 있습니다.");
     }
+    if ("DEPUTY".equals(member.role()) && deputyQuotaService.current(officeId).exceeded()) {
+      throw new BusinessException(ErrorCode.DEPUTY_VISIT_LOCKED);
+    }
   }
 
   private static List<Long> propertyIds(JsonNode body) {
