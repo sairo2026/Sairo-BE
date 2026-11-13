@@ -38,6 +38,10 @@ aws ecr get-login-password --region "${AWS_REGION}" \
   | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
 KAKAO_REDIRECT_URI_PROD="https://app.sairo.agency/api/auth/kakao/callback"
+KAKAO_STEP_UP_REDIRECT_URI="https://app.sairo.agency/api/auth/step-up/kakao/callback"
+KAKAO_LINK_REDIRECT_URI="https://app.sairo.agency/settings/login-methods/kakao-callback"
+KAKAO_OPERATOR_REDIRECT_URI="https://app.sairo.agency/api/ops/auth/kakao/callback"
+KAKAO_OPERATOR_INVITATION_REDIRECT_URI="https://app.sairo.agency/api/ops/auth/invitations/kakao/callback"
 
 echo "[deploy] fetching secrets from Secrets Manager"
 APP_SECRET_JSON=$(aws secretsmanager get-secret-value --region "${AWS_REGION}" \
@@ -75,7 +79,14 @@ validate_app_secrets_shape() {
     (.restApiKey | type == "string" and length > 0) and
     (.clientSecret | type == "string" and length > 0) and
     (.hmacSecret | type == "string" and length > 0) and
-    (.authAutoApproveStaff | type == "string" and test("^(true|false)$"))
+    (.adminKey | type == "string" and length > 0) and
+    (.appId | (type == "string" and length > 0) or (type == "number" and . > 0)) and
+    (.authTicketSecret | type == "string" and length > 0) and
+    (.authRateLimitHmacSecret | type == "string" and length > 0) and
+    (.authKakaoKeyHmacSecret | type == "string" and length > 0) and
+    (.authUnsubscribeSecret | type == "string" and length > 0) and
+    (.authKakaoKeyEncryptionSecret | type == "string" and length > 0) and
+    (.billingKeyEncryptionSecret | type == "string" and length > 0)
   ' >/dev/null <<<"${json}" || {
     echo "[deploy] invalid sairo/be/app-secrets structure" >&2
     exit 1
@@ -104,8 +115,15 @@ DB_MIGRATOR_PASSWORD=$(jq -r .password <<<"${MIGRATOR_SECRET_JSON}")
 
 KAKAO_REST_API_KEY=$(jq -r .restApiKey <<<"${APP_SECRETS_JSON}")
 KAKAO_CLIENT_SECRET=$(jq -r .clientSecret <<<"${APP_SECRETS_JSON}")
+KAKAO_ADMIN_KEY=$(jq -r .adminKey <<<"${APP_SECRETS_JSON}")
+KAKAO_APP_ID=$(jq -r .appId <<<"${APP_SECRETS_JSON}")
 PUBLIC_LINK_HMAC_SECRET=$(jq -r .hmacSecret <<<"${APP_SECRETS_JSON}")
-AUTH_AUTO_APPROVE_STAFF=$(jq -r .authAutoApproveStaff <<<"${APP_SECRETS_JSON}")
+AUTH_TICKET_SECRET=$(jq -r .authTicketSecret <<<"${APP_SECRETS_JSON}")
+AUTH_RATE_LIMIT_HMAC_SECRET=$(jq -r .authRateLimitHmacSecret <<<"${APP_SECRETS_JSON}")
+AUTH_KAKAO_KEY_HMAC_SECRET=$(jq -r .authKakaoKeyHmacSecret <<<"${APP_SECRETS_JSON}")
+AUTH_UNSUBSCRIBE_SECRET=$(jq -r .authUnsubscribeSecret <<<"${APP_SECRETS_JSON}")
+AUTH_KAKAO_KEY_ENCRYPTION_SECRET=$(jq -r .authKakaoKeyEncryptionSecret <<<"${APP_SECRETS_JSON}")
+BILLING_KEY_ENCRYPTION_SECRET=$(jq -r .billingKeyEncryptionSecret <<<"${APP_SECRETS_JSON}")
 
 umask 077
 {
@@ -116,9 +134,20 @@ umask 077
   echo "DB_APP_PASSWORD=${DB_APP_PASSWORD}"
   echo "KAKAO_REST_API_KEY=${KAKAO_REST_API_KEY}"
   echo "KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET}"
+  echo "KAKAO_ADMIN_KEY=${KAKAO_ADMIN_KEY}"
+  echo "KAKAO_APP_ID=${KAKAO_APP_ID}"
   echo "KAKAO_REDIRECT_URI_PROD=${KAKAO_REDIRECT_URI_PROD}"
+  echo "KAKAO_STEP_UP_REDIRECT_URI=${KAKAO_STEP_UP_REDIRECT_URI}"
+  echo "KAKAO_LINK_REDIRECT_URI=${KAKAO_LINK_REDIRECT_URI}"
+  echo "KAKAO_OPERATOR_REDIRECT_URI=${KAKAO_OPERATOR_REDIRECT_URI}"
+  echo "KAKAO_OPERATOR_INVITATION_REDIRECT_URI=${KAKAO_OPERATOR_INVITATION_REDIRECT_URI}"
   echo "PUBLIC_LINK_HMAC_SECRET=${PUBLIC_LINK_HMAC_SECRET}"
-  echo "AUTH_AUTO_APPROVE_STAFF=${AUTH_AUTO_APPROVE_STAFF}"
+  echo "AUTH_TICKET_SECRET=${AUTH_TICKET_SECRET}"
+  echo "AUTH_RATE_LIMIT_HMAC_SECRET=${AUTH_RATE_LIMIT_HMAC_SECRET}"
+  echo "AUTH_KAKAO_KEY_HMAC_SECRET=${AUTH_KAKAO_KEY_HMAC_SECRET}"
+  echo "AUTH_UNSUBSCRIBE_SECRET=${AUTH_UNSUBSCRIBE_SECRET}"
+  echo "AUTH_KAKAO_KEY_ENCRYPTION_SECRET=${AUTH_KAKAO_KEY_ENCRYPTION_SECRET}"
+  echo "BILLING_KEY_ENCRYPTION_SECRET=${BILLING_KEY_ENCRYPTION_SECRET}"
 } > "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
@@ -133,7 +162,9 @@ umask 077
 chmod 600 "${MIGRATE_ENV_FILE}"
 
 unset APP_SECRET_JSON MIGRATOR_SECRET_JSON APP_SECRETS_JSON DB_APP_PASSWORD DB_MIGRATOR_PASSWORD \
-  KAKAO_REST_API_KEY KAKAO_CLIENT_SECRET PUBLIC_LINK_HMAC_SECRET
+  KAKAO_REST_API_KEY KAKAO_CLIENT_SECRET KAKAO_ADMIN_KEY KAKAO_APP_ID PUBLIC_LINK_HMAC_SECRET \
+  AUTH_TICKET_SECRET AUTH_RATE_LIMIT_HMAC_SECRET AUTH_KAKAO_KEY_HMAC_SECRET \
+  AUTH_UNSUBSCRIBE_SECRET AUTH_KAKAO_KEY_ENCRYPTION_SECRET BILLING_KEY_ENCRYPTION_SECRET
 
 PREVIOUS_TAG=""
 if [ -f "${LAST_GOOD_FILE}" ]; then

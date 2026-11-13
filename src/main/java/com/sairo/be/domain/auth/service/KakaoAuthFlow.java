@@ -8,7 +8,7 @@ public enum KakaoAuthFlow {
   LINK(KakaoFlow.LINK),
   STEP_UP(KakaoFlow.STEP_UP),
   OPERATOR_LOGIN(KakaoFlow.OPERATOR),
-  OPERATOR_INVITATION(KakaoFlow.OPERATOR);
+  OPERATOR_INVITATION(KakaoFlow.OPERATOR_INVITATION);
 
   private final KakaoFlow portFlow;
 
