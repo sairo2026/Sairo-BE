@@ -136,12 +136,11 @@ public class AssistantNoticeService {
 
   @Transactional
   public AssistantNoticeResponse confirm(StaffPrincipal principal, Long noticeId, JsonNode body) {
+    String additionalNotice = null;
     if (body != null && !body.isNull() && !body.isMissingNode()) {
       CustomerInput.requireObject(body, CONFIRM_KEYS);
-      if (!CustomerInput.isNull(body, "supervisorAdditionalNotice")) {
-        throw CustomerInput.invalid(
-            "supervisorAdditionalNotice", FieldErrorCode.NOT_ALLOWED, "추가 안내는 저장할 수 없습니다.");
-      }
+      additionalNotice =
+          CustomerInput.optionalText(body, "supervisorAdditionalNotice", TEXT_MAX, false);
     }
     NoticeRow notice =
         noticeRepository
@@ -150,7 +149,10 @@ public class AssistantNoticeService {
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
     if (notice.confirmedAt() != null
         || noticeRepository.confirm(
-                noticeId, principal.membershipId(), clock.instant().truncatedTo(ChronoUnit.MICROS))
+                noticeId,
+                principal.membershipId(),
+                clock.instant().truncatedTo(ChronoUnit.MICROS),
+                additionalNotice)
             == 0) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
@@ -245,8 +247,8 @@ public class AssistantNoticeService {
         row.deputyMembershipId(),
         row.confirmedByMembershipId(),
         TimeRules.toDisplayOffset(row.confirmedAt()),
-        null,
-        null);
+        row.supervisorAdditionalNotice(),
+        TimeRules.toDisplayOffset(row.supervisorAdditionalNoticedAt()));
   }
 
   private static String choice(JsonNode body, String key, Set<String> allowed) {

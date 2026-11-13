@@ -337,6 +337,12 @@ class EmailSignupIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
+  void 공백만으로_된_비밀번호는_길이가_맞아도_400이다() throws Exception {
+    assertFieldError(signupWithPassword(" ".repeat(8)), "password", "REQUIRED");
+    assertFieldError(signupWithPassword(" ".repeat(12)), "password", "REQUIRED");
+  }
+
+  @Test
   void 공백도_길이에_포함하고_앞뒤_공백을_그대로_보존한다() throws Exception {
     String spaced = "  abcdef  ";
     signupWithPassword(spaced).andExpect(status().isCreated());

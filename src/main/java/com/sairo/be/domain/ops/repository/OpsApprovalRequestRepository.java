@@ -26,7 +26,8 @@ public class OpsApprovalRequestRepository {
       String basisType,
       String basisNote,
       Long linkedInquiryId,
-      Long officeId) {}
+      Long officeId,
+      Integer requestedExpiresMinutes) {}
 
   public record Row(
       long id,
@@ -53,7 +54,8 @@ public class OpsApprovalRequestRepository {
       Instant rejectedAt,
       String rejectReason,
       Long grantId,
-      Instant createdAt) {
+      Instant createdAt,
+      Integer requestedExpiresMinutes) {
 
     /** 실행할 수 있는 운영자다. 수혜자가 없으면 요청자다. */
     public long effectiveExecutor() {
@@ -76,7 +78,8 @@ public class OpsApprovalRequestRepository {
           + EFFECTIVE_STATUS
           + " AS status, r.approved_by_operator_id, apr.name AS approved_by_name, r.approved_at,"
           + " r.expires_at, r.rejected_by_operator_id, rej.name AS rejected_by_name,"
-          + " r.rejected_at, r.reject_reason, g.id AS grant_id, r.created_at"
+          + " r.rejected_at, r.reject_reason, g.id AS grant_id, r.created_at,"
+          + " r.requested_expires_minutes"
           + " FROM ops_approval_request r"
           + " JOIN operator_account req ON req.id = r.requested_by_operator_id"
           + " LEFT JOIN operator_account apr ON apr.id = r.approved_by_operator_id"
@@ -96,9 +99,10 @@ public class OpsApprovalRequestRepository {
         .sql(
             "INSERT INTO ops_approval_request (request_type, requested_by_operator_id,"
                 + " beneficiary_operator_id, target_type, target_id, purpose, scope, basis_type,"
-                + " basis_note, linked_inquiry_id, office_id, status, created_at) VALUES (:type,"
-                + " :requestedBy, :beneficiary, :targetType, :targetId, :purpose, :scope,"
-                + " :basisType, :basisNote, :inquiry, :office, 'PENDING', :now) RETURNING id")
+                + " basis_note, linked_inquiry_id, office_id, requested_expires_minutes, status,"
+                + " created_at) VALUES (:type, :requestedBy, :beneficiary, :targetType,"
+                + " :targetId, :purpose, :scope, :basisType, :basisNote, :inquiry, :office,"
+                + " :requestedMinutes, 'PENDING', :now) RETURNING id")
         .param("type", request.requestType())
         .param("requestedBy", request.requestedBy())
         .param("beneficiary", request.beneficiary())
@@ -110,6 +114,7 @@ public class OpsApprovalRequestRepository {
         .param("basisNote", request.basisNote())
         .param("inquiry", request.linkedInquiryId())
         .param("office", request.officeId())
+        .param("requestedMinutes", request.requestedExpiresMinutes())
         .param("now", Timestamp.from(now))
         .query(Long.class)
         .single();
@@ -270,7 +275,8 @@ public class OpsApprovalRequestRepository {
         instant(rs.getTimestamp("rejected_at")),
         rs.getString("reject_reason"),
         rs.getObject("grant_id", Long.class),
-        rs.getTimestamp("created_at").toInstant());
+        rs.getTimestamp("created_at").toInstant(),
+        rs.getObject("requested_expires_minutes", Integer.class));
   }
 
   static Instant instant(Timestamp timestamp) {

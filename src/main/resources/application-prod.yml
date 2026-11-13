@@ -31,6 +31,8 @@ sairo:
     scanner:
       host: ${SAIRO_SCANNER_HOST:scanner}
       port: ${SAIRO_SCANNER_PORT:3310}
+  session:
+    approver-cookie-name: __Host-APPROVER_SESSION
   public-link:
     hmac-secret: ${PUBLIC_LINK_HMAC_SECRET}
   security:

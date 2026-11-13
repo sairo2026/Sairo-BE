@@ -50,6 +50,17 @@ public final class CustomerInput {
     return text(body, key, 1, max, sensitiveCheck);
   }
 
+  public static String rejectIdentityNumber(String key, String value) {
+    if (SensitiveDataDetector.detectIdentityNumber(value)) {
+      throw BusinessException.withFieldErrors(
+          ErrorCode.SENSITIVE_DATA_DETECTED,
+          List.of(
+              new FieldErrorItem(
+                  key, FieldErrorCode.INVALID_VALUE, "주민등록번호·외국인등록번호 형식은 적을 수 없습니다.")));
+    }
+    return value;
+  }
+
   private static String text(JsonNode body, String key, int min, int max, boolean sensitiveCheck) {
     JsonNode node = body.get(key);
     if (!node.isString()) {

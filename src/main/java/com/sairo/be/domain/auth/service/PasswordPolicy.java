@@ -33,6 +33,9 @@ public class PasswordPolicy {
     if (password == null) {
       throw invalid(field, FieldErrorCode.REQUIRED, "필수 입력입니다.");
     }
+    if (isWhitespaceOnly(password)) {
+      throw invalid(field, FieldErrorCode.REQUIRED, "공백만으로 된 비밀번호는 사용할 수 없습니다.");
+    }
     int length = password.codePointCount(0, password.length());
     if (length < MIN_LENGTH) {
       throw invalid(field, FieldErrorCode.TOO_SHORT, MIN_LENGTH + "자 이상 입력해야 합니다.");
@@ -43,6 +46,12 @@ public class PasswordPolicy {
     if (isCommon(password)) {
       throw invalid(field, FieldErrorCode.NOT_ALLOWED, "흔하거나 유출된 적이 있는 비밀번호는 사용할 수 없습니다.");
     }
+  }
+
+  private static boolean isWhitespaceOnly(String password) {
+    return password
+        .codePoints()
+        .allMatch(point -> Character.isWhitespace(point) || Character.isSpaceChar(point));
   }
 
   public boolean isCommon(String password) {

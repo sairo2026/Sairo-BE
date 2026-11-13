@@ -55,7 +55,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class RawAccessService {
 
   static final Duration APPROVAL_VALIDITY = Duration.ofHours(24);
-  static final Duration ACCESS_WINDOW = Duration.ofMinutes(60);
+  static final int DEFAULT_ACCESS_MINUTES = 60;
   static final Set<String> STATUSES =
       Set.of("PENDING", "APPROVED", "REJECTED", "EXPIRED", "INVALIDATED");
   private static final String RAW_DOWNLOAD = "RAW_DOWNLOAD";
@@ -145,7 +145,8 @@ public class RawAccessService {
                 body.basisType(),
                 body.basisNote().strip(),
                 body.linkedInquiryId(),
-                officeId),
+                officeId,
+                body.requestedExpiresMinutes()),
             now);
     Row row = requests.find(id, now).orElseThrow();
     audit(operatorId, "RAW_ACCESS_REQUESTED", row, now);
@@ -338,7 +339,12 @@ public class RawAccessService {
       size = (long) content.length;
       objectStorage.put(key, content, "application/json");
     }
-    Instant expiresAt = now.plus(ACCESS_WINDOW);
+    Instant expiresAt =
+        now.plus(
+            Duration.ofMinutes(
+                row.requestedExpiresMinutes() == null
+                    ? DEFAULT_ACCESS_MINUTES
+                    : row.requestedExpiresMinutes()));
     long grantId =
         grants.insert(
             row.id(),

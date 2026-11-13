@@ -28,6 +28,7 @@ import com.sairo.be.global.security.access.RequiresOperatorRole;
 import com.sairo.be.global.support.PageQuery;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
@@ -146,14 +147,17 @@ public class OpsSystemController {
 
   @Operation(
       summary = "연동 설정 변경",
-      description = "운영 환경 활성화와 공급자·처리지역 변경은 계약·동의·고지 점검과 회사 정보 출시 준비가 끝나야 하고 변경한 운영자를 승인자로 기록한다.")
+      description =
+          "꺼진 연동을 켜는 요청은 5분 안의 재인증이 필요하다. 운영 환경 활성화와 공급자·처리지역 변경은 계약·동의·고지 점검과 회사 정보 출시 준비가 끝나야 하고 변경한"
+              + " 운영자를 승인자로 기록한다.")
   @PatchMapping("/integrations/{integrationId}")
   @RequiresOperatorRole(OperatorRole.OPS)
   public IntegrationUpdateResponse updateIntegration(
       @PathVariable Long integrationId,
       @Valid @RequestBody IntegrationUpdateRequest request,
-      @AuthenticationPrincipal OperatorPrincipal principal) {
-    return integrationService.update(principal.operatorId(), integrationId, request);
+      @AuthenticationPrincipal OperatorPrincipal principal,
+      HttpSession session) {
+    return integrationService.update(principal.operatorId(), integrationId, request, session);
   }
 
   @Operation(

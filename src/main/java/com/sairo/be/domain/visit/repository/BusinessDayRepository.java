@@ -16,7 +16,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class BusinessDayRepository {
 
-  static final LocalTime DUE_TIME = LocalTime.of(18, 0);
   private static final int LOOKAHEAD_DAYS = 60;
 
   private final JdbcClient jdbcClient;
@@ -25,7 +24,7 @@ public class BusinessDayRepository {
     this.jdbcClient = jdbcClient;
   }
 
-  public Instant dueAfter(Instant from, int businessDays) {
+  public Instant dueAfter(Instant from, int businessDays, LocalTime dueTime) {
     LocalDate start = TimeRules.displayDate(from);
     Map<LocalDate, Boolean> overrides = new HashMap<>();
     jdbcClient
@@ -49,6 +48,6 @@ public class BusinessDayRepository {
         counted++;
       }
     }
-    return day.atTime(DUE_TIME).atZone(TimeRules.DISPLAY_ZONE).toInstant();
+    return day.atTime(dueTime).atZone(TimeRules.DISPLAY_ZONE).toInstant();
   }
 }

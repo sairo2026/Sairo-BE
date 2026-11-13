@@ -7,7 +7,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.sairo.be.domain.office.entity.OfficeMembershipRole;
+import com.sairo.be.domain.ops.service.LegalRetentionJobService;
 import com.sairo.be.global.error.ErrorCode;
+import com.sairo.be.global.support.ApproverPhoneCipher;
 import com.sairo.be.support.ApproverIntegrationTestBase;
 import com.sairo.be.support.AuthFlowSupport;
 import com.sairo.be.support.IntegrationTest;
@@ -23,10 +25,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import tools.jackson.databind.JsonNode;
 
 @IntegrationTest
+@ExtendWith(OutputCaptureExtension.class)
 class PropertyAccessApprovalIntegrationTest extends ApproverIntegrationTestBase {
+
+  @Autowired private ApproverPhoneCipher phoneCipher;
+  @Autowired private LegalRetentionJobService retentionJobs;
 
   private record Fixture(TestData.Staff owner, Cookie cookie, long propertyId) {}
 
@@ -37,7 +47,7 @@ class PropertyAccessApprovalIntegrationTest extends ApproverIntegrationTestBase 
   }
 
   @Test
-  void 등록하면_번호는_정규화해_저장하고_해시는_응답에_없다() throws Exception {
+  void 등록하면_번호는_정규화하고_암호화해_저장하고_해시는_응답에_없다() throws Exception {
     Fixture f = fixture();
     String body =
         approvalBody(null, today().plusDays(1), today().plusDays(30))
@@ -58,10 +68,22 @@ class PropertyAccessApprovalIntegrationTest extends ApproverIntegrationTestBase 
 
     Map<String, Object> row =
         jdbcTemplate.queryForMap(
-            "SELECT approver_phone, approver_phone_hash, retention_until, valid_until FROM"
+            "SELECT approver_phone_encrypted, approver_phone_hash, retention_until, valid_until"
+                + " FROM"
                 + " property_access_approval WHERE id = ?",
             created.get("approvalId").longValue());
-    assertThat(row.get("approver_phone")).isEqualTo("010-1111-2222");
+    String stored = (String) row.get("approver_phone_encrypted");
+    assertThat(stored)
+        .isNotEqualTo("010-1111-2222")
+        .doesNotContain("010-1111-2222")
+        .doesNotContain("01011112222")
+        .startsWith(ApproverPhoneCipher.PREFIX)
+        .hasSizeLessThanOrEqualTo(255);
+    assertThat(phoneCipher.decrypt(stored)).isEqualTo("010-1111-2222");
+    mockMvc
+        .perform(authedGet(approvalsUrl(f.propertyId()), f.cookie()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[0].approverPhone").value("010-1111-2222"));
     assertThat(row.get("approver_phone_hash").toString()).hasSize(64).matches("[0-9a-f]{64}");
     assertThat(row.get("approver_phone_hash")).isNotEqualTo("010-1111-2222");
     Long retentionDays =
@@ -301,6 +323,69 @@ class PropertyAccessApprovalIntegrationTest extends ApproverIntegrationTestBase 
                 approvalBody(null, today().plusDays(1), today().plusDays(5)),
                 f.cookie())),
         ErrorCode.PROPERTY_ARCHIVED);
+  }
+
+  @Test
+  void 암호화_전에_저장된_번호는_그대로_읽고_암호화_배치가_암호문으로_바꾸며_원문을_로그에_남기지_않는다(CapturedOutput output)
+      throws Exception {
+    Fixture f = fixture();
+    long legacy = registerApproval(f.cookie(), f.propertyId(), "PRIMARY", 1, 10);
+    long encrypted = registerApproval(f.cookie(), f.propertyId(), "CO_APPROVER", 1, 10);
+    jdbcTemplate.update(
+        "UPDATE property_access_approval SET approver_phone_encrypted = ? WHERE id = ?",
+        "010-7777-8888",
+        legacy);
+    String before =
+        jdbcTemplate.queryForObject(
+            "SELECT approver_phone_encrypted FROM property_access_approval WHERE id = ?",
+            String.class,
+            encrypted);
+
+    mockMvc
+        .perform(authedGet(approvalsUrl(f.propertyId()), f.cookie()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[1].approvalId").value(legacy))
+        .andExpect(jsonPath("$.items[1].approverPhone").value("010-7777-8888"));
+
+    assertThat(
+            retentionJobs.runScheduled(
+                LegalRetentionJobService.APPROVER_PHONE_ENCRYPT_JOB, Instant.now()))
+        .isTrue();
+
+    String after =
+        jdbcTemplate.queryForObject(
+            "SELECT approver_phone_encrypted FROM property_access_approval WHERE id = ?",
+            String.class,
+            legacy);
+    assertThat(after).startsWith(ApproverPhoneCipher.PREFIX).doesNotContain("010-7777-8888");
+    assertThat(phoneCipher.decrypt(after)).isEqualTo("010-7777-8888");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT approver_phone_encrypted FROM property_access_approval WHERE id = ?",
+                String.class,
+                encrypted))
+        .isEqualTo(before);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM property_access_approval WHERE approver_phone_encrypted IS"
+                    + " NOT NULL AND approver_phone_encrypted NOT LIKE 'enc:v1:%'",
+                Long.class))
+        .isZero();
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM system_job_run WHERE job_name = 'approver-phone-encrypt'",
+                String.class))
+        .isEqualTo("SUCCESS");
+    assertThat(
+            retentionJobs.runScheduled(
+                LegalRetentionJobService.APPROVER_PHONE_ENCRYPT_JOB, Instant.now()))
+        .isFalse();
+    mockMvc
+        .perform(authedGet(approvalsUrl(f.propertyId()), f.cookie()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items[1].approverPhone").value("010-7777-8888"))
+        .andExpect(jsonPath("$.items[0].approverPhone").value("010-1111-2222"));
+    assertThat(output.getAll()).doesNotContain("010-7777-8888").doesNotContain("01077778888");
   }
 
   @Test

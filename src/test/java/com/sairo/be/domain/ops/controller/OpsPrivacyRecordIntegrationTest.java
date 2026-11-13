@@ -77,6 +77,7 @@ class OpsPrivacyRecordIntegrationTest extends OpsConsoleTestBase {
                 session)
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.decision").value("PENDING"))
+            .andExpect(jsonPath("$.closeNote").value(Matchers.nullValue()))
             .andExpect(jsonPath("$.officeNoticeStatus").value("NOT_REVIEWED"))
             .andReturn()
             .getResponse()
@@ -259,11 +260,22 @@ class OpsPrivacyRecordIntegrationTest extends OpsConsoleTestBase {
             privacySession)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.decision").value("REFUSED"))
+        .andExpect(jsonPath("$.closeNote").value("범위 불일치"))
         .andExpect(jsonPath("$.approvedByOperatorId").value(Matchers.nullValue()))
         .andExpect(
             jsonPath("$.retentionUntil")
                 .value(TimeRules.displayDate(Instant.now()).plusDays(1825).toString()));
-    recordAuthority(privacySession);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT close_note FROM legal_authority_request WHERE id = ?", String.class, id))
+        .isEqualTo("범위 불일치");
+    long withoutNote = recordAuthority(privacySession);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT close_note FROM legal_authority_request WHERE id = ?",
+                String.class,
+                withoutNote))
+        .isNull();
 
     mockMvc
         .perform(get(AUTHORITY).cookie(securitySession))

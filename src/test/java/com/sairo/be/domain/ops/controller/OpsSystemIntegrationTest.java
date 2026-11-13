@@ -352,6 +352,7 @@ class OpsSystemIntegrationTest extends OpsConsoleTestBase {
   void 운영_연동_활성화는_계약_동의_점검과_회사_정보_출시_준비가_끝나야_하고_승인자를_기록한다() throws Exception {
     long test = insertIntegration("TEST", "mail-provider-a", "MAIL");
     long prod = insertIntegration("PRODUCTION", "pg-provider", "PAYMENT");
+    stepUp(opsSession);
     mockMvc
         .perform(get(INTEGRATIONS).param("environment", "PRODUCTION").cookie(opsSession))
         .andExpect(jsonPath("$.totalElements").value(1))
@@ -422,6 +423,7 @@ class OpsSystemIntegrationTest extends OpsConsoleTestBase {
     publishCompanyInfo();
     Operator revoked = operator("회수됨", OperatorRole.OPS);
     Cookie revokedSession = sessionOf(revoked);
+    stepUp(revokedSession);
     jdbcTemplate.update(
         "DELETE FROM operator_role_assignment WHERE operator_account_id = ?", revoked.id());
     assertError(patch(INTEGRATIONS + "/" + prod, ready, revokedSession), ErrorCode.FORBIDDEN);
@@ -620,6 +622,33 @@ class OpsSystemIntegrationTest extends OpsConsoleTestBase {
     assertFieldError(
         post(JOBS + "/billing-retry/rerun", "{}", billingSession), "runId", "REQUIRED");
     assertThat(auditCount("SYSTEM_JOB_RERUN")).isEqualTo(2);
+  }
+
+  @Test
+  void 꺼진_연동을_켜는_요청은_재인증이_없으면_401이고_끄거나_켜진_연동을_고치는_요청은_재인증_없이_된다() throws Exception {
+    long test = insertIntegration("TEST", "mail-provider-a", "MAIL");
+    String path = INTEGRATIONS + "/" + test;
+
+    assertError(patch(path, "{\"enabled\":true}", opsSession), ErrorCode.STEP_UP_REQUIRED);
+    expireStepUp(opsSession);
+    assertError(patch(path, "{\"enabled\":true}", opsSession), ErrorCode.STEP_UP_REQUIRED);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT enabled FROM integration_config WHERE id = ?", Boolean.class, test))
+        .isFalse();
+    assertThat(auditCount("INTEGRATION_UPDATED")).isZero();
+    patch(path, "{\"enabled\":false,\"processingRegion\":\"KR\"}", opsSession)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.enabled").value(false));
+
+    stepUp(opsSession);
+    patch(path, "{\"enabled\":true}", opsSession)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.enabled").value(true));
+    expireStepUp(opsSession);
+    patch(path, "{\"enabled\":true,\"retentionPolicy\":\"계약 종료 뒤 30일\"}", opsSession)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.enabled").value(true));
   }
 
   @Test

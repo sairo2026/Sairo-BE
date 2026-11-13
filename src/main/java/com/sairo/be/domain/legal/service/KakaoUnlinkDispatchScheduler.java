@@ -1,5 +1,6 @@
 package com.sairo.be.domain.legal.service;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,6 +18,7 @@ public class KakaoUnlinkDispatchScheduler {
   }
 
   @Scheduled(fixedDelayString = "PT1M")
+  @SchedulerLock(name = "kakao-unlink-dispatch", lockAtMostFor = "PT10M", lockAtLeastFor = "PT30S")
   public void dispatch() {
     dispatchService.dispatchDue();
   }

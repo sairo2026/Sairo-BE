@@ -22,6 +22,7 @@ import com.sairo.be.global.security.access.RequiresOperatorRole;
 import com.sairo.be.global.support.PageQuery;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
@@ -74,12 +75,16 @@ public class OpsTrialPriceController {
     return service.createPrice(principal.operatorId(), request);
   }
 
-  @Operation(summary = "요금표 승인", description = "작성자와 다른 결제담당이 승인한다. 효력 시각 전이면 예약, 지났으면 시행이다.")
+  @Operation(
+      summary = "요금표 승인",
+      description = "5분 안의 재인증이 필요하다. 작성자와 다른 결제담당이 승인한다. 효력 시각 전이면 예약, 지났으면 시행이다.")
   @PostMapping("/price-schedules/{scheduleId}/approve")
   @RequiresOperatorRole(OperatorRole.BILLING)
   public PriceScheduleApproveResponse approvePrice(
-      @PathVariable Long scheduleId, @AuthenticationPrincipal OperatorPrincipal principal) {
-    return service.approvePrice(principal.operatorId(), scheduleId);
+      @PathVariable Long scheduleId,
+      @AuthenticationPrincipal OperatorPrincipal principal,
+      HttpSession session) {
+    return service.approvePrice(principal.operatorId(), scheduleId, session);
   }
 
   @Operation(

@@ -96,6 +96,16 @@ class LaunchScenarioOpsIntegrationTest extends VisitOutcomeTestBase {
     return mockMvc.perform(jsonPost(path, body, ops.cookie()));
   }
 
+  /** 권리 요청 처리 요청에는 저장된 현재 version을 If-Match로 붙인다. */
+  private ResultActions opsProcess(String path, String body, Ops ops) throws Exception {
+    Long version =
+        jdbcTemplate.queryForObject(
+            "SELECT version FROM privacy_request WHERE id = ?",
+            Long.class,
+            Long.valueOf(path.replaceAll(".*/privacy-requests/(\\d+)/process", "$1")));
+    return mockMvc.perform(jsonPost(path, body, ops.cookie()).header("If-Match", version));
+  }
+
   private ResultActions opsGet(String path, Ops ops) throws Exception {
     return mockMvc.perform(get(path).cookie(ops.cookie()));
   }
@@ -198,15 +208,15 @@ class LaunchScenarioOpsIntegrationTest extends VisitOutcomeTestBase {
             new String[] {"{\"action\":\"APPROVE\",\"note\":\"열람 범위 확인\"}", "APPROVED"},
             new String[] {"{\"action\":\"EXECUTE\"}", "EXECUTING"});
     for (String[] step : steps) {
-      opsPost(process, step[0], privacy)
+      opsProcess(process, step[0], privacy)
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.status").value(step[1]));
     }
     assertFieldError(
-        opsPost(process, "{\"action\":\"COMPLETE\",\"note\":\"열람 자료 제공\"}", privacy),
+        opsProcess(process, "{\"action\":\"COMPLETE\",\"note\":\"열람 자료 제공\"}", privacy),
         "evidenceReference",
         "REQUIRED");
-    opsPost(
+    opsProcess(
             process,
             "{\"action\":\"COMPLETE\",\"note\":\"열람 자료 제공\",\"evidenceReference\":\"PRV-2026-001\"}",
             privacy)
@@ -231,7 +241,7 @@ class LaunchScenarioOpsIntegrationTest extends VisitOutcomeTestBase {
             "EXECUTE",
             "COMPLETE");
     assertError(
-        opsPost(process, "{\"action\":\"FORWARD\"}", privacy), ErrorCode.INVALID_TRANSITION);
+        opsProcess(process, "{\"action\":\"FORWARD\"}", privacy), ErrorCode.INVALID_TRANSITION);
     assertThat(
             count(
                 "SELECT count(*) FROM ops_audit_log WHERE action_type = 'PRIVACY_REQUEST_PROCESSED'"))
@@ -267,6 +277,9 @@ class LaunchScenarioOpsIntegrationTest extends VisitOutcomeTestBase {
         "{\"enabled\":true,\"contractStatus\":\"SIGNED\",\"consentStatus\":\"GRANTED\","
             + "\"contractNoticeReviewed\":true}";
     String integrationPath = "/api/ops/integrations/" + integrationId;
+    stepUp(ops);
+    stepUp(billing);
+    stepUp(billingApprover);
 
     // 0. 아직 준비가 안 됐으면 운영 연동을 켤 수 없다.
     mockMvc

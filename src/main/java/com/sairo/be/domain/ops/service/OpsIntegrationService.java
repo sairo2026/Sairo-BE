@@ -20,7 +20,9 @@ import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.port.IntegrationProbe;
 import com.sairo.be.global.security.OperatorRole;
+import com.sairo.be.global.security.OperatorStepUpState;
 import com.sairo.be.global.support.PageQuery;
+import jakarta.servlet.http.HttpSession;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -62,6 +64,7 @@ public class OpsIntegrationService {
   private final OpsContentService contentService;
   private final SystemJobRunService jobRunService;
   private final ObjectProvider<IntegrationProbe> probe;
+  private final OperatorStepUpState stepUp;
   private final Clock clock;
 
   public OpsIntegrationService(
@@ -71,6 +74,7 @@ public class OpsIntegrationService {
       OpsContentService contentService,
       SystemJobRunService jobRunService,
       ObjectProvider<IntegrationProbe> probe,
+      OperatorStepUpState stepUp,
       Clock clock) {
     this.repository = repository;
     this.accounts = accounts;
@@ -78,6 +82,7 @@ public class OpsIntegrationService {
     this.contentService = contentService;
     this.jobRunService = jobRunService;
     this.probe = probe;
+    this.stepUp = stepUp;
     this.clock = clock;
   }
 
@@ -98,7 +103,7 @@ public class OpsIntegrationService {
 
   @Transactional
   public IntegrationUpdateResponse update(
-      long operatorId, long integrationId, IntegrationUpdateRequest body) {
+      long operatorId, long integrationId, IntegrationUpdateRequest body, HttpSession session) {
     String contractInput =
         OpsQueryParams.oneOf("contractStatus", body.contractStatus(), CONTRACT_STATUSES);
     String consentInput =
@@ -113,6 +118,9 @@ public class OpsIntegrationService {
         repository
             .lockedIntegration(integrationId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    if (body.enabled() && !row.enabled()) {
+      stepUp.require(session);
+    }
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     String provider = body.provider() == null ? row.provider() : body.provider().strip();
     String region =

@@ -33,7 +33,8 @@ public class OpsPrivacyOpsRepository {
       Long assignedOperatorId,
       String assignedOperatorName,
       Instant completedAt,
-      String handlerType) {}
+      String handlerType,
+      long version) {}
 
   public record EventRow(
       long id,
@@ -70,7 +71,8 @@ public class OpsPrivacyOpsRepository {
       "SELECT r.id, r.office_id, r.request_type, r.identity_status, r.status, r.received_at,"
           + " r.legal_basis, r.request_scope, r.legal_due_at, r.internal_due_at,"
           + " r.decision_reason, r.completion_evidence, r.assigned_operator_id, a.name AS"
-          + " operator_name, r.completed_at, r.handler_type FROM privacy_request r LEFT JOIN"
+          + " operator_name, r.completed_at, r.handler_type, r.version FROM privacy_request r LEFT"
+          + " JOIN"
           + " operator_account a ON a.id = r.assigned_operator_id";
 
   private final JdbcClient jdbcClient;
@@ -352,7 +354,8 @@ public class OpsPrivacyOpsRepository {
         rs.getObject("assigned_operator_id", Long.class),
         rs.getString("operator_name"),
         instant(rs, "completed_at"),
-        rs.getString("handler_type"));
+        rs.getString("handler_type"),
+        rs.getLong("version"));
   }
 
   private static GrantRow mapGrant(ResultSet rs, int rowNum) throws SQLException {

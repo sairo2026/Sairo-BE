@@ -62,8 +62,13 @@ public class PrivacyRequestService {
     CustomerInput.requireObject(body, CREATE_KEYS);
     PrivacyRequestType type =
         CustomerInput.requiredEnum(body, "requestType", PrivacyRequestType.class);
-    String content = CustomerInput.requiredText(body, "content", InputRules.BODY_MEMO_MAX, false);
-    String scope = CustomerInput.optionalText(body, "requestScope", SCOPE_MAX, false);
+    String content =
+        CustomerInput.rejectIdentityNumber(
+            "content",
+            CustomerInput.requiredText(body, "content", InputRules.BODY_MEMO_MAX, false));
+    String scope =
+        CustomerInput.rejectIdentityNumber(
+            "requestScope", CustomerInput.optionalText(body, "requestScope", SCOPE_MAX, false));
     Instant now = clock.instant();
     Instant legalDueAt = now.plus(java.time.Duration.ofDays(PrivacyRequest.LEGAL_DUE_DAYS));
     Long inquiryId =

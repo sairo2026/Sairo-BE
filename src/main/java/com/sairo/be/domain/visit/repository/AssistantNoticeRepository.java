@@ -32,6 +32,8 @@ public class AssistantNoticeRepository {
       String followupAction,
       Long confirmedByMembershipId,
       Instant confirmedAt,
+      String supervisorAdditionalNotice,
+      Instant supervisorAdditionalNoticedAt,
       Instant createdAt) {}
 
   public record NoticeInsert(
@@ -58,8 +60,9 @@ public class AssistantNoticeRepository {
       "SELECT n.id, n.schedule_item_id, si.office_id, si.coordination_id,"
           + " n.deputy_membership_id, n.recipient_type, n.recipient_name, n.notice_method,"
           + " n.notified_at, n.recorded_after_the_fact, n.missing_exception_reason,"
-          + " n.followup_action, n.confirmed_by_membership_id, n.confirmed_at, n.created_at FROM"
-          + " visit_assistant_notice_log n JOIN visit_schedule_item si ON si.id ="
+          + " n.followup_action, n.confirmed_by_membership_id, n.confirmed_at,"
+          + " n.supervisor_additional_notice, n.supervisor_additional_noticed_at, n.created_at"
+          + " FROM visit_assistant_notice_log n JOIN visit_schedule_item si ON si.id ="
           + " n.schedule_item_id";
 
   private final JdbcClient jdbcClient;
@@ -98,13 +101,17 @@ public class AssistantNoticeRepository {
         .optional();
   }
 
-  public int confirm(Long noticeId, Long membershipId, Instant at) {
+  public int confirm(Long noticeId, Long membershipId, Instant at, String additionalNotice) {
     return jdbcClient
         .sql(
             "UPDATE visit_assistant_notice_log SET confirmed_by_membership_id = :member,"
-                + " confirmed_at = :at WHERE id = :id AND confirmed_at IS NULL")
+                + " confirmed_at = :at, supervisor_additional_notice = :notice,"
+                + " supervisor_additional_noticed_at = :noticedAt WHERE id = :id AND confirmed_at"
+                + " IS NULL")
         .param("member", membershipId)
         .param("at", timestamp(at))
+        .param("notice", additionalNotice)
+        .param("noticedAt", additionalNotice == null ? null : timestamp(at))
         .param("id", noticeId)
         .update();
   }
@@ -187,6 +194,8 @@ public class AssistantNoticeRepository {
         rs.getString("followup_action"),
         confirmedBy,
         instant(rs.getTimestamp("confirmed_at")),
+        rs.getString("supervisor_additional_notice"),
+        instant(rs.getTimestamp("supervisor_additional_noticed_at")),
         instant(rs.getTimestamp("created_at")));
   }
 

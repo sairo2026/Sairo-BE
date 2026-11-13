@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.sairo.be.global.error.ErrorCode;
+import com.sairo.be.global.support.ApproverPhoneCipher;
 import com.sairo.be.support.ApproverAccountTestBase;
 import com.sairo.be.support.IntegrationTest;
 import jakarta.servlet.http.Cookie;
@@ -215,11 +216,13 @@ class ApproverAccountIntegrationTest extends ApproverAccountTestBase {
     assertThat(count("SELECT count(*) FROM approver_profile_approval WHERE status = 'UNLINKED'"))
         .isEqualTo(1);
     assertError(portalGet(PORTAL + "/profile", cookie), ErrorCode.UNAUTHENTICATED);
-    assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT approver_phone FROM property_access_approval WHERE id = ?",
-                String.class,
-                f.approvalId()))
+    String storedPhone =
+        jdbcTemplate.queryForObject(
+            "SELECT approver_phone_encrypted FROM property_access_approval WHERE id = ?",
+            String.class,
+            f.approvalId());
+    assertThat(storedPhone).startsWith(ApproverPhoneCipher.PREFIX).doesNotContain(PHONE);
+    assertThat(textCipher.decrypt(storedPhone.substring(ApproverPhoneCipher.PREFIX.length())))
         .isEqualTo(PHONE);
   }
 

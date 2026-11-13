@@ -149,14 +149,14 @@ public class OpsPrivacyOpsService {
         row.assignedOperatorName(),
         toDisplayOffset(row.completedAt()),
         events,
-        (long) events.size(),
+        row.version(),
         row.handlerType(),
         allowed);
   }
 
   @Transactional
   public PrivacyRequestProcessResponse process(
-      long operatorId, long requestId, PrivacyRequestProcessRequest body) {
+      long operatorId, long requestId, long expectedVersion, PrivacyRequestProcessRequest body) {
     Action action = Action.valueOf(body.action());
     String note = blankToNull(body.note());
     String evidence = blankToNull(body.evidenceReference());
@@ -172,7 +172,7 @@ public class OpsPrivacyOpsService {
         body.identityStatus() == null ? null : IdentityStatus.valueOf(body.identityStatus());
     Result result =
         processService.process(
-            requestId, operatorId, new Command(action, note, evidence, identity));
+            requestId, operatorId, expectedVersion, new Command(action, note, evidence, identity));
     auditLog.insert(
         operatorId,
         "PRIVACY_REQUEST_PROCESSED",

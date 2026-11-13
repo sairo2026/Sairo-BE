@@ -40,6 +40,17 @@ kakao:
   operator-invitation-redirect-uri: ${KAKAO_OPERATOR_INVITATION_REDIRECT_URI:}
 
 sairo:
+  session:
+    approver-cookie-name: APPROVER_SESSION
+  visit:
+    review:
+      review-window-days: 14
+      max-revisions: 2
+      dispute-window-days: 30
+      dispute-target-business-days: 7
+      dispute-due-hour: 18
+      preferred-broker-limit: 5
+      approver-list-window-days: 90
   public-link:
     hmac-secret: ${PUBLIC_LINK_HMAC_SECRET:sairo-local-dev-hmac-secret-do-not-use-in-prod}
   security:

@@ -25,9 +25,11 @@ import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.port.TermsDocumentReader;
+import com.sairo.be.global.security.OperatorStepUpState;
 import com.sairo.be.global.support.IfMatchVersion;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.TimeRules;
+import jakarta.servlet.http.HttpSession;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -77,6 +79,7 @@ public class OpsLegalOpsService {
   private final OpsAuditLogRepository auditLog;
   private final SystemJobRunService jobRunService;
   private final ObjectProvider<TermsDocumentReader> reader;
+  private final OperatorStepUpState stepUp;
   private final Clock clock;
 
   public OpsLegalOpsService(
@@ -84,11 +87,13 @@ public class OpsLegalOpsService {
       OpsAuditLogRepository auditLog,
       SystemJobRunService jobRunService,
       ObjectProvider<TermsDocumentReader> reader,
+      OperatorStepUpState stepUp,
       Clock clock) {
     this.repository = repository;
     this.auditLog = auditLog;
     this.jobRunService = jobRunService;
     this.reader = reader;
+    this.stepUp = stepUp;
     this.clock = clock;
   }
 
@@ -217,7 +222,11 @@ public class OpsLegalOpsService {
 
   @Transactional
   public RetentionRuleResponse updateRetentionRule(
-      long operatorId, String ruleCode, String ifMatch, RetentionRuleUpdateRequest body) {
+      long operatorId,
+      String ruleCode,
+      String ifMatch,
+      RetentionRuleUpdateRequest body,
+      HttpSession session) {
     long expected = IfMatchVersion.parse(ifMatch);
     if (!RULE_STATUSES.contains(body.status())) {
       throw OpsQueryParams.invalid("status", FieldErrorCode.NOT_ALLOWED, "허용되지 않는 status 값입니다.");
@@ -226,6 +235,7 @@ public class OpsLegalOpsService {
         repository
             .lockedRule(ruleCode)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    stepUp.require(session);
     if (row.version() != expected) {
       throw BusinessException.versionConflict(row.version());
     }

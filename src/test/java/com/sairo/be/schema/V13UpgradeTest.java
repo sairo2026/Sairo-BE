@@ -95,7 +95,8 @@ class V13UpgradeTest {
         versions.add(rs.getString("version"));
       }
       assertThat(versions)
-          .startsWith("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
+          .startsWith("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13")
+          .contains("16");
     }
   }
 
@@ -105,10 +106,14 @@ class V13UpgradeTest {
 
     try (Connection conn = connect()) {
       TreeSet<String> tables = publicTables(conn);
-      assertThat(tables).hasSize(140);
+      assertThat(tables).hasSize(141);
       assertThat(tables)
           .contains(
-              "visit_request", "visit_approver_condition", "tax_document", "pricing_change_notice")
+              "visit_request",
+              "visit_approver_condition",
+              "tax_document",
+              "pricing_change_notice",
+              "notification_delivery")
           .doesNotContain("coordination", "property_contract", "spring_session", "expiry_task");
 
       assertThat(
@@ -118,9 +123,9 @@ class V13UpgradeTest {
                       + " JOIN information_schema.tables t ON t.table_schema = c.table_schema"
                       + " AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'"
                       + " WHERE c.table_schema = 'public' AND c.table_name <> 'flyway_schema_history'"))
-          .isEqualTo(1701);
-      assertThat(count(conn, constraintCountSql("p"))).isEqualTo(140);
-      assertThat(count(conn, constraintCountSql("f"))).isEqualTo(341);
+          .isEqualTo(1720);
+      assertThat(count(conn, constraintCountSql("p"))).isEqualTo(141);
+      assertThat(count(conn, constraintCountSql("f"))).isEqualTo(343);
     }
   }
 
@@ -161,6 +166,118 @@ class V13UpgradeTest {
   }
 
   @Test
+  void V16이_더한_표와_컬럼이_정본_타입으로_존재한다() throws Exception {
+    flyway("latest").migrate();
+
+    try (Connection conn = connect()) {
+      for (String[] column :
+          new String[][] {
+            {"property_access_approval", "approver_phone_encrypted", "character varying", "YES"},
+            {"visit_assistant_notice_log", "supervisor_additional_notice", "text", "YES"},
+            {
+              "visit_assistant_notice_log",
+              "supervisor_additional_noticed_at",
+              "timestamp with time zone",
+              "YES"
+            },
+            {"ops_approval_request", "requested_expires_minutes", "integer", "YES"},
+            {"legal_authority_request", "close_note", "text", "YES"},
+            {"privacy_request", "version", "bigint", "NO"},
+            {"deletion_queue", "verification_evidence", "text", "YES"},
+            {"export_job", "archive_grant_id", "bigint", "YES"},
+            {"office", "closed_at", "timestamp with time zone", "YES"},
+            {"notification_delivery", "notification_id", "bigint", "NO"},
+            {"notification_delivery", "channel", "character varying", "NO"},
+            {"notification_delivery", "status", "character varying", "NO"},
+            {"notification_delivery", "attempt_count", "integer", "NO"},
+            {"notification_delivery", "next_attempt_at", "timestamp with time zone", "YES"},
+            {"notification_delivery", "last_error_code", "character varying", "YES"}
+          }) {
+        assertThat(
+                text(
+                    conn,
+                    "SELECT data_type || ' ' || is_nullable FROM information_schema.columns WHERE"
+                        + " table_schema = 'public' AND table_name = '"
+                        + column[0]
+                        + "' AND column_name = '"
+                        + column[1]
+                        + "'"))
+            .as(column[0] + "." + column[1])
+            .isEqualTo(column[2] + " " + column[3]);
+      }
+      assertThat(
+              count(
+                  conn,
+                  "SELECT character_maximum_length FROM information_schema.columns WHERE"
+                      + " table_name = 'property_access_approval' AND column_name ="
+                      + " 'approver_phone_encrypted'"))
+          .isEqualTo(255);
+      assertThat(
+              count(
+                  conn,
+                  "SELECT count(*) FROM information_schema.columns WHERE table_name ="
+                      + " 'property_access_approval' AND column_name = 'approver_phone'"))
+          .isZero();
+      assertThat(
+              count(
+                  conn,
+                  "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public'"
+                      + " AND table_name = 'notification_delivery'"))
+          .isEqualTo(11);
+      assertThat(
+              text(
+                  conn,
+                  "SELECT column_default FROM information_schema.columns WHERE"
+                      + " table_name = 'privacy_request' AND column_name = 'version'"))
+          .isEqualTo("1");
+    }
+  }
+
+  @Test
+  void V16이_더하거나_바꾼_제약이_카탈로그에_새_정의로_존재한다() throws Exception {
+    flyway("latest").migrate();
+
+    try (Connection conn = connect()) {
+      for (String constraint :
+          List.of(
+              "ck_export_job_scope_archive",
+              "fk_export_job_archive_grant",
+              "ck_visit_assistant_notice_log_additional_notice",
+              "ck_ops_approval_request_requested_expires_minutes",
+              "privacy_request_version_check",
+              "ck_notification_delivery_delivered",
+              "ck_notification_delivery_pending",
+              "notification_delivery_notification_id_channel_key")) {
+        assertThat(
+                count(
+                    conn,
+                    "SELECT count(*) FROM pg_constraint WHERE conname = '" + constraint + "'"))
+            .as(constraint)
+            .isEqualTo(1);
+      }
+      for (String[] changed :
+          new String[][] {
+            {"notification_notification_type_check", "TERMS_CHANGED"},
+            {"notification_target_type_check", "CONTRACT"},
+            {"ops_raw_access_grant_check", "expires_at > executed_at"},
+            {"export_job_scope_check", "ARCHIVE"},
+            {"ck_export_job_scope_tables", "ARCHIVE"},
+            {"visit_coordination_reschedule_trigger_type_check", "ASSIGNEE_HANDOVER"},
+            {"visit_request_revalidation_failure_code_check", "DEPUTY_VISIT_LOCKED"}
+          }) {
+        assertThat(
+                text(
+                    conn,
+                    "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = '"
+                        + changed[0]
+                        + "'"))
+            .as(changed[0])
+            .contains(changed[1]);
+      }
+    }
+  }
+
+  @Test
   void V12_스키마의_기존_행은_V13_적용_후_백필되고_새_NOT_NULL_컬럼이_채워진다() throws Exception {
     flyway("12").migrate();
     try (Connection conn = connect()) {
@@ -171,7 +288,7 @@ class V13UpgradeTest {
     flyway("latest").migrate();
 
     try (Connection conn = connect()) {
-      assertThat(publicTables(conn)).hasSize(140);
+      assertThat(publicTables(conn)).hasSize(141);
 
       assertThat(count(conn, "SELECT count(*) FROM terms_agreement")).isEqualTo(1);
       assertThat(text(conn, "SELECT consent_path FROM terms_agreement")).isEqualTo("UNKNOWN");
@@ -187,6 +304,8 @@ class V13UpgradeTest {
                       + " FROM property_access_approval"));
       assertThat(text(conn, "SELECT anonymized_at::text FROM property_access_approval")).isNull();
       assertThat(text(conn, "SELECT approver_phone_hash FROM property_access_approval")).isNull();
+      assertThat(text(conn, "SELECT approver_phone_encrypted FROM property_access_approval"))
+          .isEqualTo("010-1111-2222");
 
       assertThat(text(conn, "SELECT property_office_id::text FROM visit_candidate_property"))
           .isEqualTo("1");

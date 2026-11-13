@@ -1,5 +1,6 @@
 package com.sairo.be.domain.contract.service;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,6 +22,7 @@ public class LeasePeriodScheduler {
   }
 
   @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Seoul")
+  @SchedulerLock(name = "lease-period-scan", lockAtMostFor = "PT1H", lockAtLeastFor = "PT5M")
   public void run() {
     followupService.createDue();
     leasePeriodService.refreshAll();

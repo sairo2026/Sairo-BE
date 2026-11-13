@@ -17,6 +17,7 @@ public final class VisitFeasibility {
 
   public static final String BROKER_CONFLICT = "BROKER_CONFLICT";
   public static final String TRAVEL_CONFLICT = "TRAVEL_CONFLICT";
+  public static final String DEPUTY_VISIT_LOCKED = "DEPUTY_VISIT_LOCKED";
 
   public static final List<String> RULE_ORDER =
       List.of(

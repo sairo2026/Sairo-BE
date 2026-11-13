@@ -14,6 +14,7 @@ import com.sairo.be.domain.visit.repository.VisitReviewRepository.Review;
 import com.sairo.be.domain.visit.repository.VisitReviewRepository.Target;
 import com.sairo.be.domain.visit.repository.VisitReviewRepository.TargetWithReview;
 import com.sairo.be.domain.visit.service.ApproverReviewContext.Opened;
+import com.sairo.be.global.config.VisitReviewProperties;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
@@ -21,7 +22,6 @@ import com.sairo.be.global.error.FieldErrorItem;
 import com.sairo.be.global.support.IfMatchVersion;
 import com.sairo.be.global.support.TimeRules;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -38,10 +38,6 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class ApproverReviewService {
 
-  public static final int REVIEW_WINDOW_DAYS = 14;
-  public static final int MAX_REVISIONS = 2;
-  static final Duration REVIEW_WINDOW = Duration.ofDays(REVIEW_WINDOW_DAYS);
-  static final Duration LIST_WINDOW = Duration.ofDays(90);
   private static final Set<String> KEYS =
       Set.of("punctuality", "advanceContact", "asRequested", "acknowledgedNoticeVersion");
   private static final Set<String> ANSWERS = Set.of("YES", "NO", "SKIP");
@@ -53,6 +49,7 @@ public class ApproverReviewService {
   private final PreferredBrokerRepository preferredRepository;
   private final MembershipNameRepository nameRepository;
   private final ApproverLinkNoticeProvider noticeProvider;
+  private final VisitReviewProperties reviewPolicy;
   private final Clock clock;
 
   public ApproverReviewService(
@@ -61,12 +58,14 @@ public class ApproverReviewService {
       PreferredBrokerRepository preferredRepository,
       MembershipNameRepository nameRepository,
       ApproverLinkNoticeProvider noticeProvider,
+      VisitReviewProperties reviewPolicy,
       Clock clock) {
     this.context = context;
     this.reviewRepository = reviewRepository;
     this.preferredRepository = preferredRepository;
     this.nameRepository = nameRepository;
     this.noticeProvider = noticeProvider;
+    this.reviewPolicy = reviewPolicy;
     this.clock = clock;
   }
 
@@ -86,7 +85,10 @@ public class ApproverReviewService {
     List<TargetWithReview> rows =
         opened
             .dataApprovalId()
-            .map(id -> reviewRepository.listForApprover(id, now, now.minus(LIST_WINDOW)))
+            .map(
+                id ->
+                    reviewRepository.listForApprover(
+                        id, now, now.minus(reviewPolicy.approverListWindow())))
             .orElse(List.of());
     Set<Long> preferred = new HashSet<>();
     opened
@@ -111,7 +113,7 @@ public class ApproverReviewService {
                       opened.writable()
                           && now.isBefore(deadline)
                           && !"LOCKED".equals(status)
-                          && (review == null || revisions < MAX_REVISIONS);
+                          && (review == null || revisions < reviewPolicy.maxRevisions());
                   return new ApproverReviewItem(
                       target.itemId(),
                       TimeRules.toDisplayOffset(target.startAt()),
@@ -123,7 +125,7 @@ public class ApproverReviewService {
                       status,
                       editable,
                       revisions,
-                      MAX_REVISIONS - revisions,
+                      reviewPolicy.maxRevisions() - revisions,
                       review == null ? null : Long.valueOf(review.version()),
                       review == null || "WITHDRAWN".equals(review.status())
                           ? null
@@ -132,7 +134,10 @@ public class ApproverReviewService {
                 })
             .toList();
     return new ApproverVisitReviewListResponse(
-        context.propertyAddress(opened.approval()), REVIEW_WINDOW_DAYS, items, notice());
+        context.propertyAddress(opened.approval()),
+        reviewPolicy.reviewWindowDays(),
+        items,
+        notice());
   }
 
   @Transactional
@@ -179,7 +184,7 @@ public class ApproverReviewService {
     Instant now = now();
     Review existing = reviewRepository.lockByItem(scheduleItemId).orElse(null);
     if (existing == null) {
-      Instant deadline = target.resultRecordedAt().plus(REVIEW_WINDOW);
+      Instant deadline = target.resultRecordedAt().plus(reviewPolicy.reviewWindow());
       if (!now.isBefore(deadline)) {
         throw new BusinessException(ErrorCode.VISIT_REVIEW_WINDOW_CLOSED);
       }
@@ -196,7 +201,7 @@ public class ApproverReviewService {
     if (!now.isBefore(existing.deadlineAt())) {
       throw new BusinessException(ErrorCode.VISIT_REVIEW_WINDOW_CLOSED);
     }
-    if (isLocked(existing) || existing.revisionCount() >= MAX_REVISIONS) {
+    if (isLocked(existing) || existing.revisionCount() >= reviewPolicy.maxRevisions()) {
       throw new BusinessException(ErrorCode.VISIT_REVIEW_LOCKED);
     }
     long expected = IfMatchVersion.parse(ifMatch);
@@ -263,8 +268,10 @@ public class ApproverReviewService {
     return new ReviewAnswers(review.punctuality(), review.advanceContact(), review.asRequested());
   }
 
-  private static Instant deadlineOf(Target target, Review review) {
-    return review != null ? review.deadlineAt() : target.resultRecordedAt().plus(REVIEW_WINDOW);
+  private Instant deadlineOf(Target target, Review review) {
+    return review != null
+        ? review.deadlineAt()
+        : target.resultRecordedAt().plus(reviewPolicy.reviewWindow());
   }
 
   private static boolean isReplay(Review existing, Answers answers, String ifMatch) {
@@ -291,7 +298,7 @@ public class ApproverReviewService {
         withdrawn ? "WITHDRAWN" : "SUBMITTED",
         withdrawn ? null : answers(review),
         review.revisionCount(),
-        MAX_REVISIONS - review.revisionCount(),
+        reviewPolicy.maxRevisions() - review.revisionCount(),
         TimeRules.toDisplayOffset(review.deadlineAt()),
         TimeRules.toDisplayOffset(review.submittedAt()),
         TimeRules.toDisplayOffset(review.lastRevisedAt()),

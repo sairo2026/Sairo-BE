@@ -3,7 +3,7 @@ package com.sairo.be.domain.home.entity;
 import java.util.EnumSet;
 import java.util.Set;
 
-/** 알림함 알림 종류 17가지와 수신 설정 키, 이동 대상 종류의 대응이다(API 명세서 17장 NotificationListResponse). */
+/** 알림함 알림 종류 18가지와 수신 설정 키, 이동 대상 종류의 대응이다(API 명세서 17장 NotificationListResponse). */
 public enum NotificationType {
   OFFICE_REVIEW(null, EnumSet.of(NotificationTargetType.OFFICE_REGISTRATION)),
   MEMBERSHIP_APPROVAL_NEEDED(null, EnumSet.of(NotificationTargetType.MEMBERSHIP)),
@@ -13,7 +13,8 @@ public enum NotificationType {
       EnumSet.of(
           NotificationTargetType.VISIT_COORDINATION,
           NotificationTargetType.PROPERTY,
-          NotificationTargetType.CUSTOMER)),
+          NotificationTargetType.CUSTOMER,
+          NotificationTargetType.CONTRACT)),
   VISIT_SCHEDULED("VISIT_REMINDER", EnumSet.of(NotificationTargetType.VISIT_COORDINATION)),
   VISIT_CONFIRMED("VISIT_REMINDER", EnumSet.of(NotificationTargetType.VISIT_COORDINATION)),
   VISIT_RESCHEDULE_NEEDED("VISIT_REMINDER", EnumSet.of(NotificationTargetType.VISIT_COORDINATION)),
@@ -26,7 +27,8 @@ public enum NotificationType {
   PAYMENT(null, EnumSet.of(NotificationTargetType.SUBSCRIPTION)),
   RETURN_SCHEDULED(null, EnumSet.of(NotificationTargetType.DATA_RETURN)),
   DELETION_SCHEDULED(null, EnumSet.of(NotificationTargetType.DATA_RETURN)),
-  SUPPORT_REPLY(null, EnumSet.of(NotificationTargetType.SUPPORT_TICKET));
+  SUPPORT_REPLY(null, EnumSet.of(NotificationTargetType.SUPPORT_TICKET)),
+  TERMS_CHANGED(null, EnumSet.of(NotificationTargetType.NONE));
 
   private final String preferenceKey;
   private final Set<NotificationTargetType> targets;

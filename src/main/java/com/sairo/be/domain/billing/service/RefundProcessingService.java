@@ -77,6 +77,10 @@ public class RefundProcessingService {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+    if (command.amount() != null && !(command.approve() && acceptsOperatorAmount(refund))) {
+      throw invalidAmount(
+          FieldErrorCode.NOT_ALLOWED, "금액은 서비스 장애·승인 지연·정책 외 보상 환불을 승인할 때만 입력할 수 있습니다.");
+    }
     if (!command.approve()) {
       refund.reject(operatorId, command.note(), now);
       return refundRepository.saveAndFlush(refund);
@@ -116,6 +120,12 @@ public class RefundProcessingService {
     }
     if (amount <= 0) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    if (command.amount() != null) {
+      if (command.amount() < 1 || command.amount() > amount) {
+        throw invalidAmount(FieldErrorCode.OUT_OF_RANGE, "금액은 1원 이상이고 환불 가능 잔액 이하여야 합니다.");
+      }
+      refund.adjustForApproval(reserved, command.amount());
     }
     refund.approve(operatorId, now);
     return refundRepository.saveAndFlush(refund);
@@ -227,6 +237,18 @@ public class RefundProcessingService {
     return seconds > 0 ? seconds : null;
   }
 
+  private static boolean acceptsOperatorAmount(RefundRequest refund) {
+    RefundReasonCode reason = refund.getReasonCode();
+    return reason == RefundReasonCode.SERVICE_FAILURE
+        || reason == RefundReasonCode.LATE_APPROVAL
+        || reason == RefundReasonCode.POLICY_COMPENSATION;
+  }
+
+  private static BusinessException invalidAmount(FieldErrorCode code, String message) {
+    return BusinessException.withFieldErrors(
+        ErrorCode.INVALID_REQUEST, List.of(new FieldErrorItem("amount", code, message)));
+  }
+
   private static BusinessException invalidEvent(FieldErrorCode code, String message) {
     return BusinessException.withFieldErrors(
         ErrorCode.INVALID_REQUEST, List.of(new FieldErrorItem("reasonEventId", code, message)));
@@ -236,7 +258,7 @@ public class RefundProcessingService {
     return code == null ? "결제대행사가 취소를 처리하지 못했습니다." : "결제대행사가 취소를 거절했습니다. 코드 " + code;
   }
 
-  public record ReviewCommand(boolean approve, String note, Long reasonEventId) {}
+  public record ReviewCommand(boolean approve, String note, Long reasonEventId, Long amount) {}
 
   private record Prepared(CancelCommand command) {}
 }

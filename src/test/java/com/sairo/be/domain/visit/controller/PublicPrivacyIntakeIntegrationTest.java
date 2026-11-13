@@ -135,7 +135,7 @@ class PublicPrivacyIntakeIntegrationTest extends DeskIntegrationTestBase {
     assertThat(intake.get("privacy_request_id")).isNull();
     assertThat(
             jdbcTemplate.queryForObject(
-                "SELECT internal_due_at - received_at = interval '7 days'"
+                "SELECT internal_due_at - received_at = interval '3 days'"
                     + " FROM legal_guest_privacy_intake",
                 Boolean.class))
         .isTrue();

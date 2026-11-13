@@ -87,4 +87,25 @@ class ApproverPortalPrivacyIntakeIntegrationTest extends ApproverAccountTestBase
         ErrorCode.GUEST_CONTACT_INVALID);
     assertThat(count("SELECT count(*) FROM legal_guest_privacy_intake")).isZero();
   }
+
+  @Test
+  void 요청_내용에_주민등록번호_형식이_있으면_400이고_정상_접수의_내부_기한은_접수_3일_뒤다() throws Exception {
+    RequestFixture f = requestFixture();
+    Cookie cookie = claim(issueApproverToken(f.cookie(), f.propertyId(), f.approvalId()));
+
+    assertError(
+        send(
+            body(f.approvalId(), "").replace("입력한 조건을 확인하고 싶습니다", "주민번호 900101-1234567 입니다"),
+            cookie),
+        ErrorCode.SENSITIVE_DATA_DETECTED);
+    assertThat(count("SELECT count(*) FROM legal_guest_privacy_intake")).isZero();
+
+    send(body(f.approvalId(), ""), cookie).andExpect(status().isCreated());
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT internal_due_at - received_at = interval '3 days'"
+                    + " FROM legal_guest_privacy_intake",
+                Boolean.class))
+        .isTrue();
+  }
 }
