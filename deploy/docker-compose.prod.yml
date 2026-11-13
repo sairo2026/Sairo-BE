@@ -11,6 +11,8 @@ services:
     env_file:
       - path: ./env/app.env
         format: raw
+    volumes:
+      - bootstrap-data:/var/sairo/bootstrap
     depends_on:
       redis:
         condition: service_healthy
@@ -65,5 +67,6 @@ services:
     restart: "no"
 
 volumes:
+  bootstrap-data:
   redis-data:
   clamav-data:
