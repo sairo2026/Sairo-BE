@@ -4,6 +4,7 @@ import static com.sairo.be.domain.ops.service.OpsSystemJobService.offset;
 
 import com.sairo.be.domain.billing.service.SystemJobFailure;
 import com.sairo.be.domain.billing.service.SystemJobRunService;
+import com.sairo.be.domain.billing.service.SystemJobSkipped;
 import com.sairo.be.domain.ops.dto.request.OpsSystemRequests.IntegrationUpdateRequest;
 import com.sairo.be.domain.ops.dto.response.OpsSystemResponses.IntegrationCheckResponse;
 import com.sairo.be.domain.ops.dto.response.OpsSystemResponses.IntegrationItem;
@@ -148,7 +149,8 @@ public class OpsIntegrationService {
       if (reviewedAt == null) {
         missing.add("CONTRACT_NOTICE_REVIEW");
       }
-      contentService.missingLaunchItems().forEach(item -> missing.add("COMPANY_INFO_" + item));
+      contentService.missingCompanyInfoItems().forEach(item -> missing.add("COMPANY_INFO_" + item));
+      missing.addAll(contentService.missingLaunchConditions());
       if (!missing.isEmpty()) {
         throw BusinessException.withDetails(
             ErrorCode.INTEGRATION_PREREQUISITE_INCOMPLETE, Map.of("missingItems", missing));
@@ -205,7 +207,7 @@ public class OpsIntegrationService {
         null,
         checkWork(integrationId));
     IntegrationRow after = repository.integration(integrationId).orElseThrow();
-    String result = after.lastCheckResult() == null ? "FAILED" : after.lastCheckResult();
+    String result = after.lastCheckResult() == null ? "NOT_TESTED" : after.lastCheckResult();
     auditLog.insert(
         operatorId, "INTEGRATION_CHECKED", "INTEGRATION_CONFIG", integrationId, result, now());
     return new IntegrationCheckResponse(after.id(), result, offset(after.lastSuccessAt()));
@@ -231,16 +233,17 @@ public class OpsIntegrationService {
               .integration(integrationId)
               .orElseThrow(() -> new SystemJobFailure("INTEGRATION_NOT_FOUND"));
       IntegrationProbe port = probe.getIfAvailable();
+      if (port == null || !port.configured()) {
+        throw new SystemJobSkipped(SystemJobSkipped.NOT_CONFIGURED);
+      }
       IntegrationProbe.Result result =
-          port == null
-              ? IntegrationProbe.Result.failed("PROBE_UNAVAILABLE")
-              : port.probe(
-                  new IntegrationProbe.Target(
-                      row.id(),
-                      row.environment(),
-                      row.provider(),
-                      row.functionCode(),
-                      row.secretReferenceId()));
+          port.probe(
+              new IntegrationProbe.Target(
+                  row.id(),
+                  row.environment(),
+                  row.provider(),
+                  row.functionCode(),
+                  row.secretReferenceId()));
       repository.recordCheck(integrationId, result.success() ? "SUCCESS" : "FAILED", now());
       if (!result.success()) {
         throw new SystemJobFailure(

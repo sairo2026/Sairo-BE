@@ -405,6 +405,23 @@ public class OpsContentRepository {
         .optional();
   }
 
+  public List<String> publishedPolicyTypes() {
+    return jdbcClient
+        .sql("SELECT DISTINCT doc_type FROM policy_document WHERE status = 'PUBLISHED'")
+        .query(String.class)
+        .list();
+  }
+
+  public boolean approvedStandardPriceExists() {
+    return jdbcClient
+            .sql(
+                "SELECT count(*) FROM price_schedule WHERE audience = 'STANDARD' AND status IN"
+                    + " ('SCHEDULED','ACTIVE') AND approved_by_operator_id IS NOT NULL")
+            .query(Long.class)
+            .single()
+        > 0;
+  }
+
   public Optional<InfoRow> latestPublishedInfo() {
     return jdbcClient
         .sql(INFO_COLUMNS + " WHERE published_at IS NOT NULL ORDER BY version_no DESC LIMIT 1")

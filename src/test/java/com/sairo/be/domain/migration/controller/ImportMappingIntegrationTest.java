@@ -98,10 +98,11 @@ class ImportMappingIntegrationTest extends ImportIntegrationTestBase {
   }
 
   @Test
-  void 계약_유형은_허용_목록이_없어_대상_항목이_빈_배열이다() throws Exception {
+  void 이미_있는_계약_유형_실행_단위는_허용_목록이_없어_대상_항목이_빈_배열이다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     Cookie cookie = cookieOf(owner);
-    long batchId = uploadBatch(cookie, "c.csv", csv("계약번호,당사자", "1,홍길동"), "CONTRACT");
+    long batchId = uploadBatch(cookie, "c.csv", csv("계약번호,당사자", "1,홍길동"), "CUSTOMER");
+    jdbcTemplate.update("UPDATE import_batch SET target_type = 'CONTRACT' WHERE id = ?", batchId);
 
     mockMvc
         .perform(authedGet("/api/import-batches/" + batchId + "/mapping-suggestion", cookie))

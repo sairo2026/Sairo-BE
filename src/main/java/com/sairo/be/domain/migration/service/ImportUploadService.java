@@ -30,6 +30,8 @@ import tools.jackson.databind.JsonNode;
 public class ImportUploadService {
 
   private static final int FILE_NAME_MAX = 255;
+  private static final List<ImportTargetType> UPLOADABLE_TARGET_TYPES =
+      List.of(ImportTargetType.CUSTOMER, ImportTargetType.PROPERTY);
 
   private final ImportBatchRepository batchRepository;
   private final ImportBatchJdbcRepository jdbcRepository;
@@ -111,11 +113,16 @@ public class ImportUploadService {
     if (input == null || input.isBlank()) {
       throw ImportRequestParser.invalid("targetType", FieldErrorCode.REQUIRED, "필수 입력입니다.");
     }
+    ImportTargetType targetType;
     try {
-      return ImportTargetType.valueOf(input.strip());
+      targetType = ImportTargetType.valueOf(input.strip());
     } catch (IllegalArgumentException e) {
       throw ImportRequestParser.invalid("targetType", FieldErrorCode.NOT_ALLOWED, "허용되지 않는 값입니다.");
     }
+    if (!UPLOADABLE_TARGET_TYPES.contains(targetType)) {
+      throw ImportRequestParser.invalid("targetType", FieldErrorCode.NOT_ALLOWED, "허용되지 않는 값입니다.");
+    }
+    return targetType;
   }
 
   private static byte[] read(MultipartFile file) {

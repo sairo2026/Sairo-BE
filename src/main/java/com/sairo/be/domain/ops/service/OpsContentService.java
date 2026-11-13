@@ -84,6 +84,9 @@ public class OpsContentService {
   static final String MISSING_PUBLISHED = "PUBLISHED_VERSION";
   static final String MISSING_TEST = "INQUIRY_DELIVERY_TEST";
   static final String MISSING_REVIEW = "REVIEW";
+  static final String MISSING_POLICY_DOCUMENTS = "POLICY_DOCUMENTS_NOT_PUBLISHED";
+  static final String MISSING_STANDARD_PRICE = "STANDARD_PRICE_SCHEDULE_NOT_APPROVED";
+  static final List<String> LAUNCH_POLICY_TYPES = List.of("TERMS", "PRIVACY", "REFUND");
   private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
   /** 예약 공지 게시 배치의 system_job_run 작업 이름이다. */
@@ -417,12 +420,17 @@ public class OpsContentService {
         items, missing.isEmpty(), missing, page.page(), page.size(), repository.countInfos());
   }
 
-  /**
-   * 운영 출시 준비에 빠진 회사 제공 정보 항목이다. 비어 있으면 출시 준비가 된 것이다. 게시 버전, 문의 수신 시험, 검토자를 본다. 운영 연동 활성화(OPS-09)도 이
-   * 판정을 쓴다.
-   */
+  /** 운영 출시 준비에 빠진 항목이다. 비어 있으면 출시 준비가 된 것이다. 회사 제공 정보, 필수 정책 문서 게시본, 표준 요금표 승인을 본다. */
   @Transactional(readOnly = true)
   public List<String> missingLaunchItems() {
+    List<String> missing = new ArrayList<>(missingCompanyInfoItems());
+    missing.addAll(missingLaunchConditions());
+    return missing;
+  }
+
+  /** 회사 제공 정보에서 빠진 항목이다. 게시 버전, 문의 수신 시험, 검토자를 본다. */
+  @Transactional(readOnly = true)
+  public List<String> missingCompanyInfoItems() {
     List<String> missing = new ArrayList<>();
     Optional<InfoRow> published = repository.latestPublishedInfo();
     if (published.isEmpty()) {
@@ -434,6 +442,19 @@ public class OpsContentService {
     }
     if (basis == null || basis.reviewedByOperatorId() == null) {
       missing.add(MISSING_REVIEW);
+    }
+    return missing;
+  }
+
+  /** 회사 제공 정보 밖의 출시 조건에서 빠진 항목이다. 필수 정책 문서의 게시본과 승인된 표준 요금표를 본다. */
+  @Transactional(readOnly = true)
+  public List<String> missingLaunchConditions() {
+    List<String> missing = new ArrayList<>();
+    if (!repository.publishedPolicyTypes().containsAll(LAUNCH_POLICY_TYPES)) {
+      missing.add(MISSING_POLICY_DOCUMENTS);
+    }
+    if (!repository.approvedStandardPriceExists()) {
+      missing.add(MISSING_STANDARD_PRICE);
     }
     return missing;
   }

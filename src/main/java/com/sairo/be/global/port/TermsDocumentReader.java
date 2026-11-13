@@ -6,4 +6,9 @@ import java.util.Optional;
 public interface TermsDocumentReader {
 
   Optional<String> read(String termsCode, String termsVersion, String documentUrl);
+
+  /** 실제 읽기 수단이 연결되어 있는지다. 거짓이면 배치가 대조를 실행하지 않고 건너뛴다. */
+  default boolean configured() {
+    return true;
+  }
 }

@@ -90,14 +90,16 @@ class ImportUploadIntegrationTest extends ImportIntegrationTestBase {
   }
 
   @Test
-  void 계약_유형도_업로드할_수_있다() throws Exception {
+  void 계약_유형은_이전_대상이_아니라_업로드가_400이고_실행_단위를_만들지_않는다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
 
-    mockMvc
-        .perform(uploadRequest(cookieOf(owner), "계약.csv", csv("계약번호,당사자", "1,홍길동"), "CONTRACT"))
-        .andExpect(status().isOk());
-    assertThat(jdbcTemplate.queryForObject("SELECT target_type FROM import_batch", String.class))
-        .isEqualTo("CONTRACT");
+    assertFieldError(
+        mockMvc.perform(
+            uploadRequest(cookieOf(owner), "계약.csv", csv("계약번호,당사자", "1,홍길동"), "CONTRACT")),
+        "targetType",
+        "NOT_ALLOWED");
+    assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM import_batch", Integer.class))
+        .isZero();
   }
 
   @Test

@@ -11,7 +11,9 @@ import com.sairo.be.domain.ops.dto.response.OpsConsoleResponses.OperatorInvitati
 import com.sairo.be.domain.ops.dto.response.OpsConsoleResponses.OperatorInvitationCreateResponse;
 import com.sairo.be.domain.ops.dto.response.OpsConsoleResponses.OperatorInvitationItem;
 import com.sairo.be.domain.ops.dto.response.OpsConsoleResponses.OperatorItem;
+import com.sairo.be.domain.ops.dto.response.OpsConsoleResponses.OperatorOption;
 import com.sairo.be.domain.ops.dto.response.OpsConsoleResponses.OpsAuditLogItem;
+import com.sairo.be.domain.ops.dto.response.OpsConsoleResponses.OpsOperatorOptionListResponse;
 import com.sairo.be.domain.ops.entity.InvitationStatus;
 import com.sairo.be.domain.ops.entity.OperatorStatus;
 import com.sairo.be.domain.ops.repository.OperatorAccountRepository;
@@ -104,6 +106,14 @@ public class OperatorManagementService {
             .map(summary -> toItem(summary, accounts.roles(summary.id())))
             .toList();
     return PageResponse.of(items, page.page(), page.size(), accounts.count());
+  }
+
+  @Transactional(readOnly = true)
+  public OpsOperatorOptionListResponse options() {
+    return new OpsOperatorOptionListResponse(
+        accounts.activeOptions().stream()
+            .map(option -> new OperatorOption(option.id(), option.name(), option.roles()))
+            .toList());
   }
 
   @Transactional

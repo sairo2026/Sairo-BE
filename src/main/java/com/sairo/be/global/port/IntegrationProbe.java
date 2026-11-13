@@ -8,6 +8,11 @@ public interface IntegrationProbe {
 
   Result probe(Target target);
 
+  /** 실제 점검 수단이 연결되어 있는지다. 거짓이면 검사를 실행하지 않고 건너뛴다. */
+  default boolean configured() {
+    return true;
+  }
+
   record Target(
       long integrationId,
       String environment,

@@ -167,6 +167,14 @@ public class OpsPrivacyRecordRepository {
     return where.toString();
   }
 
+  public Optional<IntakeRow> intake(long intakeId) {
+    return jdbcClient
+        .sql(INTAKE_COLUMNS + " WHERE g.id = :id")
+        .param("id", intakeId)
+        .query(OpsPrivacyRecordRepository::mapIntake)
+        .optional();
+  }
+
   public Optional<IntakeRow> lockIntake(long intakeId) {
     return jdbcClient
         .sql(INTAKE_COLUMNS + " WHERE g.id = :id FOR UPDATE OF g")

@@ -4,6 +4,7 @@ import com.sairo.be.domain.ops.dto.request.RawAccessRequests.RawAccessRequestCre
 import com.sairo.be.domain.ops.dto.request.RawAccessRequests.RawAccessRequestRejectRequest;
 import com.sairo.be.domain.ops.dto.request.RawAccessRequests.RawAccessRevokeRequest;
 import com.sairo.be.domain.ops.dto.response.RawAccessResponses.RawAccessApproveResponse;
+import com.sairo.be.domain.ops.dto.response.RawAccessResponses.RawAccessContentResponse;
 import com.sairo.be.domain.ops.dto.response.RawAccessResponses.RawAccessCreateResponse;
 import com.sairo.be.domain.ops.dto.response.RawAccessResponses.RawAccessDetailResponse;
 import com.sairo.be.domain.ops.dto.response.RawAccessResponses.RawAccessExecuteResponse;
@@ -140,5 +141,18 @@ public class RawAccessController {
         .header(HttpHeaders.CACHE_CONTROL, "no-store")
         .header("X-Content-SHA256", file.sha256())
         .body(file.content());
+  }
+
+  @Operation(
+      summary = "원문 보기 내용 조회",
+      description = "열람 승인을 실행한 운영자 본인이 5분 재인증 뒤 접근 창 안에서 읽는다. 읽을 때마다 감사 이력을 남기고 응답은 저장하지 않는다.")
+  @GetMapping("/raw-access-grants/{grantId}/content")
+  public ResponseEntity<RawAccessContentResponse> content(
+      @PathVariable Long grantId,
+      @AuthenticationPrincipal OperatorPrincipal principal,
+      HttpSession session) {
+    return ResponseEntity.ok()
+        .header(HttpHeaders.CACHE_CONTROL, "no-store")
+        .body(service.view(principal.operatorId(), grantId, session));
   }
 }
