@@ -82,6 +82,8 @@ public class ApproverConditionBulkService {
         reason = "NOT_PRIMARY";
       } else if (!approval.get().isUsableAt(now)) {
         reason = "APPROVAL_INACTIVE";
+      } else if (conditionService.propertyOfficeRestricted(approval.get())) {
+        reason = "OFFICE_RESTRICTED";
       }
       List<AffectedItem> affected =
           reason == null ? conditionService.affectedFor(approvalId, parsed.spec()) : List.of();

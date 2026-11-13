@@ -1,5 +1,7 @@
 package com.sairo.be.domain.visit.service;
 
+import com.sairo.be.domain.office.service.DeputyQuotaService;
+import com.sairo.be.domain.property.service.ManagingMemberDirectory;
 import com.sairo.be.domain.visit.dto.response.ApproverSelectionResponse;
 import com.sairo.be.domain.visit.entity.ConditionStatus;
 import com.sairo.be.domain.visit.entity.CoordinationStatus;
@@ -35,6 +37,7 @@ import com.sairo.be.domain.visit.service.VisitRequestChecker.Slot;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.port.ApplyGrantPort;
+import com.sairo.be.global.port.OfficeWriteRestriction;
 import com.sairo.be.global.port.VisitWorkHooks;
 import com.sairo.be.global.support.AdvisoryLock;
 import com.sairo.be.global.support.TimeRules;
@@ -112,6 +115,9 @@ public class ApproverSelectionExecutor {
   private final ApplyGrantPort applyGrants;
   private final VisitWorkHooks workHooks;
   private final AdvisoryLock advisoryLock;
+  private final ManagingMemberDirectory memberDirectory;
+  private final DeputyQuotaService deputyQuotaService;
+  private final OfficeWriteRestriction writeRestriction;
   private final EntityManager entityManager;
   private final Clock clock;
 
@@ -135,6 +141,9 @@ public class ApproverSelectionExecutor {
       ApplyGrantPort applyGrants,
       VisitWorkHooks workHooks,
       AdvisoryLock advisoryLock,
+      ManagingMemberDirectory memberDirectory,
+      DeputyQuotaService deputyQuotaService,
+      OfficeWriteRestriction writeRestriction,
       EntityManager entityManager,
       Clock clock) {
     this.approvalRepository = approvalRepository;
@@ -156,6 +165,9 @@ public class ApproverSelectionExecutor {
     this.applyGrants = applyGrants;
     this.workHooks = workHooks;
     this.advisoryLock = advisoryLock;
+    this.memberDirectory = memberDirectory;
+    this.deputyQuotaService = deputyQuotaService;
+    this.writeRestriction = writeRestriction;
     this.entityManager = entityManager;
     this.clock = clock;
   }
@@ -362,6 +374,14 @@ public class ApproverSelectionExecutor {
             : List.of());
   }
 
+  private boolean deputyLocked(VisitRequest request, VisitCoordination coordination) {
+    return memberDirectory
+            .find(coordination.getManagerMembershipId())
+            .filter(member -> "DEPUTY".equals(member.role()))
+            .isPresent()
+        && deputyQuotaService.current(request.getApplicantOfficeId()).exceeded();
+  }
+
   private Failure revalidate(
       VisitRequest request,
       PropertyAccessApproval approval,
@@ -371,7 +391,10 @@ public class ApproverSelectionExecutor {
       Instant now,
       Long excludedItemId) {
     List<String> violated = new ArrayList<>();
-    boolean usable = approval.isPrimary() && approval.isUsableAt(now);
+    boolean usable =
+        approval.isPrimary()
+            && approval.isUsableAt(now)
+            && !writeRestriction.restricted(request.getPropertyOfficeId());
     boolean grantLost =
         request.getAccessGrantId() != null
             && applyGrants
@@ -402,6 +425,9 @@ public class ApproverSelectionExecutor {
         violated.add(VisitRequestChecker.NO_PERMISSION);
       }
     }
+    if (deputyLocked(request, coordination)) {
+      violated.add(VisitFeasibility.DEPUTY_VISIT_LOCKED);
+    }
     if (violated.isEmpty()) {
       return null;
     }
@@ -409,7 +435,10 @@ public class ApproverSelectionExecutor {
     boolean conditionChanged =
         active.isPresent() && !active.get().getId().equals(request.getConditionId());
     boolean conditionRuleHit = violated.stream().anyMatch(CONDITION_RULES::contains);
-    String code = conditionChanged && conditionRuleHit ? "CONDITION_CHANGED" : violated.get(0);
+    String code =
+        violated.contains(VisitFeasibility.DEPUTY_VISIT_LOCKED)
+            ? VisitFeasibility.DEPUTY_VISIT_LOCKED
+            : conditionChanged && conditionRuleHit ? "CONDITION_CHANGED" : violated.get(0);
     String detail = "위반한 규칙: " + String.join(", ", violated);
     return new Failure(code, detail);
   }
