@@ -53,7 +53,8 @@ public class OpsPrivacyRecordRepository {
       String recordedByOperatorName,
       Long approvedByOperatorId,
       Instant closedAt,
-      LocalDate retentionUntil) {}
+      LocalDate retentionUntil,
+      String closeNote) {}
 
   public record NewAuthority(
       Instant receivedAt,
@@ -73,7 +74,8 @@ public class OpsPrivacyRecordRepository {
       String officeNoticeStatus,
       Long approvedByOperatorId,
       Instant closedAt,
-      LocalDate retentionUntil) {}
+      LocalDate retentionUntil,
+      String closeNote) {}
 
   public record ContractCopyRow(
       long id,
@@ -112,7 +114,7 @@ public class OpsPrivacyRecordRepository {
           + " r.legal_basis_note, r.target_office_id, r.target_user_id, r.requested_items,"
           + " r.decision, r.provided_items, r.provided_at, r.office_notice_status,"
           + " r.recorded_by_operator_id, a.name AS recorder_name, r.approved_by_operator_id,"
-          + " r.closed_at, r.retention_until FROM legal_authority_request r JOIN"
+          + " r.closed_at, r.retention_until, r.close_note FROM legal_authority_request r JOIN"
           + " operator_account a ON a.id = r.recorded_by_operator_id";
 
   private static final String COPY_COLUMNS =
@@ -285,7 +287,7 @@ public class OpsPrivacyRecordRepository {
             "UPDATE legal_authority_request SET decision = :decision, provided_items = :items,"
                 + " provided_at = :providedAt, office_notice_status = :notice,"
                 + " approved_by_operator_id = :approvedBy, closed_at = :closedAt,"
-                + " retention_until = :retentionUntil WHERE id = :id")
+                + " retention_until = :retentionUntil, close_note = :closeNote WHERE id = :id")
         .param("decision", close.decision())
         .param("items", close.providedItems())
         .param("providedAt", close.providedAt() == null ? null : Timestamp.from(close.providedAt()))
@@ -293,6 +295,7 @@ public class OpsPrivacyRecordRepository {
         .param("approvedBy", close.approvedByOperatorId())
         .param("closedAt", Timestamp.from(close.closedAt()))
         .param("retentionUntil", Date.valueOf(close.retentionUntil()))
+        .param("closeNote", close.closeNote())
         .param("id", requestId)
         .update();
   }
@@ -407,7 +410,8 @@ public class OpsPrivacyRecordRepository {
         rs.getString("recorder_name"),
         rs.getObject("approved_by_operator_id", Long.class),
         instant(rs.getTimestamp("closed_at")),
-        date(rs.getDate("retention_until")));
+        date(rs.getDate("retention_until")),
+        rs.getString("close_note"));
   }
 
   private static ContractCopyRow mapCopy(ResultSet rs, int row) throws SQLException {

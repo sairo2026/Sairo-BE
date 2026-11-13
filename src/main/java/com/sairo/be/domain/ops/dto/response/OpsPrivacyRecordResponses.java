@@ -83,7 +83,8 @@ public final class OpsPrivacyRecordResponses {
       Long recordedByOperatorId,
       Long approvedByOperatorId,
       OffsetDateTime closedAt,
-      LocalDate retentionUntil) {}
+      LocalDate retentionUntil,
+      @Schema(description = "종결 메모. 종결 때 적지 않았으면 비어 있다", nullable = true) String closeNote) {}
 
   @Schema(description = "공급자 계약서 사본 목록 항목. 저장 위치는 담지 않는다")
   public record ProviderContractCopyItem(

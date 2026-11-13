@@ -27,20 +27,27 @@ public class LegalRetentionJobService {
   public static final String SWEEP_JOB = "retention-sweep";
   public static final String ANONYMIZE_JOB = "approver-anonymize";
   public static final String LINK_LOG_PURGE_JOB = "legal-link-log-purge";
-  public static final Set<String> JOBS = Set.of(SWEEP_JOB, ANONYMIZE_JOB, LINK_LOG_PURGE_JOB);
+  public static final String APPROVER_PHONE_ENCRYPT_JOB = "approver-phone-encrypt";
+  public static final Set<String> JOBS =
+      Set.of(SWEEP_JOB, ANONYMIZE_JOB, LINK_LOG_PURGE_JOB, APPROVER_PHONE_ENCRYPT_JOB);
 
   private static final Map<String, Duration> SCHEDULED_AT =
       Map.of(
           SWEEP_JOB, Duration.ofMinutes(3 * 60 + 10),
           ANONYMIZE_JOB, Duration.ofMinutes(3 * 60 + 20),
-          LINK_LOG_PURGE_JOB, Duration.ofMinutes(3 * 60 + 30));
+          LINK_LOG_PURGE_JOB, Duration.ofMinutes(3 * 60 + 30),
+          APPROVER_PHONE_ENCRYPT_JOB, Duration.ofMinutes(3 * 60 + 40));
 
   private final LegalRetentionBatchService batchService;
+  private final ApproverPhoneEncryptService phoneEncryptService;
   private final SystemJobRunService jobRunService;
 
   public LegalRetentionJobService(
-      LegalRetentionBatchService batchService, SystemJobRunService jobRunService) {
+      LegalRetentionBatchService batchService,
+      ApproverPhoneEncryptService phoneEncryptService,
+      SystemJobRunService jobRunService) {
     this.batchService = batchService;
+    this.phoneEncryptService = phoneEncryptService;
     this.jobRunService = jobRunService;
   }
 
@@ -85,6 +92,8 @@ public class LegalRetentionJobService {
           };
       case LINK_LOG_PURGE_JOB ->
           () -> log.info("비회원 링크 접속 로그 삭제: {}건", batchService.purgeLinkAccessLogs());
+      case APPROVER_PHONE_ENCRYPT_JOB ->
+          () -> log.info("승인자 연락처 암호화: {}건", phoneEncryptService.encryptPlainRows());
       default -> throw new IllegalArgumentException("알 수 없는 법률 배치다: " + jobName);
     };
   }

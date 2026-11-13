@@ -246,14 +246,11 @@ public class OpsDeletionQueueService {
     Instant now = now();
     Instant backup = body.backupExpiresAt() == null ? null : body.backupExpiresAt().toInstant();
     String result = success ? SUCCESS : FAILED;
-    repository.verified(queueId, result, results, backup, operatorId, success ? now : null);
+    String evidence = body.evidence().strip();
+    repository.verified(
+        queueId, result, results, backup, operatorId, success ? now : null, evidence);
     auditLog.insert(
-        operatorId,
-        "DELETION_QUEUE_VERIFIED",
-        TARGET,
-        queueId,
-        result + ", 증빙 " + body.evidence().strip(),
-        now);
+        operatorId, "DELETION_QUEUE_VERIFIED", TARGET, queueId, result + ", 증빙 " + evidence, now);
     return new DeletionQueueVerifyResponse(
         queueId,
         result,
@@ -318,6 +315,7 @@ public class OpsDeletionQueueService {
         toDisplayOffset(row.exclusionReviewedAt()),
         row.verifiedByOperatorId(),
         toDisplayOffset(row.verifiedAt()),
+        row.verificationEvidence(),
         toDisplayOffset(row.cancelledAt()),
         row.cancelledByOperatorId(),
         row.cancelReason(),

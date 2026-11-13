@@ -16,6 +16,7 @@ import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.security.StaffPrincipal;
+import com.sairo.be.global.support.ApproverPhoneCipher;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.PageResponse;
 import com.sairo.be.global.support.PhoneNumbers;
@@ -58,6 +59,7 @@ public class PropertyAccessApprovalService {
   private final PropertyAccessApprovalRepository approvalRepository;
   private final MembershipNameRepository nameRepository;
   private final ApproverPhoneHasher phoneHasher;
+  private final ApproverPhoneCipher phoneCipher;
   private final RetentionRuleLookup retentionRules;
   private final Clock clock;
 
@@ -67,6 +69,7 @@ public class PropertyAccessApprovalService {
       PropertyAccessApprovalRepository approvalRepository,
       MembershipNameRepository nameRepository,
       ApproverPhoneHasher phoneHasher,
+      ApproverPhoneCipher phoneCipher,
       RetentionRuleLookup retentionRules,
       Clock clock) {
     this.propertyGuard = propertyGuard;
@@ -74,6 +77,7 @@ public class PropertyAccessApprovalService {
     this.approvalRepository = approvalRepository;
     this.nameRepository = nameRepository;
     this.phoneHasher = phoneHasher;
+    this.phoneCipher = phoneCipher;
     this.retentionRules = retentionRules;
     this.clock = clock;
   }
@@ -97,7 +101,7 @@ public class PropertyAccessApprovalService {
                 propertyId,
                 input.type(),
                 input.name(),
-                input.phone(),
+                phoneCipher.encrypt(input.phone()),
                 input.phone() == null ? null : phoneHasher.hash(input.phone()),
                 input.role(),
                 input.validFrom(),
@@ -112,7 +116,7 @@ public class PropertyAccessApprovalService {
         propertyId,
         saved.getApproverType().name(),
         saved.getApproverName(),
-        saved.getApproverPhone(),
+        input.phone(),
         saved.getApprovalRole().name(),
         TimeRules.toDisplayOffset(saved.getValidFrom()),
         TimeRules.toDisplayOffset(saved.getValidUntil()),
@@ -149,14 +153,14 @@ public class PropertyAccessApprovalService {
     return PageResponse.from(page, approval -> historyItem(approval, names));
   }
 
-  private static AccessApprovalHistoryItem historyItem(
+  private AccessApprovalHistoryItem historyItem(
       PropertyAccessApproval approval, Map<Long, String> names) {
     return new AccessApprovalHistoryItem(
         approval.getId(),
         approval.getPropertyId(),
         approval.getApproverType().name(),
         approval.getApproverName(),
-        approval.getApproverPhone(),
+        phoneCipher.decrypt(approval.getApproverPhoneEncrypted()),
         approval.getApprovalRole().name(),
         TimeRules.toDisplayOffset(approval.getValidFrom()),
         TimeRules.toDisplayOffset(approval.getValidUntil()),

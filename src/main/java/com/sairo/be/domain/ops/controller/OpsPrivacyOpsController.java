@@ -16,6 +16,7 @@ import com.sairo.be.global.security.OperatorRole;
 import com.sairo.be.global.security.access.AccessPermission;
 import com.sairo.be.global.security.access.RequiresAccess;
 import com.sairo.be.global.security.access.RequiresOperatorRole;
+import com.sairo.be.global.support.IfMatchVersion;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -78,13 +80,16 @@ public class OpsPrivacyOpsController {
 
   @Operation(
       summary = "개인정보 권리 요청 처리 기록",
-      description = "전달·협조요청·보완·승인·제한·거절·실행·완료를 기록한다. 보완 대기는 법정 기한을 멈추지 않는다.")
+      description =
+          "전달·협조요청·보완·승인·제한·거절·실행·완료를 기록한다. If-Match에 상세의 version을 보내고 다르면 409 VERSION_CONFLICT다. 보완 대기는 법정 기한을 멈추지 않는다.")
   @PostMapping("/privacy-requests/{requestId}/process")
   public PrivacyRequestProcessResponse process(
       @PathVariable Long requestId,
+      @RequestHeader(value = "If-Match", required = false) String ifMatch,
       @Valid @RequestBody PrivacyRequestProcessRequest request,
       @AuthenticationPrincipal OperatorPrincipal principal) {
-    return service.process(principal.operatorId(), requestId, request);
+    return service.process(
+        principal.operatorId(), requestId, IfMatchVersion.parse(ifMatch), request);
   }
 
   @Operation(summary = "반환권한 현황", description = "officeId·activeOnly로 거르고 최근 발급 순으로 보인다.")
