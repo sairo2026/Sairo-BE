@@ -6,9 +6,15 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.LongSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 파기 큐 대상별 저장소 대상 산정과 실행이다(OPS-13). 회원 탈퇴(MEMBER)와 보관 기한 만료 데이터군({@link RetentionDeletionTargets})의
@@ -18,6 +24,8 @@ import org.springframework.stereotype.Service;
 @Profile("!migrate")
 @Service
 public class DeletionTargetService {
+
+  private static final Logger log = LoggerFactory.getLogger(DeletionTargetService.class);
 
   public static final String RESULT_SUCCESS = "SUCCESS";
   public static final String RESULT_FAILED = "FAILED";
@@ -65,20 +73,37 @@ public class DeletionTargetService {
   private final JdbcClient jdbcClient;
   private final ObjectStorage objectStorage;
   private final RetentionDeletionTargets retentionTargets;
+  private final OfficeDataPurger officeDataPurger;
+  private final PlatformTransactionManager transactionManager;
   private final Clock clock;
 
   public DeletionTargetService(
       JdbcClient jdbcClient,
       ObjectStorage objectStorage,
       RetentionDeletionTargets retentionTargets,
+      OfficeDataPurger officeDataPurger,
+      PlatformTransactionManager transactionManager,
       Clock clock) {
     this.jdbcClient = jdbcClient;
     this.objectStorage = objectStorage;
     this.retentionTargets = retentionTargets;
+    this.officeDataPurger = officeDataPurger;
+    this.transactionManager = transactionManager;
     this.clock = clock;
   }
 
   public Plan plan(String targetType, long targetId, Instant now) {
+    if (officeDataPurger.supports(targetType)) {
+      long due = officeDataPurger.dueCount(targetId);
+      return new Plan(
+          true,
+          due == 0 ? List.of() : List.of(new Target(targetType, targetId)),
+          List.of(),
+          List.of(),
+          List.of(),
+          officeDataPurger.holdReasons(targetId, now),
+          due);
+    }
     if (retentionTargets.supports(targetType)) {
       long due = retentionTargets.dueCount(targetType, targetId, now);
       return new Plan(
@@ -131,6 +156,13 @@ public class DeletionTargetService {
 
   /** 계획한 대상을 지운다. 회원이 탈퇴 상태가 아니면 운영 저장소는 건드리지 않고 실패로 남긴다. */
   public Outcome execute(String targetType, long targetId, Plan plan) {
+    if (officeDataPurger.supports(targetType)) {
+      return isolated(targetType, () -> officeDataPurger.execute(targetId, clock.instant()));
+    }
+    if (RetentionGroupPurger.TYPES.contains(targetType)) {
+      return isolated(
+          targetType, () -> retentionTargets.execute(targetType, targetId, clock.instant()));
+    }
     if (retentionTargets.supports(targetType)) {
       retentionTargets.execute(targetType, targetId, clock.instant());
       return new Outcome(RESULT_SUCCESS, RESULT_SUCCESS, RESULT_SUCCESS, RESULT_SUCCESS);
@@ -174,6 +206,19 @@ public class DeletionTargetService {
       }
     }
     return new Outcome(storage, RESULT_SUCCESS, RESULT_SUCCESS, exports);
+  }
+
+  /** 별도 트랜잭션에서 실행하고 실패하면 아무것도 지우지 않고 저장소 결과를 실패로 돌려준다. */
+  private Outcome isolated(String targetType, LongSupplier work) {
+    TransactionTemplate template = new TransactionTemplate(transactionManager);
+    template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    try {
+      template.execute(status -> work.getAsLong());
+      return new Outcome(RESULT_SUCCESS, RESULT_SUCCESS, RESULT_SUCCESS, RESULT_SUCCESS);
+    } catch (RuntimeException e) {
+      log.warn("파기 실행 실패 targetType={} error={}", targetType, e.getClass().getSimpleName());
+      return new Outcome(RESULT_FAILED, RESULT_SUCCESS, RESULT_SUCCESS, RESULT_SUCCESS);
+    }
   }
 
   private List<String> memberExportKeys(long userId) {
