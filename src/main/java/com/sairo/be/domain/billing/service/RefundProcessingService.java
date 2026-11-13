@@ -48,6 +48,7 @@ public class RefundProcessingService {
   private final TokenGenerator tokenGenerator;
   private final AdvisoryLock advisoryLock;
   private final TransactionTemplate transactionTemplate;
+  private final BillingNoticeDispatcher noticeDispatcher;
   private final Clock clock;
 
   public RefundProcessingService(
@@ -58,6 +59,7 @@ public class RefundProcessingService {
       TokenGenerator tokenGenerator,
       AdvisoryLock advisoryLock,
       TransactionTemplate transactionTemplate,
+      BillingNoticeDispatcher noticeDispatcher,
       Clock clock) {
     this.refundRepository = refundRepository;
     this.invoiceRepository = invoiceRepository;
@@ -66,6 +68,7 @@ public class RefundProcessingService {
     this.tokenGenerator = tokenGenerator;
     this.advisoryLock = advisoryLock;
     this.transactionTemplate = transactionTemplate;
+    this.noticeDispatcher = noticeDispatcher;
     this.clock = clock;
   }
 
@@ -83,7 +86,9 @@ public class RefundProcessingService {
     }
     if (!command.approve()) {
       refund.reject(operatorId, command.note(), now);
-      return refundRepository.saveAndFlush(refund);
+      RefundRequest rejected = refundRepository.saveAndFlush(refund);
+      noticeDispatcher.refundRejected(rejected.getOfficeId(), command.note());
+      return rejected;
     }
     if (refund.getReasonEventId() == null && command.reasonEventId() == null) {
       throw invalidEvent(FieldErrorCode.REQUIRED, "사유 사건 ID가 없는 신청은 승인할 때 사건 ID를 채워야 합니다.");
@@ -128,7 +133,10 @@ public class RefundProcessingService {
       refund.adjustForApproval(reserved, command.amount());
     }
     refund.approve(operatorId, now);
-    return refundRepository.saveAndFlush(refund);
+    RefundRequest approved = refundRepository.saveAndFlush(refund);
+    noticeDispatcher.refundApproved(
+        approved.getOfficeId(), approved.getRefundAmount(), calculationBasis(approved));
+    return approved;
   }
 
   /** 실행 전 상태 검사다. 단계 재인증 검사보다 먼저 404를 가리기 위해 호출 쪽이 먼저 부른다. */
@@ -187,10 +195,12 @@ public class RefundProcessingService {
         BillingInvoice invoice = invoiceRepository.findById(refund.getInvoiceId()).orElseThrow();
         invoice.applyRefunded(refundRepository.sumCompleted(invoice.getId()));
         invoiceRepository.saveAndFlush(invoice);
+        noticeDispatcher.refundCompleted(refund.getOfficeId(), refund.getRefundAmount());
       }
       case FAILED -> {
         refund.markFailed(failureReason(result.failureCode()), now);
         refundRepository.saveAndFlush(refund);
+        noticeDispatcher.refundFailed(refund.getOfficeId());
       }
       case VERIFYING -> {
         refund.markVerifying(result.paymentKey());
@@ -198,6 +208,14 @@ public class RefundProcessingService {
       }
     }
     return refund;
+  }
+
+  private static String calculationBasis(RefundRequest refund) {
+    return String.format(
+        "결제 금액 %,d원, 환불 권리액 %,d원, 앞서 환불한 금액 %,d원",
+        refund.getOriginalApprovedAmount(),
+        refund.getEntitlementAmount(),
+        refund.getPreviousRefundAmount());
   }
 
   private RefundRequest lockedRefund(long refundId) {

@@ -484,12 +484,50 @@ class OpsContentIntegrationTest extends OpsConsoleTestBase {
     assertError(
         post(POLICIES + "/" + terms + "/submit-review", "", opsSession),
         ErrorCode.INVALID_TRANSITION);
+    Long recipient =
+        jdbcTemplate.queryForObject(
+            "INSERT INTO app_user (kakao_provider_key, name) VALUES ('terms-notice-user', '고지 수신자')"
+                + " RETURNING id",
+            Long.class);
+    Long leaver =
+        jdbcTemplate.queryForObject(
+            "INSERT INTO app_user (kakao_provider_key, name, account_status, withdrawn_at) VALUES"
+                + " ('terms-notice-leaver', '탈퇴 회원', 'WITHDRAWN', now()) RETURNING id",
+            Long.class);
     post(POLICIES + "/" + terms + "/publish", "", opsSession)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("PUBLISHED"))
         .andExpect(jsonPath("$.publishedAt").isNotEmpty());
     assertError(
         post(POLICIES + "/" + terms + "/publish", "", opsSession), ErrorCode.INVALID_TRANSITION);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM notification WHERE notification_type = 'TERMS_CHANGED' AND"
+                    + " recipient_user_id = ? AND target_type = 'NONE'",
+                Long.class,
+                recipient))
+        .isEqualTo(1L);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM notification WHERE recipient_user_id = ?",
+                Long.class,
+                leaver))
+        .isZero();
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM notification_delivery d JOIN notification n ON n.id ="
+                    + " d.notification_id WHERE n.recipient_user_id = ? AND d.channel = 'EMAIL'"
+                    + " AND d.status = 'PENDING'",
+                Long.class,
+                recipient))
+        .isEqualTo(1L);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM system_job_run WHERE idempotency_key = ? AND status ="
+                    + " 'SUCCESS'",
+                Long.class,
+                "terms-change-notice:" + terms))
+        .isEqualTo(1L);
 
     long pricing =
         createPolicy(

@@ -2,6 +2,7 @@ package com.sairo.be.domain.home.service;
 
 import com.sairo.be.domain.home.entity.NotificationTargetType;
 import com.sairo.be.domain.home.entity.NotificationType;
+import com.sairo.be.domain.home.repository.NotificationDeliveryRepository;
 import com.sairo.be.domain.home.repository.NotificationRepository;
 import com.sairo.be.global.port.NotificationChannelSender;
 import com.sairo.be.global.port.NotificationChannelSender.Delivery;
@@ -31,14 +32,17 @@ public class NotificationPublisherService implements NotificationPublisher {
   private static final Logger log = LoggerFactory.getLogger(NotificationPublisherService.class);
 
   private final NotificationRepository repository;
+  private final NotificationDeliveryRepository deliveryRepository;
   private final ObjectProvider<NotificationChannelSender> channelSender;
   private final Clock clock;
 
   public NotificationPublisherService(
       NotificationRepository repository,
+      NotificationDeliveryRepository deliveryRepository,
       ObjectProvider<NotificationChannelSender> channelSender,
       Clock clock) {
     this.repository = repository;
+    this.deliveryRepository = deliveryRepository;
     this.channelSender = channelSender;
     this.clock = clock;
   }
@@ -69,6 +73,9 @@ public class NotificationPublisherService implements NotificationPublisher {
             target.name(),
             notice.targetId(),
             clock.instant());
+    if (type.deliversByEmail()) {
+      deliveryRepository.enqueue(id, NotificationDeliveryService.EMAIL, clock.instant());
+    }
     Delivery delivery = new Delivery(id, notice.recipientUserId(), type.name(), message);
     AfterCommit.run(() -> deliver(delivery));
     return Optional.of(id);
