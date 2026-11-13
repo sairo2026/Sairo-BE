@@ -22,6 +22,17 @@ class OperatorLoginIntegrationTest extends OpsIntegrationTestBase {
 
   private static final String KAKAO_ID = "7001001";
 
+  private static void assertInvalidRedirect(
+      org.springframework.test.web.servlet.ResultActions result) throws Exception {
+    result
+        .andExpect(status().isFound())
+        .andExpect(
+            header()
+                .string(
+                    "Location",
+                    org.hamcrest.Matchers.endsWith("/ops/login?error=INVALID_REQUEST")));
+  }
+
   private Cookie pendingCookie(String kakaoId) throws Exception {
     OpsStart start = startOps("/api/ops/auth/kakao/start");
     assertThat(start.location()).endsWith("flow=OPERATOR");
@@ -102,27 +113,24 @@ class OperatorLoginIntegrationTest extends OpsIntegrationTestBase {
   }
 
   @Test
-  void 콜백은_state나_코드가_틀리면_400이다() throws Exception {
+  void 콜백은_state나_코드가_틀리면_로그인_화면으로_302_이동한다() throws Exception {
     createOperator(KAKAO_ID, "김운영", OperatorRole.OPS);
     OpsStart start = startOps("/api/ops/auth/kakao/start");
-    assertError(
+    assertInvalidRedirect(
         mockMvc.perform(
             get("/api/ops/auth/kakao/callback")
                 .cookie(start.cookie())
                 .param("code", KAKAO_ID)
-                .param("state", "wrong-state")),
-        ErrorCode.INVALID_REQUEST);
+                .param("state", "wrong-state")));
     OpsStart second = startOps("/api/ops/auth/kakao/start");
-    assertError(
+    assertInvalidRedirect(
         mockMvc.perform(
             get("/api/ops/auth/kakao/callback")
                 .cookie(second.cookie())
                 .param("state", second.state())
-                .param("error", "access_denied")),
-        ErrorCode.INVALID_REQUEST);
-    assertError(
-        mockMvc.perform(get("/api/ops/auth/kakao/callback").param("code", KAKAO_ID)),
-        ErrorCode.INVALID_REQUEST);
+                .param("error", "access_denied")));
+    assertInvalidRedirect(
+        mockMvc.perform(get("/api/ops/auth/kakao/callback").param("code", KAKAO_ID)));
   }
 
   @Test
