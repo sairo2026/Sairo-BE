@@ -39,6 +39,7 @@ class OperatorInvitationIntegrationTest extends OpsIntegrationTestBase {
     String url = json(result).get("authorizationUrl").asString();
     Matcher matcher = Pattern.compile("state=([A-Za-z0-9_-]+)").matcher(url);
     assertThat(matcher.find()).isTrue();
+    assertThat(url).endsWith("flow=OPERATOR_INVITATION");
     return new OpsStart(opsCookieOf(result), matcher.group(1), url);
   }
 

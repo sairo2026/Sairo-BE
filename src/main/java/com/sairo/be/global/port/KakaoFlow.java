@@ -4,5 +4,6 @@ public enum KakaoFlow {
   LOGIN,
   LINK,
   STEP_UP,
-  OPERATOR
+  OPERATOR,
+  OPERATOR_INVITATION
 }

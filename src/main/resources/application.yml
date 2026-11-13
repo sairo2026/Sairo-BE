@@ -37,6 +37,7 @@ kakao:
   step-up-redirect-uri: ${KAKAO_STEP_UP_REDIRECT_URI:}
   link-redirect-uri: ${KAKAO_LINK_REDIRECT_URI:}
   operator-redirect-uri: ${KAKAO_OPERATOR_REDIRECT_URI:}
+  operator-invitation-redirect-uri: ${KAKAO_OPERATOR_INVITATION_REDIRECT_URI:}
 
 sairo:
   public-link:
