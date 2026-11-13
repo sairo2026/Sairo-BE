@@ -13,6 +13,7 @@ import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.access.AccessPermission;
+import com.sairo.be.global.security.access.RedirectOnUnauthenticated;
 import com.sairo.be.global.security.access.RequiresAccess;
 import com.sairo.be.global.web.ClientRequestInfo;
 import io.swagger.v3.oas.annotations.Operation;
@@ -99,6 +100,7 @@ public class PasswordStepUpController {
 
   @Operation(summary = "카카오 재인증 콜백", description = "현재 회원과 같은 카카오 계정이면 10분 재인증 상태를 기록한다.")
   @RequiresAccess(AccessPermission.AUTHENTICATED)
+  @RedirectOnUnauthenticated("/auth/kakao/step-up/callback")
   @GetMapping("/step-up/kakao/callback")
   public void kakaoStepUpCallback(
       @RequestParam(required = false) String code,

@@ -106,6 +106,22 @@ class StepUpIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
+  void 세션이_없으면_카카오_재인증_콜백은_오류_쿼리를_붙여_302로_보낸다() throws Exception {
+    String location =
+        mockMvc
+            .perform(
+                get("/api/auth/step-up/kakao/callback")
+                    .param("code", "7001001")
+                    .param("state", "any"))
+            .andExpect(status().isFound())
+            .andReturn()
+            .getResponse()
+            .getHeader("Location");
+
+    assertThat(location).endsWith("/auth/kakao/step-up/callback?error=UNAUTHENTICATED");
+  }
+
+  @Test
   void 카카오_재인증은_같은_카카오_계정이면_10분_상태를_기록한다() throws Exception {
     AppUser user =
         appUserRepository.saveAndFlush(
