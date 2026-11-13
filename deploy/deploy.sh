@@ -193,8 +193,7 @@ umask 077
     echo "SAIRO_BATCH_ENABLED=${SAIRO_BATCH_ENABLED}"
   fi
   if [[ ${#COMPANY_ENV_LINES[@]} -gt 0 ]]; then
-    printf '%s
-' "${COMPANY_ENV_LINES[@]}"
+    printf '%s\n' "${COMPANY_ENV_LINES[@]}"
   fi
 } > "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
