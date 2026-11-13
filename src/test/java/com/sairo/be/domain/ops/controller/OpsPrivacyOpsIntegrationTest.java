@@ -1,6 +1,7 @@
 package com.sairo.be.domain.ops.controller;
 
 import static com.sairo.be.support.AuthFlowSupport.json;
+import static com.sairo.be.support.AuthFlowSupport.jsonPost;
 import static com.sairo.be.support.ErrorResponseAssertions.assertError;
 import static com.sairo.be.support.ErrorResponseAssertions.assertFieldError;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,6 +25,21 @@ class OpsPrivacyOpsIntegrationTest extends OpsConsoleTestBase {
 
   private ResultActions read(String path, Cookie cookie) throws Exception {
     return mockMvc.perform(cookie == null ? get(path) : get(path).cookie(cookie));
+  }
+
+  /** 권리 요청 처리 요청에는 저장된 현재 version을 If-Match로 붙인다. 없는 요청에는 1을 보낸다. */
+  @Override
+  protected ResultActions post(String path, String body, Cookie cookie) throws Exception {
+    if (cookie == null || !path.endsWith("/process")) {
+      return super.post(path, body, cookie);
+    }
+    String id = path.replaceAll(".*/privacy-requests/(\\d+)/process", "$1");
+    List<Long> versions =
+        jdbcTemplate.queryForList(
+            "SELECT version FROM privacy_request WHERE id = ?", Long.class, Long.valueOf(id));
+    return mockMvc.perform(
+        jsonPost(path, body, cookie)
+            .header("If-Match", versions.isEmpty() ? "1" : String.valueOf(versions.get(0))));
   }
 
   private long insertRequest(long userId, String identity, String status, String dueSql) {
@@ -194,7 +210,7 @@ class OpsPrivacyOpsIntegrationTest extends OpsConsoleTestBase {
     assertThat(detail.get("events").get(0).get("eventType").asString())
         .isEqualTo("REQUEST_SUPPLEMENT");
     assertThat(detail.get("events").get(0).get("actorOperatorName").asString()).isEqualTo("개인정보담당");
-    assertThat(detail.get("version").longValue()).isEqualTo(5);
+    assertThat(detail.get("version").longValue()).isEqualTo(6);
     assertThat(detail.get("allowedActions")).isEmpty();
     assertThat(auditCount("PRIVACY_REQUEST_PROCESSED")).isEqualTo(5);
 

@@ -44,6 +44,7 @@ public class OpsDeletionQueueRepository {
       int retryCount,
       Long verifiedByOperatorId,
       Instant verifiedAt,
+      String verificationEvidence,
       Instant createdAt) {}
 
   public record Filter(Long queueId, String state, String targetType, Long officeId) {}
@@ -57,8 +58,8 @@ public class OpsDeletionQueueRepository {
           + " target_count, excluded_count, result, exclusion_reason,"
           + " hold_approved_by_operator_id, hold_expires_at, exclusion_reviewed_at,"
           + " storage_result, search_index_result, file_result, temporary_export_result,"
-          + " backup_expires_at, retry_count, verified_by_operator_id, verified_at, created_at"
-          + " FROM deletion_queue";
+          + " backup_expires_at, retry_count, verified_by_operator_id, verified_at,"
+          + " verification_evidence, created_at FROM deletion_queue";
 
   private final JdbcClient jdbcClient;
 
@@ -152,7 +153,8 @@ public class OpsDeletionQueueRepository {
             "UPDATE deletion_queue SET executed_at = :now, executed_by_operator_id = :operator,"
                 + " result = NULL, storage_result = :storage, search_index_result = :search,"
                 + " file_result = :file, temporary_export_result = :export, retry_count = :retry,"
-                + " verified_by_operator_id = NULL, verified_at = NULL WHERE id = :id")
+                + " verified_by_operator_id = NULL, verified_at = NULL, verification_evidence ="
+                + " NULL WHERE id = :id")
         .param("now", Timestamp.from(now))
         .param("operator", operatorId)
         .param("storage", results.storage())
@@ -170,13 +172,14 @@ public class OpsDeletionQueueRepository {
       StorageResults results,
       Instant backupExpiresAt,
       Long verifiedBy,
-      Instant verifiedAt) {
+      Instant verifiedAt,
+      String evidence) {
     jdbcClient
         .sql(
             "UPDATE deletion_queue SET result = :result, storage_result = :storage,"
                 + " search_index_result = :search, file_result = :file, temporary_export_result ="
                 + " :export, backup_expires_at = :backup, verified_by_operator_id = :verifiedBy,"
-                + " verified_at = :verifiedAt WHERE id = :id")
+                + " verified_at = :verifiedAt, verification_evidence = :evidence WHERE id = :id")
         .param("result", result)
         .param("storage", results.storage())
         .param("search", results.searchIndex())
@@ -185,6 +188,7 @@ public class OpsDeletionQueueRepository {
         .param("backup", backupExpiresAt == null ? null : Timestamp.from(backupExpiresAt))
         .param("verifiedBy", verifiedBy)
         .param("verifiedAt", verifiedAt == null ? null : Timestamp.from(verifiedAt))
+        .param("evidence", evidence)
         .param("id", queueId)
         .update();
   }
@@ -260,6 +264,7 @@ public class OpsDeletionQueueRepository {
         rs.getInt("retry_count"),
         rs.getObject("verified_by_operator_id", Long.class),
         instant(rs, "verified_at"),
+        rs.getString("verification_evidence"),
         instant(rs, "created_at"));
   }
 

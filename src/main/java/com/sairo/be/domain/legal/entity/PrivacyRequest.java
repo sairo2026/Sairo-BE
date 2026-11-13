@@ -81,6 +81,9 @@ public class PrivacyRequest {
   @Column(name = "handler_type", nullable = false, length = 10)
   private PrivacyHandlerType handlerType;
 
+  @Column(nullable = false)
+  private long version = 1;
+
   public static PrivacyRequest receiveFromMember(
       Long requesterUserId,
       Long supportInquiryId,
@@ -135,6 +138,10 @@ public class PrivacyRequest {
     if (assignedOperatorId == null) {
       this.assignedOperatorId = operatorId;
     }
+  }
+
+  public void increaseVersion() {
+    this.version += 1;
   }
 
   public void recordIdentity(IdentityStatus identity) {

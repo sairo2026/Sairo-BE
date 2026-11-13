@@ -172,7 +172,7 @@ class PropertyLifecycleIntegrationTest extends PropertyIntegrationTestBase {
     long approval =
         jdbcTemplate.queryForObject(
             "INSERT INTO property_access_approval (property_id, approver_type, approver_name,"
-                + " approver_phone, valid_from, valid_until, source, retention_until) VALUES (?,"
+                + " approver_phone_encrypted, valid_from, valid_until, source, retention_until) VALUES (?,"
                 + " 'OWNER', '승인자', '010-1111-2222', now(), now() + interval '30 days',"
                 + " 'DIRECT', current_date + 365) RETURNING id",
             Long.class,

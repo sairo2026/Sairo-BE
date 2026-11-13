@@ -99,11 +99,14 @@ public class PrivacyRequestProcessService {
   }
 
   @Transactional
-  public Result process(long requestId, long operatorId, Command command) {
+  public Result process(long requestId, long operatorId, long expectedVersion, Command command) {
     PrivacyRequest request =
         requests
             .findForUpdateById(requestId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    if (request.getVersion() != expectedVersion) {
+      throw BusinessException.versionConflict(request.getVersion());
+    }
     PrivacyRequestStatus previous = request.getStatus();
     Action action = command.action();
     if (!allowedFrom(action).contains(previous)) {
@@ -125,6 +128,7 @@ public class PrivacyRequestProcessService {
       request.complete(command.evidenceReference(), now);
     }
     request.moveTo(next, operatorId);
+    request.increaseVersion();
     requests.save(request);
     PrivacyRequestEvent event =
         events.saveAndFlush(

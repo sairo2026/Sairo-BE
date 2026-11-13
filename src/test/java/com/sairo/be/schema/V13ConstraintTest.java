@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class V13ConstraintTest extends AbstractPostgresSchemaTest {
 
   private static final String APPROVAL_COLUMNS =
-      "(property_id, approver_type, approver_name, approver_phone, valid_from, valid_until,"
+      "(property_id, approver_type, approver_name, approver_phone_encrypted, valid_from, valid_until,"
           + " source, retention_until, anonymized_at, revoked_at, revocation_reason,"
           + " revocation_recorded_at, revoked_by_user_id)";
 

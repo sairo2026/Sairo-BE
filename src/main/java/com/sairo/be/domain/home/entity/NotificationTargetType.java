@@ -6,6 +6,7 @@ public enum NotificationTargetType {
   VISIT_COORDINATION,
   PROPERTY,
   CUSTOMER,
+  CONTRACT,
   SUBSCRIPTION,
   DATA_RETURN,
   SUPPORT_TICKET,

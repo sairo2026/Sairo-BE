@@ -283,7 +283,7 @@ class RawAccessIntegrationTest extends OpsConsoleTestBase {
     assertThat(
             count(
                 "SELECT count(*) FROM ops_raw_access_grant WHERE approval_request_id = ? AND"
-                    + " expires_at = executed_at + interval '60 minutes'",
+                    + " expires_at = executed_at + interval '30 minutes'",
                 id))
         .isEqualTo(1);
     assertError(post(execute, "", requesterSession), ErrorCode.INVALID_TRANSITION);

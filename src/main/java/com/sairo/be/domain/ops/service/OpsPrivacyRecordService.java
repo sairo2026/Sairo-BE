@@ -314,6 +314,7 @@ public class OpsPrivacyRecordService {
                 retentionRules
                     .retentionDays("AUTHORITY_REQUEST")
                     .orElse(AUTHORITY_RETENTION_DEFAULT_DAYS));
+    String note = blankToNull(body.closeNote());
     records.closeAuthorityRequest(
         requestId,
         new AuthorityClose(
@@ -323,14 +324,14 @@ public class OpsPrivacyRecordService {
             body.officeNoticeStatus(),
             providing ? operatorId : null,
             now,
-            retentionUntil));
-    String note = blankToNull(body.closeNote());
+            retentionUntil,
+            note));
     auditLog.insert(
         operatorId,
         "AUTHORITY_REQUEST_CLOSED",
         "AUTHORITY_REQUEST",
         requestId,
-        "decision=" + body.decision() + (note == null ? "" : " note=" + note),
+        "decision=" + body.decision(),
         now);
     return toAuthority(records.authorityRequest(requestId, false).orElseThrow());
   }
@@ -457,7 +458,8 @@ public class OpsPrivacyRecordService {
         row.recordedByOperatorId(),
         row.approvedByOperatorId(),
         toDisplayOffset(row.closedAt()),
-        row.retentionUntil());
+        row.retentionUntil(),
+        row.closeNote());
   }
 
   private static String blankToNull(String value) {
