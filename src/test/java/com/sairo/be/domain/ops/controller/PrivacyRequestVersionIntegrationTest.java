@@ -43,7 +43,11 @@ class PrivacyRequestVersionIntegrationTest extends OpsConsoleTestBase {
   }
 
   private ResultActions process(String ifMatch) throws Exception {
-    var request = jsonPost(detailPath + "/process", FORWARD, privacySession);
+    return process(FORWARD, ifMatch);
+  }
+
+  private ResultActions process(String body, String ifMatch) throws Exception {
+    var request = jsonPost(detailPath + "/process", body, privacySession);
     return mockMvc.perform(ifMatch == null ? request : request.header("If-Match", ifMatch));
   }
 
@@ -70,7 +74,8 @@ class PrivacyRequestVersionIntegrationTest extends OpsConsoleTestBase {
         .perform(get(detailPath).cookie(privacySession))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.version").value(2));
-    process("\"2\"").andExpect(status().isOk());
+    process("{\"action\":\"REQUEST_COOPERATION\",\"note\":\"협조 요청\"}", "\"2\"")
+        .andExpect(status().isOk());
     assertThat(storedVersion()).isEqualTo(3);
   }
 
