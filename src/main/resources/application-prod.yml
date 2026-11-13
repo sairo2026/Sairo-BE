@@ -21,6 +21,16 @@ kakao:
   operator-invitation-redirect-uri: ${KAKAO_OPERATOR_INVITATION_REDIRECT_URI}
 
 sairo:
+  delivery:
+    mail:
+      from: ${SAIRO_MAIL_FROM}
+    sms:
+      origination-identity: ${SAIRO_SMS_ORIGINATION_IDENTITY:}
+    storage:
+      bucket: ${SAIRO_STORAGE_BUCKET}
+    scanner:
+      host: ${SAIRO_SCANNER_HOST:scanner}
+      port: ${SAIRO_SCANNER_PORT:3310}
   session:
     approver-cookie-name: __Host-APPROVER_SESSION
   public-link:

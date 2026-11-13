@@ -42,6 +42,9 @@ KAKAO_STEP_UP_REDIRECT_URI="https://app.sairo.agency/api/auth/step-up/kakao/call
 KAKAO_LINK_REDIRECT_URI="https://app.sairo.agency/settings/login-methods/kakao-callback"
 KAKAO_OPERATOR_REDIRECT_URI="https://app.sairo.agency/api/ops/auth/kakao/callback"
 KAKAO_OPERATOR_INVITATION_REDIRECT_URI="https://app.sairo.agency/api/ops/auth/invitations/kakao/callback"
+SAIRO_MAIL_DOMAIN="sairo.agency"
+SAIRO_MAIL_FROM="noreply@${SAIRO_MAIL_DOMAIN}"
+SAIRO_STORAGE_BUCKET="sairo-prod-objects-$(aws sts get-caller-identity --query Account --output text)-${AWS_REGION}"
 
 echo "[deploy] fetching secrets from Secrets Manager"
 APP_SECRET_JSON=$(aws secretsmanager get-secret-value --region "${AWS_REGION}" \
@@ -148,6 +151,8 @@ umask 077
   echo "AUTH_UNSUBSCRIBE_SECRET=${AUTH_UNSUBSCRIBE_SECRET}"
   echo "AUTH_KAKAO_KEY_ENCRYPTION_SECRET=${AUTH_KAKAO_KEY_ENCRYPTION_SECRET}"
   echo "BILLING_KEY_ENCRYPTION_SECRET=${BILLING_KEY_ENCRYPTION_SECRET}"
+  echo "SAIRO_MAIL_FROM=${SAIRO_MAIL_FROM}"
+  echo "SAIRO_STORAGE_BUCKET=${SAIRO_STORAGE_BUCKET}"
 } > "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
