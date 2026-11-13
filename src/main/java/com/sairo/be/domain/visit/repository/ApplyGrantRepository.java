@@ -331,7 +331,7 @@ public class ApplyGrantRepository {
         .sql(
             "SELECT EXISTS (SELECT 1 FROM office o WHERE o.id = :office AND EXISTS (SELECT 1 FROM"
                 + " office_registration r WHERE r.resulting_office_id = o.id AND r.status ="
-                + " 'APPROVED'))")
+                + " 'APPROVED') AND o.closed_at IS NULL)")
         .param("office", officeId)
         .query(Boolean.class)
         .single();
