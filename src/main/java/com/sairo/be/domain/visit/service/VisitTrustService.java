@@ -14,6 +14,7 @@ import com.sairo.be.domain.visit.repository.VisitReviewRepository;
 import com.sairo.be.domain.visit.repository.VisitReviewRepository.Dispute;
 import com.sairo.be.domain.visit.repository.VisitReviewRepository.ReceivedRow;
 import com.sairo.be.domain.visit.repository.VisitReviewRepository.Review;
+import com.sairo.be.global.config.VisitReviewProperties;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
@@ -24,7 +25,6 @@ import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.PageResponse;
 import com.sairo.be.global.support.TimeRules;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -41,8 +41,6 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class VisitTrustService {
 
-  static final Duration DISPUTE_WINDOW = Duration.ofDays(30);
-  public static final int DISPUTE_TARGET_BUSINESS_DAYS = 7;
   private static final Set<String> RECEIVED_STATUSES = Set.of("ACTIVE", "DISPUTED", "REMOVED");
   private static final Set<String> DISPUTE_KEYS = Set.of("reasonCode", "reasonText");
   private static final Set<String> DISPUTE_REASONS =
@@ -53,6 +51,7 @@ public class VisitTrustService {
   private final MembershipNameRepository nameRepository;
   private final PropertyReferenceService propertyReferences;
   private final BusinessDayRepository businessDays;
+  private final VisitReviewProperties reviewPolicy;
   private final Clock clock;
 
   public VisitTrustService(
@@ -61,12 +60,14 @@ public class VisitTrustService {
       MembershipNameRepository nameRepository,
       PropertyReferenceService propertyReferences,
       BusinessDayRepository businessDays,
+      VisitReviewProperties reviewPolicy,
       Clock clock) {
     this.trustRepository = trustRepository;
     this.reviewRepository = reviewRepository;
     this.nameRepository = nameRepository;
     this.propertyReferences = propertyReferences;
     this.businessDays = businessDays;
+    this.reviewPolicy = reviewPolicy;
     this.clock = clock;
   }
 
@@ -125,7 +126,7 @@ public class VisitTrustService {
                   boolean canDispute =
                       "ACTIVE".equals(review.status())
                           && dispute == null
-                          && now.isBefore(review.lastRevisedAt().plus(DISPUTE_WINDOW))
+                          && now.isBefore(review.lastRevisedAt().plus(reviewPolicy.disputeWindow()))
                           && (review.reviewedMembershipId().equals(principal.membershipId())
                               || principal.role() == StaffRole.OWNER);
                   return new ReceivedReviewItem(
@@ -181,7 +182,7 @@ public class VisitTrustService {
       throw new BusinessException(ErrorCode.VISIT_REVIEW_LOCKED);
     }
     Instant now = now();
-    if (!now.isBefore(review.lastRevisedAt().plus(DISPUTE_WINDOW))) {
+    if (!now.isBefore(review.lastRevisedAt().plus(reviewPolicy.disputeWindow()))) {
       throw new BusinessException(ErrorCode.VISIT_REVIEW_DISPUTE_WINDOW_CLOSED);
     }
     Long disputeId =
@@ -194,7 +195,9 @@ public class VisitTrustService {
         "OPEN",
         reasonCode,
         TimeRules.toDisplayOffset(now),
-        TimeRules.toDisplayOffset(businessDays.dueAfter(now, DISPUTE_TARGET_BUSINESS_DAYS)),
+        TimeRules.toDisplayOffset(
+            businessDays.dueAfter(
+                now, reviewPolicy.disputeTargetBusinessDays(), reviewPolicy.disputeDueTime())),
         "DISPUTED");
   }
 

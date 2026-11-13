@@ -285,4 +285,22 @@ class PrivacyRequestIntegrationTest extends DeskIntegrationTestBase {
         getAs("/api/privacy-requests/99999", member.cookie()), ErrorCode.RESOURCE_NOT_FOUND);
     assertError(getAs("/api/privacy-requests/abc", member.cookie()), ErrorCode.INVALID_REQUEST);
   }
+
+  @Test
+  void 요청_본문이나_범위에_주민등록번호_형식이_있으면_400_SENSITIVE_DATA_DETECTED다() throws Exception {
+    Member member = newMember("a@example.com");
+
+    assertError(
+        postJson(
+            "/api/privacy-requests", body("ACCESS", "주민번호 900101-1234567 확인"), member.cookie()),
+        ErrorCode.SENSITIVE_DATA_DETECTED);
+    assertError(
+        postJson(
+            "/api/privacy-requests",
+            "{\"requestType\":\"ACCESS\",\"content\":\"요청\",\"requestScope\":\"8001016234567\"}",
+            member.cookie()),
+        ErrorCode.SENSITIVE_DATA_DETECTED);
+    assertThat(count("privacy_request")).isZero();
+    assertThat(count("support_inquiry")).isZero();
+  }
 }

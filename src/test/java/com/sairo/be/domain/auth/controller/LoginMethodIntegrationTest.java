@@ -120,6 +120,11 @@ class LoginMethodIntegrationTest extends AuthIntegrationTestBase {
             jsonPost("/api/me/login-methods/email", linkBody(ticket, "😀".repeat(13)), session)),
         "password",
         "TOO_LONG");
+    assertFieldError(
+        mockMvc.perform(
+            jsonPost("/api/me/login-methods/email", linkBody(ticket, " ".repeat(8)), session)),
+        "password",
+        "REQUIRED");
     mockMvc
         .perform(jsonPost("/api/me/login-methods/email", linkBody(ticket, "😀".repeat(8)), session))
         .andExpect(status().isOk());

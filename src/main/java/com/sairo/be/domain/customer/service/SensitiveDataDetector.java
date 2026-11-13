@@ -14,6 +14,10 @@ public final class SensitiveDataDetector {
 
   private SensitiveDataDetector() {}
 
+  public static boolean detectIdentityNumber(String text) {
+    return text != null && !text.isEmpty() && RESIDENT_NUMBER.matcher(text).find();
+  }
+
   public static boolean detect(String text) {
     if (text == null || text.isEmpty()) {
       return false;

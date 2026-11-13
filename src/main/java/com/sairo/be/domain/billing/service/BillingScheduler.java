@@ -1,6 +1,7 @@
 package com.sairo.be.domain.billing.service;
 
 import java.time.Clock;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -28,6 +29,7 @@ public class BillingScheduler {
   }
 
   @Scheduled(fixedDelayString = "PT5M")
+  @SchedulerLock(name = "billing-cycle", lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M")
   public void run() {
     activationService.activateDue(clock.instant());
     jobService.runAll(clock.instant());

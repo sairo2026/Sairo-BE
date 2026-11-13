@@ -11,6 +11,7 @@ import com.sairo.be.domain.visit.repository.PreferredBrokerRepository.Candidate;
 import com.sairo.be.domain.visit.repository.PreferredBrokerRepository.Preferred;
 import com.sairo.be.domain.visit.repository.PreferredBrokerRepository.Source;
 import com.sairo.be.domain.visit.service.ApproverReviewContext.Opened;
+import com.sairo.be.global.config.VisitReviewProperties;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
@@ -33,7 +34,6 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class PreferredBrokerService {
 
-  public static final int MAX_ACTIVE = 5;
   private static final Set<String> KEYS =
       Set.of("sourceRequestId", "sourceScheduleItemId", "acknowledgedNoticeVersion");
 
@@ -42,6 +42,7 @@ public class PreferredBrokerService {
   private final PreferredBrokerRepository preferredRepository;
   private final MembershipNameRepository nameRepository;
   private final AdvisoryLock advisoryLock;
+  private final VisitReviewProperties reviewPolicy;
   private final Clock clock;
 
   public PreferredBrokerService(
@@ -50,12 +51,14 @@ public class PreferredBrokerService {
       PreferredBrokerRepository preferredRepository,
       MembershipNameRepository nameRepository,
       AdvisoryLock advisoryLock,
+      VisitReviewProperties reviewPolicy,
       Clock clock) {
     this.context = context;
     this.reviewService = reviewService;
     this.preferredRepository = preferredRepository;
     this.nameRepository = nameRepository;
     this.advisoryLock = advisoryLock;
+    this.reviewPolicy = reviewPolicy;
     this.clock = clock;
   }
 
@@ -100,7 +103,7 @@ public class PreferredBrokerService {
                         names.getOrDefault(c.membershipId(), "")))
             .toList();
     return new ApproverPreferredBrokerListResponse(
-        MAX_ACTIVE, items, candidateItems, reviewService.notice());
+        reviewPolicy.preferredBrokerLimit(), items, candidateItems, reviewService.notice());
   }
 
   @Transactional
@@ -134,7 +137,7 @@ public class PreferredBrokerService {
     if (preferredRepository.isActive(approvalId, source.membershipId())) {
       throw new BusinessException(ErrorCode.PREFERRED_BROKER_DUPLICATE);
     }
-    if (preferredRepository.countActive(approvalId) >= MAX_ACTIVE) {
+    if (preferredRepository.countActive(approvalId) >= reviewPolicy.preferredBrokerLimit()) {
       throw new BusinessException(ErrorCode.PREFERRED_BROKER_LIMIT_EXCEEDED);
     }
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);

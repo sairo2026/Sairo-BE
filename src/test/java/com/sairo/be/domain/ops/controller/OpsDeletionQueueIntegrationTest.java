@@ -309,4 +309,71 @@ class OpsDeletionQueueIntegrationTest extends OpsConsoleTestBase {
     assertError(post(BASE + "/" + future + "/execute", "", cookie), ErrorCode.INVALID_TRANSITION);
     assertThat(count("SELECT count(*) FROM app_user WHERE name = '탈퇴한 구성원'")).isZero();
   }
+
+  @Test
+  void 회원_파기는_소속_행을_남기고_자격_번호를_비운다() throws Exception {
+    TestData.Staff staff = staff(OfficeMembershipRole.AGENT);
+    TestData.Staff untouched = staff(OfficeMembershipRole.AGENT);
+    jdbcTemplate.update(
+        "UPDATE office_membership SET qualification_number = '11-2024-00001' WHERE id IN (?, ?)",
+        staff.membership().getId(),
+        untouched.membership().getId());
+    Cookie cookie = sessionOf(operator("실행담당", OperatorRole.PRIVACY));
+    long queueId = withdrawnMemberQueue(staff, null);
+    long userId = staff.user().getId();
+
+    JsonNode preview =
+        json(
+            read(BASE + "/" + queueId + "/preview", cookie).andExpect(status().isOk()).andReturn());
+    assertThat(preview.get("storageTargets").get(0).get("targetId").longValue()).isEqualTo(userId);
+    stepUp(cookie);
+    post(BASE + "/" + queueId + "/execute", "", cookie).andExpect(status().isAccepted());
+
+    assertThat(
+            count(
+                "SELECT count(*) FROM office_membership WHERE user_id = ? AND"
+                    + " qualification_number IS NULL",
+                userId))
+        .isEqualTo(1);
+    assertThat(count("SELECT count(*) FROM office_membership WHERE user_id = ?", userId))
+        .isEqualTo(1);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT qualification_number FROM office_membership WHERE id = ?",
+                String.class,
+                untouched.membership().getId()))
+        .isEqualTo("11-2024-00001");
+  }
+
+  @Test
+  void 식별_값을_이미_지운_회원도_소속_행에_자격_번호가_남아_있으면_파기_대상이다() throws Exception {
+    TestData.Staff staff = staff(OfficeMembershipRole.AGENT);
+    Cookie cookie = sessionOf(operator("실행담당", OperatorRole.PRIVACY));
+    long queueId = withdrawnMemberQueue(staff, null);
+    stepUp(cookie);
+    post(BASE + "/" + queueId + "/execute", "", cookie).andExpect(status().isAccepted());
+    jdbcTemplate.update(
+        "UPDATE office_membership SET qualification_number = '11-2024-00002' WHERE id = ?",
+        staff.membership().getId());
+    long secondQueue =
+        jdbcTemplate.queryForObject(
+            "INSERT INTO deletion_queue (target_type, target_id, reason, scheduled_at) VALUES"
+                + " ('MEMBER', ?, '회원 탈퇴 재처리', now() - interval '1 minute') RETURNING id",
+            Long.class,
+            staff.user().getId());
+
+    JsonNode preview =
+        json(
+            read(BASE + "/" + secondQueue + "/preview", cookie)
+                .andExpect(status().isOk())
+                .andReturn());
+    assertThat(preview.get("storageTargets")).hasSize(1);
+    post(BASE + "/" + secondQueue + "/execute", "", cookie).andExpect(status().isAccepted());
+    assertThat(
+            count(
+                "SELECT count(*) FROM office_membership WHERE user_id = ? AND"
+                    + " qualification_number IS NOT NULL",
+                staff.user().getId()))
+        .isZero();
+  }
 }

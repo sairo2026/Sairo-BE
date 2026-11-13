@@ -21,13 +21,18 @@ public final class SupportRequestParser {
   public static InquiryInput inquiry(JsonNode body) {
     CustomerInput.requireObject(body, CREATE_KEYS);
     InquiryCategory category = CustomerInput.requiredEnum(body, "category", InquiryCategory.class);
-    String content = CustomerInput.requiredText(body, "content", CONTENT_MAX, false);
-    String scope = CustomerInput.optionalText(body, "requestScope", SCOPE_MAX, false);
+    String content =
+        CustomerInput.rejectIdentityNumber(
+            "content", CustomerInput.requiredText(body, "content", CONTENT_MAX, false));
+    String scope =
+        CustomerInput.rejectIdentityNumber(
+            "requestScope", CustomerInput.optionalText(body, "requestScope", SCOPE_MAX, false));
     return new InquiryInput(category, content, scope);
   }
 
   public static String reply(JsonNode body) {
     CustomerInput.requireObject(body, REPLY_KEYS);
-    return CustomerInput.requiredText(body, "content", CONTENT_MAX, false);
+    return CustomerInput.rejectIdentityNumber(
+        "content", CustomerInput.requiredText(body, "content", CONTENT_MAX, false));
   }
 }

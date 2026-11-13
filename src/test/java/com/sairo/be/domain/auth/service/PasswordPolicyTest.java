@@ -64,8 +64,6 @@ class PasswordPolicyTest {
 
   @Test
   void 공백도_길이에_포함하고_앞뒤_공백을_제거하지_않는다() {
-    assertThatCode(() -> policy.validateNewPassword("password", "        "))
-        .doesNotThrowAnyException();
     assertThatCode(() -> policy.validateNewPassword("password", "  Qx7!mK  "))
         .doesNotThrowAnyException();
     assertRejected(" Qx7!m ", "TOO_SHORT");
@@ -81,5 +79,20 @@ class PasswordPolicyTest {
   @Test
   void 비어_있는_값은_REQUIRED다() {
     assertRejected(null, "REQUIRED");
+    assertRejected("", "REQUIRED");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {" ", "        ", "            ", "\t\n      ", "\u00a0\u3000      "})
+  void 공백만으로_된_값은_길이와_무관하게_REQUIRED다(String password) {
+    assertRejected(password, "REQUIRED");
+  }
+
+  @Test
+  void 공백이_아닌_문자가_하나라도_있으면_공백_규칙에_걸리지_않는다() {
+    assertThatCode(() -> policy.validateNewPassword("password", "       z"))
+        .doesNotThrowAnyException();
+    assertThatCode(() -> policy.validateNewPassword("password", "Qx 7! mK"))
+        .doesNotThrowAnyException();
   }
 }
