@@ -37,6 +37,7 @@ public class CancellationService {
   private final ConsentWithdrawals consentWithdrawals;
   private final StepUpState stepUpState;
   private final AdvisoryLock advisoryLock;
+  private final BillingNoticeDispatcher noticeDispatcher;
   private final Clock clock;
 
   public CancellationService(
@@ -46,6 +47,7 @@ public class CancellationService {
       ConsentWithdrawals consentWithdrawals,
       StepUpState stepUpState,
       AdvisoryLock advisoryLock,
+      BillingNoticeDispatcher noticeDispatcher,
       Clock clock) {
     this.context = context;
     this.cancellationRepository = cancellationRepository;
@@ -53,6 +55,7 @@ public class CancellationService {
     this.consentWithdrawals = consentWithdrawals;
     this.stepUpState = stepUpState;
     this.advisoryLock = advisoryLock;
+    this.noticeDispatcher = noticeDispatcher;
     this.clock = clock;
   }
 
@@ -80,6 +83,8 @@ public class CancellationService {
             subscription.getId(), principal.membershipId(), now, effectiveAt));
     if (!effectiveAt.isAfter(now)) {
       endNow(subscription, now);
+    } else {
+      noticeDispatcher.cancellationScheduled(principal.officeId(), effectiveAt);
     }
     subscription.markEventRecorded(now);
     stepUpState.consume(session);

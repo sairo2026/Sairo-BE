@@ -1,5 +1,6 @@
 package com.sairo.be.domain.ops.service;
 
+import com.sairo.be.domain.billing.service.BillingNoticeDispatcher;
 import com.sairo.be.domain.billing.service.SubscriptionAllocationService;
 import com.sairo.be.domain.billing.service.SubscriptionAllocationService.VerificationFacts;
 import com.sairo.be.domain.office.entity.EvidenceType;
@@ -77,6 +78,7 @@ public class OperatorRegistrationReviewService {
   private final SubscriptionAllocationService subscriptionAllocation;
   private final JdbcClient jdbcClient;
   private final OpsConsoleQueryRepository consoleQueries;
+  private final BillingNoticeDispatcher noticeDispatcher;
   private final Clock clock;
 
   public OperatorRegistrationReviewService(
@@ -92,6 +94,7 @@ public class OperatorRegistrationReviewService {
       SubscriptionAllocationService subscriptionAllocation,
       JdbcClient jdbcClient,
       OpsConsoleQueryRepository consoleQueries,
+      BillingNoticeDispatcher noticeDispatcher,
       Clock clock) {
     this.registrationRepository = registrationRepository;
     this.recordRepository = recordRepository;
@@ -105,6 +108,7 @@ public class OperatorRegistrationReviewService {
     this.subscriptionAllocation = subscriptionAllocation;
     this.jdbcClient = jdbcClient;
     this.consoleQueries = consoleQueries;
+    this.noticeDispatcher = noticeDispatcher;
     this.clock = clock;
   }
 
@@ -390,6 +394,7 @@ public class OperatorRegistrationReviewService {
             .query(Long.class)
             .list();
     sessionRefreshService.terminateAfterCommit(memberUserIds);
+    noticeDispatcher.authSuspended(officeId, registration.getId(), null);
     return new OpsOfficeRevokeResponse(
         officeId, registration.getId(), registration.getStatus().name());
   }

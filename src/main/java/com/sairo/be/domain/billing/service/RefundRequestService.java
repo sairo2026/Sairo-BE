@@ -42,16 +42,19 @@ public class RefundRequestService {
   private final BillingInvoiceRepository invoiceRepository;
   private final RefundRequestRepository refundRepository;
   private final AdvisoryLock advisoryLock;
+  private final BillingNoticeDispatcher noticeDispatcher;
   private final Clock clock;
 
   public RefundRequestService(
       BillingInvoiceRepository invoiceRepository,
       RefundRequestRepository refundRepository,
       AdvisoryLock advisoryLock,
+      BillingNoticeDispatcher noticeDispatcher,
       Clock clock) {
     this.invoiceRepository = invoiceRepository;
     this.refundRepository = refundRepository;
     this.advisoryLock = advisoryLock;
+    this.noticeDispatcher = noticeDispatcher;
     this.clock = clock;
   }
 
@@ -104,6 +107,7 @@ public class RefundRequestService {
           refundAmount);
     }
     RefundRequest saved = refundRepository.saveAndFlush(refund);
+    noticeDispatcher.refundReceived(officeId, now);
     return new CreateResult(toCreateResponse(saved), true);
   }
 
