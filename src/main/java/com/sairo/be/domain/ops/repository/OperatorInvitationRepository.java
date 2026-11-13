@@ -156,6 +156,18 @@ public class OperatorInvitationRepository {
         .update();
   }
 
+  public boolean existsLivePendingInvitedBy(long inviterId, Instant now) {
+    return jdbcClient
+            .sql(
+                "SELECT count(*) FROM operator_invitation WHERE invited_by_operator_id = :inviter"
+                    + " AND status = 'PENDING' AND expires_at > :now")
+            .param("inviter", inviterId)
+            .param("now", Timestamp.from(now))
+            .query(Long.class)
+            .single()
+        > 0;
+  }
+
   public List<Long> lockPendingByEmail(String email) {
     return jdbcClient
         .sql(
