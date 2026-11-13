@@ -69,6 +69,12 @@ tasks.named('test') {
     maxHeapSize = '1g'
 }
 
+// The test classpath has multiple helper applications; E2E uses the ordinary
+// application with only test-scoped fixture components enabled by profile.
+tasks.named('bootTestRun') {
+    mainClass = 'com.sairo.be.SairoBeApplication'
+}
+
 spotless {
     java {
         googleJavaFormat('1.28.0')
