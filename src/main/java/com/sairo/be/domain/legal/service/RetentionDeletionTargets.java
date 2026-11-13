@@ -8,6 +8,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -28,7 +30,10 @@ public class RetentionDeletionTargets {
   public static final String RETENTION_PURGE = "RETENTION_PURGE";
 
   static final Set<String> OFFICE_TYPES = Set.of(GUEST_LINK_INPUT, APPROVER_PERSONAL);
-  static final Set<String> GLOBAL_TYPES = Set.of(LOGIN_HISTORY, KAKAO_UNLINK_EVENT);
+  static final Set<String> GLOBAL_TYPES =
+      Stream.concat(
+              Stream.of(LOGIN_HISTORY, KAKAO_UNLINK_EVENT), RetentionGroupPurger.TYPES.stream())
+          .collect(Collectors.toUnmodifiableSet());
 
   private static final String GUEST_LINK_WHERE =
       " FROM visit_customer_link l JOIN visit_coordination c ON c.id = l.coordination_id WHERE"
@@ -40,10 +45,13 @@ public class RetentionDeletionTargets {
 
   private final JdbcClient jdbcClient;
   private final RetentionRuleLookup ruleLookup;
+  private final RetentionGroupPurger groupPurger;
 
-  public RetentionDeletionTargets(JdbcClient jdbcClient, RetentionRuleLookup ruleLookup) {
+  public RetentionDeletionTargets(
+      JdbcClient jdbcClient, RetentionRuleLookup ruleLookup, RetentionGroupPurger groupPurger) {
     this.jdbcClient = jdbcClient;
     this.ruleLookup = ruleLookup;
+    this.groupPurger = groupPurger;
   }
 
   public boolean supports(String targetType) {
@@ -77,7 +85,7 @@ public class RetentionDeletionTargets {
                           .query(Long.class)
                           .single())
               .orElse(0L);
-      default -> 0L;
+      default -> groupPurger.dueCount(targetType, now);
     };
   }
 
@@ -145,7 +153,7 @@ public class RetentionDeletionTargets {
                               .param("cutoff", at)
                               .update())
               .orElse(0L);
-      default -> throw new IllegalArgumentException("처리기가 없는 파기 대상 종류다: " + targetType);
+      default -> groupPurger.execute(targetType, now);
     };
   }
 
