@@ -154,6 +154,24 @@ class ApplyGrantIntegrationTest extends VisitOutcomeTestBase {
   }
 
   @Test
+  void 업무_쓰기_제한_사무소의_허용_부여는_403이다() throws Exception {
+    RequestFixture owner = requestFixture();
+    Grantee grantee = grantee();
+    jdbcTemplate.update(
+        "INSERT INTO subscription (office_id, plan, status, past_due_since)"
+            + " VALUES (?, 'SOLO', 'PAST_DUE_RESTRICTED', now() - interval '9 days')",
+        owner.owner().office().getId());
+
+    assertError(
+        mockMvc.perform(
+            jsonPostAs(
+                grantsUrl(owner),
+                "{\"granteeOfficeId\":" + grantee.officeId() + "}",
+                owner.cookie())),
+        ErrorCode.FORBIDDEN);
+  }
+
+  @Test
   void 같은_대상의_활성_허용이_있으면_409이고_사무소_전체_허용은_중개사_허용을_막는다() throws Exception {
     Granted g = granted();
 

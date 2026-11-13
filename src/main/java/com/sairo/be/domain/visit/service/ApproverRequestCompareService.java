@@ -8,24 +8,20 @@ import com.sairo.be.domain.visit.dto.response.ApproverVisitRequestCompareRespons
 import com.sairo.be.domain.visit.dto.response.ApproverVisitRequestCompareResponse.PrivacyNotice;
 import com.sairo.be.domain.visit.dto.response.ApproverVisitRequestCompareResponse.TrustIndicator;
 import com.sairo.be.domain.visit.entity.ConditionStatus;
-import com.sairo.be.domain.visit.entity.GroupingPreference;
 import com.sairo.be.domain.visit.entity.PropertyAccessApproval;
 import com.sairo.be.domain.visit.entity.VisitApproverCondition;
 import com.sairo.be.domain.visit.repository.ApproverSelectionRepository;
 import com.sairo.be.domain.visit.repository.ApproverSelectionRepository.PendingRow;
-import com.sairo.be.domain.visit.repository.ConfirmedVisitRepository;
 import com.sairo.be.domain.visit.repository.MembershipNameRepository;
 import com.sairo.be.domain.visit.repository.PropertyAccessApprovalRepository;
 import com.sairo.be.domain.visit.repository.TrustSummaryRepository;
 import com.sairo.be.domain.visit.repository.VisitApproverConditionRepository;
 import com.sairo.be.domain.visit.repository.VisitApproverPropertyLinkRepository.LinkHead;
-import com.sairo.be.domain.visit.service.ApproverConditionEvaluator.Visit;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.port.OfficeDirectory;
 import com.sairo.be.global.support.TimeRules;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -51,7 +47,6 @@ public class ApproverRequestCompareService {
   private final PropertyAccessApprovalRepository approvalRepository;
   private final VisitApproverConditionRepository conditionRepository;
   private final ApproverSelectionRepository selectionRepository;
-  private final ConfirmedVisitRepository confirmedVisits;
   private final TrustSummaryRepository trustRepository;
   private final MembershipNameRepository nameRepository;
   private final OfficeDirectory officeDirectory;
@@ -66,7 +61,6 @@ public class ApproverRequestCompareService {
       PropertyAccessApprovalRepository approvalRepository,
       VisitApproverConditionRepository conditionRepository,
       ApproverSelectionRepository selectionRepository,
-      ConfirmedVisitRepository confirmedVisits,
       TrustSummaryRepository trustRepository,
       MembershipNameRepository nameRepository,
       OfficeDirectory officeDirectory,
@@ -79,7 +73,6 @@ public class ApproverRequestCompareService {
     this.approvalRepository = approvalRepository;
     this.conditionRepository = conditionRepository;
     this.selectionRepository = selectionRepository;
-    this.confirmedVisits = confirmedVisits;
     this.trustRepository = trustRepository;
     this.nameRepository = nameRepository;
     this.officeDirectory = officeDirectory;
@@ -122,17 +115,9 @@ public class ApproverRequestCompareService {
       officeNames.computeIfAbsent(row.applicantOfficeId(), this::officeName);
     }
     Set<Long> preferred = selectionRepository.preferredMembers(approval.getId());
-    List<Visit> visits = confirmedVisits.findByApproval(approval.getId());
-    GroupingPreference preference =
-        condition.map(VisitApproverCondition::getGroupingPreference).orElse(null);
 
     List<PendingRow> ordered = new ArrayList<>(rows);
-    ordered.sort(
-        Comparator.comparing((PendingRow row) -> !preferred.contains(row.applicantMembershipId()))
-            .thenComparing(
-                Comparator.comparingLong((PendingRow row) -> gapKey(row, visits, preference)))
-            .thenComparing(PendingRow::submittedAt)
-            .thenComparing(PendingRow::id));
+    ordered.sort(Comparator.comparing(PendingRow::submittedAt).thenComparing(PendingRow::id));
 
     List<Item> items = new ArrayList<>();
     for (PendingRow row : ordered) {
@@ -208,25 +193,6 @@ public class ApproverRequestCompareService {
         summary.evaluatedVisitCount(),
         available ? summary.distinctApproverCount() : null,
         indicators);
-  }
-
-  private static long gapKey(PendingRow row, List<Visit> visits, GroupingPreference preference) {
-    if (preference == null || visits.isEmpty()) {
-      return 0L;
-    }
-    long gap = Long.MAX_VALUE;
-    for (Visit visit : visits) {
-      long distance;
-      if (row.startAt().isBefore(visit.endAt()) && visit.startAt().isBefore(row.endAt())) {
-        distance = 0;
-      } else if (!row.startAt().isBefore(visit.endAt())) {
-        distance = Duration.between(visit.endAt(), row.startAt()).toMinutes();
-      } else {
-        distance = Duration.between(row.endAt(), visit.startAt()).toMinutes();
-      }
-      gap = Math.min(gap, distance);
-    }
-    return preference == GroupingPreference.CONSECUTIVE ? gap : -gap;
   }
 
   private String officeName(Long officeId) {
