@@ -14,6 +14,7 @@ import com.sairo.be.global.security.OperatorRole;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.OpsConsoleTestBase;
 import com.sairo.be.support.fixture.BillingFixtures;
+import com.sairo.be.support.fixture.PolicyFixtures;
 import com.sairo.be.support.fixture.TestData;
 import jakarta.servlet.http.Cookie;
 import java.sql.Timestamp;
@@ -522,6 +523,9 @@ class OpsContentIntegrationTest extends OpsConsoleTestBase {
 
   @Test
   void 회사_정보는_버전으로_쌓고_수신_시험_성공_때_게시하며_출시_준비를_판정한다() throws Exception {
+    PolicyFixtures.publishLaunchPolicies(jdbcTemplate, ops.id());
+    new BillingFixtures(jdbcTemplate)
+        .standardPrice("2026-LAUNCH-STD", now.minus(Duration.ofDays(1)));
     mockMvc
         .perform(get(INFO).cookie(opsSession))
         .andExpect(status().isOk())
@@ -552,7 +556,7 @@ class OpsContentIntegrationTest extends OpsConsoleTestBase {
         .andExpect(jsonPath("$.launchReady").value(false));
     mockMvc
         .perform(get("/api/public/company-info"))
-        .andExpect(jsonPath("$.versionNo").doesNotExist());
+        .andExpect(jsonPath("$.versionNo").value(Matchers.nullValue()));
 
     post(INFO + "/" + first + "/inquiry-test", "{\"result\":\"SUCCESS\"}", reviewerSession)
         .andExpect(status().isOk())
@@ -574,5 +578,48 @@ class OpsContentIntegrationTest extends OpsConsoleTestBase {
         .andExpect(jsonPath("$.reviewedByOperatorId").value(reviewer.id()));
     assertThat(auditCount("COMPANY_SERVICE_INFO_CREATED")).isEqualTo(2);
     assertThat(auditCount("COMPANY_INQUIRY_TEST_RECORDED")).isEqualTo(3);
+  }
+
+  @Test
+  void 출시_준비는_필수_정책_문서_게시본과_승인된_표준_요금표가_모두_있어야_한다() throws Exception {
+    long first = createInfo("사이로");
+    post(INFO + "/" + first + "/inquiry-test", "{\"result\":\"SUCCESS\"}", reviewerSession)
+        .andExpect(status().isOk());
+    mockMvc
+        .perform(get(INFO).cookie(opsSession))
+        .andExpect(jsonPath("$.launchReady").value(false))
+        .andExpect(
+            jsonPath("$.missingItems")
+                .value(
+                    Matchers.contains(
+                        "POLICY_DOCUMENTS_NOT_PUBLISHED", "STANDARD_PRICE_SCHEDULE_NOT_APPROVED")));
+
+    PolicyFixtures.publish(jdbcTemplate, "TERMS", ops.id());
+    PolicyFixtures.publish(jdbcTemplate, "PRIVACY", ops.id());
+    BillingFixtures fixtures = new BillingFixtures(jdbcTemplate);
+    fixtures.price("2027-DRAFT-STD", "STANDARD", now.plus(Duration.ofDays(40)), "DRAFT", 39_900);
+    fixtures.price("2026-START", "START_CUSTOMER", now.minus(Duration.ofDays(1)), "ACTIVE", 29_900);
+    mockMvc
+        .perform(get(INFO).cookie(opsSession))
+        .andExpect(jsonPath("$.launchReady").value(false))
+        .andExpect(
+            jsonPath("$.missingItems")
+                .value(
+                    Matchers.contains(
+                        "POLICY_DOCUMENTS_NOT_PUBLISHED", "STANDARD_PRICE_SCHEDULE_NOT_APPROVED")));
+
+    PolicyFixtures.publish(jdbcTemplate, "REFUND", ops.id());
+    mockMvc
+        .perform(get(INFO).cookie(opsSession))
+        .andExpect(jsonPath("$.launchReady").value(false))
+        .andExpect(
+            jsonPath("$.missingItems")
+                .value(Matchers.contains("STANDARD_PRICE_SCHEDULE_NOT_APPROVED")));
+
+    fixtures.standardPrice("2026-LAUNCH-STD", now.minus(Duration.ofDays(1)));
+    mockMvc
+        .perform(get(INFO).cookie(opsSession))
+        .andExpect(jsonPath("$.launchReady").value(true))
+        .andExpect(jsonPath("$.missingItems").isEmpty());
   }
 }

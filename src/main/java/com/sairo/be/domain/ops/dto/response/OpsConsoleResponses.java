@@ -147,6 +147,11 @@ public final class OpsConsoleResponses {
   public record OperatorItem(
       Long operatorId, String name, String status, List<String> roles, OffsetDateTime createdAt) {}
 
+  @Schema(description = "담당 지정에 쓰는 활성 운영자 선택 목록")
+  public record OpsOperatorOptionListResponse(List<OperatorOption> items) {}
+
+  public record OperatorOption(Long operatorId, String name, List<String> roles) {}
+
   @Schema(description = "운영자 비활성화 결과")
   public record OperatorDisableResponse(
       Long operatorId, String status, int terminatedSessionCount, int invalidatedApprovalCount) {}

@@ -31,6 +31,7 @@ import com.sairo.be.domain.ops.dto.response.ReviewChecklistItemResponse;
 import com.sairo.be.domain.ops.entity.ReviewItemCode;
 import com.sairo.be.domain.ops.mapper.OpsReviewMapper;
 import com.sairo.be.domain.ops.repository.OpsAuditLogRepository;
+import com.sairo.be.domain.ops.repository.OpsConsoleQueryRepository;
 import com.sairo.be.domain.ops.repository.RegistrationReviewCheckRepository;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
@@ -46,6 +47,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -61,6 +63,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class OperatorRegistrationReviewService {
 
   private static final Duration DOWNLOAD_URL_TIME_TO_LIVE = Duration.ofMinutes(5);
+  private static final int REVIEW_DUE_LOOKAHEAD_DAYS = 31;
 
   private final OfficeRegistrationRepository registrationRepository;
   private final OfficeRegistrationRecordRepository recordRepository;
@@ -73,6 +76,7 @@ public class OperatorRegistrationReviewService {
   private final ObjectStorage objectStorage;
   private final SubscriptionAllocationService subscriptionAllocation;
   private final JdbcClient jdbcClient;
+  private final OpsConsoleQueryRepository consoleQueries;
   private final Clock clock;
 
   public OperatorRegistrationReviewService(
@@ -87,6 +91,7 @@ public class OperatorRegistrationReviewService {
       ObjectStorage objectStorage,
       SubscriptionAllocationService subscriptionAllocation,
       JdbcClient jdbcClient,
+      OpsConsoleQueryRepository consoleQueries,
       Clock clock) {
     this.registrationRepository = registrationRepository;
     this.recordRepository = recordRepository;
@@ -99,6 +104,7 @@ public class OperatorRegistrationReviewService {
     this.objectStorage = objectStorage;
     this.subscriptionAllocation = subscriptionAllocation;
     this.jdbcClient = jdbcClient;
+    this.consoleQueries = consoleQueries;
     this.clock = clock;
   }
 
@@ -125,7 +131,22 @@ public class OperatorRegistrationReviewService {
         recordRepository.revisions(registrationId),
         recordRepository.evidenceTypesByRevision(registrationId),
         checklist,
-        recordRepository.history(registrationId));
+        recordRepository.history(registrationId),
+        reviewDueAt(registration));
+  }
+
+  private Instant reviewDueAt(OfficeRegistration registration) {
+    if (registration.getStatus() != RegistrationStatus.PENDING_REVIEW) {
+      return null;
+    }
+    LocalDate received =
+        TimeRules.displayDate(consoleQueries.reviewReceivedAt(registration.getId()));
+    LocalDate dueDay =
+        OpsHomeService.businessDayAfter(
+            received,
+            consoleQueries.businessDayOverrides(
+                received, received.plusDays(REVIEW_DUE_LOOKAHEAD_DAYS)));
+    return TimeRules.startOfDisplayDay(dueDay.plusDays(1));
   }
 
   @Transactional

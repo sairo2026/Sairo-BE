@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sairo.be.domain.office.entity.OfficeMembershipRole;
 import com.sairo.be.domain.ops.service.OperatorInvitationAuthService;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.port.MailSender.MailMessage;
@@ -285,5 +286,45 @@ class OperatorManagementIntegrationTest extends OpsConsoleTestBase {
         mockMvc.perform(
             get("/api/ops/audit-log?from=2026-02-01&to=2026-01-01").cookie(adminSession)),
         ErrorCode.INVALID_REQUEST);
+  }
+
+  @Test
+  void 운영자_선택_목록은_모든_역할이_보고_활성_운영자의_이름과_역할만_이름순으로_준다() throws Exception {
+    String path = "/api/ops/operators/options";
+    Operator support = operator("가지원", OperatorRole.SUPPORT, OperatorRole.REVIEW);
+    Operator disabled = operator("나비활성", OperatorRole.OPS);
+    jdbcTemplate.update(
+        "UPDATE operator_account SET status = 'DISABLED' WHERE id = ?", disabled.id());
+    Operator noRole = operator("다무역할");
+
+    assertError(mockMvc.perform(get(path)), ErrorCode.UNAUTHENTICATED);
+    assertError(
+        mockMvc.perform(get(path).cookie(memberSession(staff(OfficeMembershipRole.OWNER)))),
+        ErrorCode.UNAUTHENTICATED);
+    String body =
+        mockMvc
+            .perform(get(path).cookie(sessionOf(support)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items", hasSize(3)))
+            .andExpect(jsonPath("$.items[0].operatorId").value(support.id()))
+            .andExpect(jsonPath("$.items[0].name").value("가지원"))
+            .andExpect(jsonPath("$.items[0].roles[0]").value("SUPPORT"))
+            .andExpect(jsonPath("$.items[0].roles[1]").value("REVIEW"))
+            .andExpect(jsonPath("$.items[1].operatorId").value(noRole.id()))
+            .andExpect(jsonPath("$.items[1].roles", hasSize(0)))
+            .andExpect(jsonPath("$.items[2].operatorId").value(admin.id()))
+            .andExpect(jsonPath("$.items[2].roles[0]").value("SECURITY_ADMIN"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    assertThat(body)
+        .doesNotContain("나비활성")
+        .doesNotContain("createdAt")
+        .doesNotContain("status")
+        .doesNotContain(support.kakaoKey());
+    mockMvc
+        .perform(get(path).cookie(sessionOf(noRole)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items", hasSize(3)));
   }
 }

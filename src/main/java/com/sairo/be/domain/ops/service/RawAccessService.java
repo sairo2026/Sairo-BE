@@ -4,6 +4,7 @@ import static com.sairo.be.global.support.TimeRules.toDisplayOffset;
 
 import com.sairo.be.domain.ops.dto.request.RawAccessRequests.RawAccessRequestCreateRequest;
 import com.sairo.be.domain.ops.dto.response.RawAccessResponses.RawAccessApproveResponse;
+import com.sairo.be.domain.ops.dto.response.RawAccessResponses.RawAccessContentResponse;
 import com.sairo.be.domain.ops.dto.response.RawAccessResponses.RawAccessCreateResponse;
 import com.sairo.be.domain.ops.dto.response.RawAccessResponses.RawAccessDetailResponse;
 import com.sairo.be.domain.ops.dto.response.RawAccessResponses.RawAccessExecuteResponse;
@@ -45,6 +46,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /** 원문 열람·다운로드 승인 요청과 실행(OPS-12)이다. */
 @Profile("!migrate")
@@ -56,6 +59,8 @@ public class RawAccessService {
   static final Set<String> STATUSES =
       Set.of("PENDING", "APPROVED", "REJECTED", "EXPIRED", "INVALIDATED");
   private static final String RAW_DOWNLOAD = "RAW_DOWNLOAD";
+  private static final String RAW_VIEW = "RAW_VIEW";
+  private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
   public record DownloadedFile(byte[] content, String sha256, String fileName) {}
 
@@ -406,9 +411,7 @@ public class RawAccessService {
       throw new BusinessException(ErrorCode.RAW_DOWNLOAD_ALREADY_USED);
     }
     Instant now = clock.instant();
-    if (grant.revokedAt() != null || !grant.expiresAt().isAfter(now)) {
-      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
-    }
+    requireOpenWindow(grant, now);
     byte[] content =
         objectStorage
             .find(grant.fileObjectKey())
@@ -422,6 +425,49 @@ public class RawAccessService {
         "requestId=" + grant.approvalRequestId() + " grantId=" + grantId,
         now);
     return new DownloadedFile(content, grant.fileSha256(), "raw-access-" + grantId + ".json");
+  }
+
+  @Transactional
+  public RawAccessContentResponse view(long operatorId, long grantId, HttpSession session) {
+    var grant =
+        grants.find(grantId).orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    if (grant.executedBy() != operatorId || !grant.requestType().equals(RAW_VIEW)) {
+      throw new BusinessException(ErrorCode.FORBIDDEN);
+    }
+    stepUp.require(session);
+    Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+    requireOpenWindow(grant, now);
+    if (grant.targetId() == null) {
+      throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
+    }
+    String snapshot =
+        queries
+            .targetSnapshot(grant.targetType(), grant.targetId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    auditLog.insert(
+        operatorId,
+        "RAW_ACCESS_VIEWED",
+        grant.targetType(),
+        grant.targetId(),
+        "requestId=" + grant.approvalRequestId() + " grantId=" + grantId,
+        now);
+    return new RawAccessContentResponse(
+        grantId,
+        grant.approvalRequestId(),
+        grant.targetType(),
+        grant.targetId(),
+        toDisplayOffset(grant.expiresAt()),
+        toDisplayOffset(now),
+        MAPPER.readTree(snapshot));
+  }
+
+  private static void requireOpenWindow(OpsRawAccessGrantRepository.Row grant, Instant now) {
+    if (grant.revokedAt() != null) {
+      throw new BusinessException(ErrorCode.RAW_ACCESS_REVOKED);
+    }
+    if (!grant.expiresAt().isAfter(now)) {
+      throw new BusinessException(ErrorCode.RAW_ACCESS_EXPIRED);
+    }
   }
 
   private Row find(long requestId) {

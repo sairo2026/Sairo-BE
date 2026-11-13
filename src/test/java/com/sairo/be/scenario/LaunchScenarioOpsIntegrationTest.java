@@ -20,6 +20,7 @@ import com.sairo.be.global.support.TextCipher;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.VisitOutcomeTestBase;
 import com.sairo.be.support.fixture.BillingFixtures;
+import com.sairo.be.support.fixture.PolicyFixtures;
 import com.sairo.be.support.fixture.TestData;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
@@ -309,6 +310,15 @@ class LaunchScenarioOpsIntegrationTest extends VisitOutcomeTestBase {
     opsPost("/api/ops/policy-documents/" + documentId + "/publish", "", ops)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("PUBLISHED"));
+    mockMvc
+        .perform(get("/api/ops/company-service-info").cookie(ops.cookie()))
+        .andExpect(
+            jsonPath("$.missingItems[?(@ == 'POLICY_DOCUMENTS_NOT_PUBLISHED')]").isNotEmpty());
+    PolicyFixtures.publish(jdbcTemplate, "PRIVACY", ops.id());
+    PolicyFixtures.publish(jdbcTemplate, "REFUND", ops.id());
+    mockMvc
+        .perform(get("/api/ops/company-service-info").cookie(ops.cookie()))
+        .andExpect(jsonPath("$.missingItems[?(@ == 'POLICY_DOCUMENTS_NOT_PUBLISHED')]").isEmpty());
 
     // 2. 인상 요금표 등록 → 다른 결제담당 승인 → 30일 이상 앞선 인상 안내 → 대표의 새 금액 동의.
     String priceBody =

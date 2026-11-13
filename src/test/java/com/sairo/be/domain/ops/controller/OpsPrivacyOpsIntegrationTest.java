@@ -322,4 +322,53 @@ class OpsPrivacyOpsIntegrationTest extends OpsConsoleTestBase {
             cookie),
         ErrorCode.FORBIDDEN);
   }
+
+  @Test
+  void 본인확인_결과를_함께_보내면_대기_중인_회원_요청을_승인하거나_제한할_수_있다() throws Exception {
+    TestData.Staff staff = staff(OfficeMembershipRole.OWNER);
+    Cookie cookie = sessionOf(operator("개인정보담당", OperatorRole.PRIVACY));
+    long restricted = insertRequest(staff.user().getId(), "PENDING", "RECEIVED", "10 days");
+    String path = "/api/ops/privacy-requests/" + restricted + "/process";
+    String restrict = "{\"action\":\"RESTRICT\",\"identityStatus\":\"%s\",\"note\":\"일부 범위만 제공\"}";
+
+    assertError(post(path, restrict.formatted("UNKNOWN"), cookie), ErrorCode.INVALID_REQUEST);
+    assertError(
+        post(path, process("RESTRICT", "일부 범위만 제공", null), cookie),
+        ErrorCode.IDENTITY_NOT_VERIFIED);
+    assertError(post(path, restrict.formatted("FAILED"), cookie), ErrorCode.IDENTITY_NOT_VERIFIED);
+    assertThat(
+            jdbcTemplate.queryForMap(
+                "SELECT identity_status, status FROM privacy_request WHERE id = ?", restricted))
+        .containsEntry("identity_status", "PENDING")
+        .containsEntry("status", "RECEIVED");
+
+    JsonNode result =
+        json(
+            post(path, restrict.formatted("VERIFIED"), cookie)
+                .andExpect(status().isOk())
+                .andReturn());
+    assertThat(result.get("status").asString()).isEqualTo("PARTIALLY_RESTRICTED");
+    JsonNode detail =
+        json(
+            read("/api/ops/privacy-requests/" + restricted, cookie)
+                .andExpect(status().isOk())
+                .andReturn());
+    assertThat(detail.get("identityStatus").asString()).isEqualTo("VERIFIED");
+    assertThat(detail.get("decisionReason").asString()).isEqualTo("일부 범위만 제공");
+
+    long approved = insertRequest(staff.user().getId(), "PENDING", "RECEIVED", "10 days");
+    JsonNode approval =
+        json(
+            post(
+                    "/api/ops/privacy-requests/" + approved + "/process",
+                    "{\"action\":\"APPROVE\",\"identityStatus\":\"VERIFIED\"}",
+                    cookie)
+                .andExpect(status().isOk())
+                .andReturn());
+    assertThat(approval.get("status").asString()).isEqualTo("APPROVED");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT identity_status FROM privacy_request WHERE id = ?", String.class, approved))
+        .isEqualTo("VERIFIED");
+  }
 }

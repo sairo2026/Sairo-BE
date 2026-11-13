@@ -88,7 +88,8 @@ class RawAccessIntegrationTest extends OpsConsoleTestBase {
         new String[] {
           "/api/ops/raw-access-requests",
           "/api/ops/raw-access-requests/1",
-          "/api/ops/raw-access-grants/1/file"
+          "/api/ops/raw-access-grants/1/file",
+          "/api/ops/raw-access-grants/1/content"
         }) {
       assertError(mockMvc.perform(get(path)), ErrorCode.UNAUTHENTICATED);
     }
@@ -112,6 +113,9 @@ class RawAccessIntegrationTest extends OpsConsoleTestBase {
     }
     assertError(
         mockMvc.perform(get("/api/ops/raw-access-requests/1").cookie(memberSession(owner))),
+        ErrorCode.UNAUTHENTICATED);
+    assertError(
+        mockMvc.perform(get("/api/ops/raw-access-grants/1/content").cookie(memberSession(owner))),
         ErrorCode.UNAUTHENTICATED);
   }
 
@@ -359,7 +363,7 @@ class RawAccessIntegrationTest extends OpsConsoleTestBase {
     assertError(
         mockMvc.perform(
             get("/api/ops/raw-access-grants/" + grantId + "/file").cookie(requesterSession)),
-        ErrorCode.INVALID_TRANSITION);
+        ErrorCode.RAW_ACCESS_REVOKED);
     assertThat(auditCount("RAW_ACCESS_REVOKED")).isEqualTo(1);
   }
 
@@ -392,5 +396,123 @@ class RawAccessIntegrationTest extends OpsConsoleTestBase {
         post("/api/ops/raw-access-requests/" + expired + "/execute", "", requesterSession),
         ErrorCode.APPROVAL_INVALIDATED);
     assertThat(requestStatus(expired)).isEqualTo("EXPIRED");
+  }
+
+  @Test
+  void 원문_보기는_실행자가_재인증_뒤_접근_창_안에서_여러_번_읽고_읽을_때마다_감사_이력을_남긴다() throws Exception {
+    long requestId = approvedRequest("RAW_VIEW");
+    long grantId = execute(requestId);
+    String content = "/api/ops/raw-access-grants/" + grantId + "/content";
+
+    stepUp(privacySession);
+    assertError(mockMvc.perform(get(content).cookie(privacySession)), ErrorCode.FORBIDDEN);
+    expireStepUp(requesterSession);
+    assertError(mockMvc.perform(get(content).cookie(requesterSession)), ErrorCode.STEP_UP_REQUIRED);
+    assertThat(auditCount("RAW_ACCESS_VIEWED")).isZero();
+    stepUp(requesterSession);
+    assertError(
+        mockMvc.perform(get("/api/ops/raw-access-grants/999999/content").cookie(requesterSession)),
+        ErrorCode.RESOURCE_NOT_FOUND);
+
+    String body =
+        mockMvc
+            .perform(get(content).cookie(requesterSession))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andExpect(jsonPath("$.grantId").value(grantId))
+            .andExpect(jsonPath("$.approvalRequestId").value(requestId))
+            .andExpect(jsonPath("$.targetType").value("OFFICE"))
+            .andExpect(jsonPath("$.targetId").value(owner.office().getId()))
+            .andExpect(jsonPath("$.expiresAt").isNotEmpty())
+            .andExpect(jsonPath("$.readAt").isNotEmpty())
+            .andExpect(jsonPath("$.content.id").value(owner.office().getId()))
+            .andReturn()
+            .getResponse()
+            .getContentAsString(StandardCharsets.UTF_8);
+    assertThat(body).contains(owner.office().getBusinessRegistrationNumber());
+    mockMvc.perform(get(content).cookie(requesterSession)).andExpect(status().isOk());
+    assertThat(
+            count(
+                "SELECT count(*) FROM ops_audit_log WHERE action_type = 'RAW_ACCESS_VIEWED' AND"
+                    + " operator_account_id = ? AND target_type = 'OFFICE' AND target_id = ? AND"
+                    + " detail = ?",
+                requester.id(),
+                owner.office().getId(),
+                "requestId=" + requestId + " grantId=" + grantId))
+        .isEqualTo(2);
+  }
+
+  @Test
+  void 원문_보기는_다운로드_승인의_실행_건이면_403이고_개인_식별_비밀값을_담지_않는다() throws Exception {
+    long downloadGrant = execute(approvedRequest("RAW_DOWNLOAD"));
+    assertError(
+        mockMvc.perform(
+            get("/api/ops/raw-access-grants/" + downloadGrant + "/content")
+                .cookie(requesterSession)),
+        ErrorCode.FORBIDDEN);
+
+    String memberBody =
+        body("RAW_VIEW", "")
+            .replace("\"targetType\":\"OFFICE\"", "\"targetType\":\"MEMBER\"")
+            .replace(
+                "\"targetId\":" + owner.office().getId(), "\"targetId\":" + owner.user().getId());
+    String created =
+        post("/api/ops/raw-access-requests", memberBody, requesterSession)
+            .andExpect(status().isCreated())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    long memberRequest = Long.parseLong(created.replaceAll("(?s).*\"requestId\":(\\d+).*", "$1"));
+    post("/api/ops/raw-access-requests/" + memberRequest + "/approve", "", privacySession)
+        .andExpect(status().isOk());
+    long memberGrant = execute(memberRequest);
+    String body =
+        mockMvc
+            .perform(
+                get("/api/ops/raw-access-grants/" + memberGrant + "/content")
+                    .cookie(requesterSession))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.targetType").value("MEMBER"))
+            .andExpect(jsonPath("$.content.id").value(owner.user().getId()))
+            .andReturn()
+            .getResponse()
+            .getContentAsString(StandardCharsets.UTF_8);
+    assertThat(body).doesNotContain("password_hash").doesNotContain("kakao_provider_key");
+  }
+
+  @Test
+  void 회수되거나_접근_창이_끝난_실행_건은_원문_보기와_파일_받기가_각각의_409다() throws Exception {
+    long expiredView = execute(approvedRequest("RAW_VIEW"));
+    long expiredDownload = execute(approvedRequest("RAW_DOWNLOAD"));
+    jdbcTemplate.update(
+        "UPDATE ops_raw_access_grant SET executed_at = now() - interval '61 minutes', expires_at ="
+            + " now() - interval '1 minute' WHERE id IN (?, ?)",
+        expiredView,
+        expiredDownload);
+    long revokedView = execute(approvedRequest("RAW_VIEW"));
+    Cookie admin = sessionOf(operator("김보안", OperatorRole.SECURITY_ADMIN));
+    stepUp(admin);
+    post(
+            "/api/ops/raw-access-grants/" + revokedView + "/revoke",
+            "{\"reason\":\"목적 외 사용 의심\"}",
+            admin)
+        .andExpect(status().isOk());
+
+    stepUp(requesterSession);
+    assertError(
+        mockMvc.perform(
+            get("/api/ops/raw-access-grants/" + expiredView + "/content").cookie(requesterSession)),
+        ErrorCode.RAW_ACCESS_EXPIRED);
+    assertError(
+        mockMvc.perform(
+            get("/api/ops/raw-access-grants/" + expiredDownload + "/file")
+                .cookie(requesterSession)),
+        ErrorCode.RAW_ACCESS_EXPIRED);
+    assertError(
+        mockMvc.perform(
+            get("/api/ops/raw-access-grants/" + revokedView + "/content").cookie(requesterSession)),
+        ErrorCode.RAW_ACCESS_REVOKED);
+    assertThat(auditCount("RAW_ACCESS_VIEWED")).isZero();
+    assertThat(auditCount("RAW_ACCESS_DOWNLOADED")).isZero();
   }
 }

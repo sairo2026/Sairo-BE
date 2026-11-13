@@ -6,12 +6,22 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-/** 연결 검사 스텁이다. 외부로 호출하지 않고 기본은 성공이며 시험에서 연동별 실패를 정할 수 있다. */
+/** 연결 검사 스텁이다. 외부로 호출하지 않는다. 기본은 미구성이고 시험이 구성 상태와 연동별 실패를 정할 수 있다. */
 @Profile("!prod & !migrate")
 @Component
 public class StubIntegrationProbe implements IntegrationProbe {
 
   private final Map<Long, String> failures = new ConcurrentHashMap<>();
+  private volatile boolean configured;
+
+  @Override
+  public boolean configured() {
+    return configured;
+  }
+
+  public void configure(boolean value) {
+    configured = value;
+  }
 
   @Override
   public Result probe(Target target) {

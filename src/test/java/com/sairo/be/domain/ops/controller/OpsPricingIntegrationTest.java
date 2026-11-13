@@ -304,6 +304,17 @@ class OpsPricingIntegrationTest extends OpsConsoleTestBase {
 
     assertFieldError(postIfMatch(revoke, "{}", billingSession, "1"), "reason", "REQUIRED");
     assertError(
+        postIfMatch(revoke, "{\"reason\":null}", billingSession, "1"), ErrorCode.INVALID_REQUEST);
+    assertError(
+        postIfMatch(revoke, "{\"reason\":\"   \"}", billingSession, "1"),
+        ErrorCode.INVALID_REQUEST);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM billing_start_customer_agreement WHERE id = ?",
+                String.class,
+                agreement))
+        .isEqualTo("APPROVED");
+    assertError(
         postIfMatch(revoke, "{\"reason\":\"철회\"}", billingSession, "9"),
         ErrorCode.VERSION_CONFLICT);
     postIfMatch(revoke, "{\"reason\":\"합의서 체결 철회\"}", billingSession, "1")
