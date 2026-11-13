@@ -98,7 +98,10 @@ public class AuthController {
     Optional<String> providerKey =
         authorizationService.resolveProviderKey(session, flow, code, state, error);
     if (providerKey.isEmpty()) {
-      response.sendRedirect(frontendBaseUrl + "/login?error=auth_failed");
+      response.sendRedirect(
+          flow == KakaoAuthFlow.GRANT
+              ? frontendBaseUrl + "/grant/verify?error=INVALID_REQUEST"
+              : frontendBaseUrl + "/login?error=auth_failed");
       return;
     }
     if (flow == KakaoAuthFlow.GRANT) {
