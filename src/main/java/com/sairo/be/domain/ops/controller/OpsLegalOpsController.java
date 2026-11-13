@@ -16,6 +16,7 @@ import com.sairo.be.global.security.access.RequiresOperatorRole;
 import com.sairo.be.global.support.PageQuery;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -66,15 +67,16 @@ public class OpsLegalOpsController {
 
   @Operation(
       summary = "보관 기간 규칙 수정",
-      description = "If-Match(현재 version)와 변경 사유가 필요하다. 이후 새로 생기거나 종결되는 행부터 적용한다.")
+      description = "5분 안의 재인증과 If-Match(현재 version), 변경 사유가 필요하다. 이후 새로 생기거나 종결되는 행부터 적용한다.")
   @PutMapping("/retention-rules/{ruleCode}")
   @RequiresOperatorRole(OperatorRole.PRIVACY)
   public RetentionRuleResponse updateRetentionRule(
       @PathVariable String ruleCode,
       @RequestHeader(value = "If-Match", required = false) String ifMatch,
       @Valid @RequestBody RetentionRuleUpdateRequest request,
-      @AuthenticationPrincipal OperatorPrincipal principal) {
-    return service.updateRetentionRule(principal.operatorId(), ruleCode, ifMatch, request);
+      @AuthenticationPrincipal OperatorPrincipal principal,
+      HttpSession session) {
+    return service.updateRetentionRule(principal.operatorId(), ruleCode, ifMatch, request, session);
   }
 
   @Operation(

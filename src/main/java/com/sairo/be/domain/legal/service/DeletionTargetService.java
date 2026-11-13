@@ -12,7 +12,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * 파기 큐 대상별 저장소 대상 산정과 실행이다(OPS-13). 회원 탈퇴(MEMBER)와 보관 기한 만료 데이터군({@link RetentionDeletionTargets})의
- * 처리기가 있다. 회원 행은 지우지 않고 식별 값을 비우거나 대체해 업무 기록의 참조를 유지한다. 파일은 ObjectStorage 포트로만 지운다.
+ * 처리기가 있다. 회원 행은 지우지 않고 식별 값을 비우거나 대체해 업무 기록의 참조를 유지하며 소속 행의 자격 번호도 함께 비운다. 파일은 ObjectStorage 포트로만
+ * 지운다.
  */
 @Profile("!migrate")
 @Service
@@ -102,9 +103,11 @@ public class DeletionTargetService {
     boolean pending =
         jdbcClient
                 .sql(
-                    "SELECT count(*) FROM app_user WHERE id = :id AND (email IS NOT NULL OR phone IS"
-                        + " NOT NULL OR kakao_reference_email IS NOT NULL OR kakao_provider_key NOT"
-                        + " LIKE 'deleted-%')")
+                    "SELECT count(*) FROM app_user u WHERE u.id = :id AND (u.email IS NOT NULL OR"
+                        + " u.phone IS NOT NULL OR u.kakao_reference_email IS NOT NULL OR"
+                        + " u.kakao_provider_key NOT LIKE 'deleted-%' OR EXISTS (SELECT 1 FROM"
+                        + " office_membership m WHERE m.user_id = u.id AND m.qualification_number"
+                        + " IS NOT NULL))")
                 .param("id", targetId)
                 .query(Long.class)
                 .single()
@@ -148,6 +151,12 @@ public class DeletionTargetService {
       if (updated == 1) {
         jdbcClient
             .sql("DELETE FROM app_user_notification_preference WHERE user_id = :id")
+            .param("id", targetId)
+            .update();
+        jdbcClient
+            .sql(
+                "UPDATE office_membership SET qualification_number = NULL WHERE user_id = :id AND"
+                    + " qualification_number IS NOT NULL")
             .param("id", targetId)
             .update();
       }

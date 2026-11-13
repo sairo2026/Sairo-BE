@@ -17,6 +17,8 @@ kakao:
   redirect-uri: ${KAKAO_REDIRECT_URI_PROD}
 
 sairo:
+  session:
+    approver-cookie-name: __Host-APPROVER_SESSION
   public-link:
     hmac-secret: ${PUBLIC_LINK_HMAC_SECRET}
   security:

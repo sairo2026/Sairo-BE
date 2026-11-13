@@ -22,7 +22,12 @@ public final class OpsBillingRequests {
       @Schema(description = "검토 메모. 거절이면 필수이며 대표에게 거절 사유로 보인다") @PlainText(min = 0, max = 1000)
           String note,
       @Schema(description = "환불 사유 사건 ID. 신청에 사건 ID가 없을 때 승인에서 필수")
-          @Pattern(regexp = "^[1-9][0-9]{0,17}$") String reasonEventId) {}
+          @Pattern(regexp = "^[1-9][0-9]{0,17}$") String reasonEventId,
+      @Schema(
+              description =
+                  "환불 금액(원). 서비스 장애·승인 지연·정책 외 보상 승인에서만 받는다. 1 이상이고 환불 가능 잔액 이하다. 생략하면 원 승인액을"
+                      + " 환불 가능 잔액 안에서 적용한다")
+          Long amount) {}
 
   @Schema(description = "대사 불일치 원인과 해결 근거")
   public record ReconciliationResolveRequest(

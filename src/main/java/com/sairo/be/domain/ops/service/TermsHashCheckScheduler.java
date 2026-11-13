@@ -1,6 +1,7 @@
 package com.sairo.be.domain.ops.service;
 
 import java.time.Clock;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,6 +22,7 @@ public class TermsHashCheckScheduler {
   }
 
   @Scheduled(cron = "0 0 4 * * *", zone = "Asia/Seoul")
+  @SchedulerLock(name = "terms-hash-check", lockAtMostFor = "PT30M", lockAtLeastFor = "PT5M")
   public void run() {
     service.runScheduledTermsHashCheck(clock.instant());
   }

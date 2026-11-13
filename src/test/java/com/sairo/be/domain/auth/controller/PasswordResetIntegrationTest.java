@@ -200,6 +200,14 @@ class PasswordResetIntegrationTest extends AuthIntegrationTestBase {
         mockMvc.perform(jsonPost("/api/auth/password/reset", resetBody(token, "password123"))),
         "newPassword",
         "NOT_ALLOWED");
+    assertFieldError(
+        mockMvc.perform(jsonPost("/api/auth/password/reset", resetBody(token, " ".repeat(8)))),
+        "newPassword",
+        "REQUIRED");
+    assertFieldError(
+        mockMvc.perform(jsonPost("/api/auth/password/reset", resetBody(token, " ".repeat(12)))),
+        "newPassword",
+        "REQUIRED");
     mockMvc
         .perform(jsonPost("/api/auth/password/reset", resetBody(token, "  Newpass1  ")))
         .andExpect(status().isNoContent());

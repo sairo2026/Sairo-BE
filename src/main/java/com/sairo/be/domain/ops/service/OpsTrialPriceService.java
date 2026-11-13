@@ -32,9 +32,11 @@ import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.security.OperatorRole;
+import com.sairo.be.global.security.OperatorStepUpState;
 import com.sairo.be.global.support.AdvisoryLock;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.TimeRules;
+import jakarta.servlet.http.HttpSession;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -68,6 +70,7 @@ public class OpsTrialPriceService {
   private final OperatorAccountRepository accounts;
   private final OpsAuditLogRepository auditLog;
   private final AdvisoryLock advisoryLock;
+  private final OperatorStepUpState stepUp;
   private final Clock clock;
 
   public OpsTrialPriceService(
@@ -75,11 +78,13 @@ public class OpsTrialPriceService {
       OperatorAccountRepository accounts,
       OpsAuditLogRepository auditLog,
       AdvisoryLock advisoryLock,
+      OperatorStepUpState stepUp,
       Clock clock) {
     this.repository = repository;
     this.accounts = accounts;
     this.auditLog = auditLog;
     this.advisoryLock = advisoryLock;
+    this.stepUp = stepUp;
     this.clock = clock;
   }
 
@@ -163,8 +168,10 @@ public class OpsTrialPriceService {
   }
 
   @Transactional
-  public PriceScheduleApproveResponse approvePrice(long operatorId, long scheduleId) {
+  public PriceScheduleApproveResponse approvePrice(
+      long operatorId, long scheduleId, HttpSession session) {
     PriceRow row = repository.lockPrice(scheduleId).orElseThrow(OpsTrialPriceService::notFound);
+    stepUp.require(session);
     if (row.createdByOperatorId() == operatorId) {
       throw new BusinessException(ErrorCode.SELF_APPROVAL_FORBIDDEN);
     }

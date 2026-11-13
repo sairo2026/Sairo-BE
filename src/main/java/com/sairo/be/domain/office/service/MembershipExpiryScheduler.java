@@ -1,5 +1,6 @@
 package com.sairo.be.domain.office.service;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,6 +21,7 @@ public class MembershipExpiryScheduler {
   }
 
   @Scheduled(cron = "0 5 * * * *", zone = "Asia/Seoul")
+  @SchedulerLock(name = "membership-expiry", lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M")
   public void run() {
     expiryService.expireOverdue();
     transferService.expireOverdue();

@@ -564,4 +564,81 @@ class OpsBillingIntegrationTest extends OpsConsoleTestBase {
         "NOT_ALLOWED");
     assertThat(auditCount("TAX_DOCUMENT_AMENDED")).isEqualTo(1);
   }
+
+  @Test
+  void 보상_환불_승인은_금액을_받아_환불_가능_잔액_안에서_고정하고_범위_밖이면_400이다() throws Exception {
+    long invoiceId = invoice("PAID", 30_000);
+    attempt(invoiceId, 1, "SUCCESS", "ORDER-D1", Instant.now());
+    long failure = refund(invoiceId, "SERVICE_FAILURE", "SERVICE_INCIDENT", 11L);
+    String review = REFUNDS + "/" + failure + "/review";
+
+    assertFieldError(
+        post(review, "{\"decision\":\"APPROVE\",\"amount\":0}", billingSession),
+        "amount",
+        "OUT_OF_RANGE");
+    assertFieldError(
+        post(review, "{\"decision\":\"APPROVE\",\"amount\":30001}", billingSession),
+        "amount",
+        "OUT_OF_RANGE");
+    assertFieldError(
+        post(review, "{\"decision\":\"REJECT\",\"note\":\"거절\",\"amount\":1000}", billingSession),
+        "amount",
+        "NOT_ALLOWED");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM refund_request WHERE id = ?", String.class, failure))
+        .isEqualTo("RECEIVED");
+    post(review, "{\"decision\":\"APPROVE\",\"amount\":12000}", billingSession)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("APPROVED"))
+        .andExpect(jsonPath("$.entitlementAmount").value(30_000))
+        .andExpect(jsonPath("$.refundAmount").value(12_000));
+
+    long late = refund(invoiceId, "LATE_APPROVAL", "LATE_APPROVAL", 12L);
+    assertFieldError(
+        post(
+            REFUNDS + "/" + late + "/review",
+            "{\"decision\":\"APPROVE\",\"amount\":18001}",
+            billingSession),
+        "amount",
+        "OUT_OF_RANGE");
+    post(REFUNDS + "/" + late + "/review", "{\"decision\":\"APPROVE\"}", billingSession)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.reservedAmount").value(12_000))
+        .andExpect(jsonPath("$.refundAmount").value(18_000));
+
+    long otherInvoice = invoice("PAID", 30_000);
+    long duplicate = refund(otherInvoice, "DUPLICATE_CHARGE", "INVOICE", otherInvoice);
+    assertFieldError(
+        post(
+            REFUNDS + "/" + duplicate + "/review",
+            "{\"decision\":\"APPROVE\",\"amount\":1000}",
+            billingSession),
+        "amount",
+        "NOT_ALLOWED");
+
+    stepUp(billingSession);
+    post(REFUNDS + "/" + failure + "/execute", "", billingSession)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("COMPLETED"));
+    assertThat(paymentGateway.cancels()).hasSize(1);
+    assertThat(paymentGateway.cancels().get(0).amount()).isEqualTo(12_000L);
+  }
+
+  @Test
+  void 정책_외_보상_환불도_승인_금액을_받는다() throws Exception {
+    long invoiceId = invoice("PAID", 30_000);
+    long policy = refund(invoiceId, "POLICY_COMPENSATION", "POLICY_COMPENSATION", 21L);
+
+    post(
+            REFUNDS + "/" + policy + "/review",
+            "{\"decision\":\"APPROVE\",\"amount\":1}",
+            billingSession)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.refundAmount").value(1));
+    mockMvc
+        .perform(get(REFUNDS + "/" + policy).cookie(billingSession))
+        .andExpect(jsonPath("$.status").value("APPROVED"))
+        .andExpect(jsonPath("$.refundAmount").value(1));
+  }
 }

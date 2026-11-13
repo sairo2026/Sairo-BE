@@ -17,6 +17,7 @@ import com.sairo.be.domain.visit.repository.ScheduleResultRepository.HistoryRow;
 import com.sairo.be.domain.visit.repository.ScheduleResultRepository.ItemHead;
 import com.sairo.be.domain.visit.repository.VisitCoordinationRepository;
 import com.sairo.be.domain.visit.service.ScheduleStateService.ItemState;
+import com.sairo.be.global.config.VisitReviewProperties;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
@@ -24,7 +25,6 @@ import com.sairo.be.global.port.SettlementRecalculator;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.TimeRules;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
@@ -41,7 +41,6 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class ScheduleResultService {
 
-  static final Duration REVIEW_WINDOW = Duration.ofDays(14);
   private static final Set<String> KEYS =
       Set.of("result", "actualVisitedAt", "correctionReason", "cancelReasonCode");
   private static final Set<String> RESULTS = Set.of("COMPLETED", "NO_SHOW", "CANCELLED");
@@ -57,6 +56,7 @@ public class ScheduleResultService {
   private final ScheduleStateService stateService;
   private final MembershipNameRepository nameRepository;
   private final SettlementRecalculator settlementRecalculator;
+  private final VisitReviewProperties reviewPolicy;
   private final Clock clock;
 
   public ScheduleResultService(
@@ -68,6 +68,7 @@ public class ScheduleResultService {
       ScheduleStateService stateService,
       MembershipNameRepository nameRepository,
       SettlementRecalculator settlementRecalculator,
+      VisitReviewProperties reviewPolicy,
       Clock clock) {
     this.access = access;
     this.resultRepository = resultRepository;
@@ -77,6 +78,7 @@ public class ScheduleResultService {
     this.stateService = stateService;
     this.nameRepository = nameRepository;
     this.settlementRecalculator = settlementRecalculator;
+    this.reviewPolicy = reviewPolicy;
     this.clock = clock;
   }
 
@@ -170,7 +172,7 @@ public class ScheduleResultService {
     }
     OffsetDateTime reviewEndsAt =
         "COMPLETED".equals(input.result()) && item.confirmedRequestId() != null
-            ? TimeRules.toDisplayOffset(now.plus(REVIEW_WINDOW))
+            ? TimeRules.toDisplayOffset(now.plus(reviewPolicy.reviewWindow()))
             : null;
     return new VisitScheduleItemResultResponse(
         item.id(),

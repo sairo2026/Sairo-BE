@@ -266,6 +266,9 @@ class LaunchScenarioOpsIntegrationTest extends VisitOutcomeTestBase {
         "{\"enabled\":true,\"contractStatus\":\"SIGNED\",\"consentStatus\":\"GRANTED\","
             + "\"contractNoticeReviewed\":true}";
     String integrationPath = "/api/ops/integrations/" + integrationId;
+    stepUp(ops);
+    stepUp(billing);
+    stepUp(billingApprover);
 
     // 0. 아직 준비가 안 됐으면 운영 연동을 켤 수 없다.
     mockMvc

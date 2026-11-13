@@ -340,4 +340,32 @@ class SupportInquiryIntegrationTest extends DeskIntegrationTestBase {
         ErrorCode.RESOURCE_NOT_FOUND);
     assertThat(count("support_inquiry_message")).isZero();
   }
+
+  @Test
+  void 문의와_답글_본문에_주민등록번호나_외국인등록번호_형식이_있으면_400_SENSITIVE_DATA_DETECTED다() throws Exception {
+    Member member = newMember("a@example.com");
+
+    assertError(
+        postJson(
+            "/api/support-inquiries",
+            "{\"category\":\"AUTH\",\"content\":\"주민번호 900101-1234567 입니다\"}",
+            member.cookie()),
+        ErrorCode.SENSITIVE_DATA_DETECTED);
+    assertError(
+        postJson(
+            "/api/support-inquiries",
+            "{\"category\":\"AUTH\",\"content\":\"문의\",\"requestScope\":\"외국인등록번호 9001015234567\"}",
+            member.cookie()),
+        ErrorCode.SENSITIVE_DATA_DETECTED);
+    assertThat(count("support_inquiry")).isZero();
+
+    long inquiryId = createInquiry(member.cookie(), "BILLING", "사업자등록번호 123-45-67890 세금계산서 문의");
+    assertError(
+        postJson(
+            "/api/support-inquiries/" + inquiryId + "/replies",
+            "{\"content\":\"번호는 900101 1234567 입니다\"}",
+            member.cookie()),
+        ErrorCode.SENSITIVE_DATA_DETECTED);
+    assertThat(count("support_inquiry_message")).isZero();
+  }
 }

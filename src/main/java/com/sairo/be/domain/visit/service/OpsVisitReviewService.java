@@ -12,6 +12,7 @@ import com.sairo.be.domain.visit.repository.VisitReviewRepository;
 import com.sairo.be.domain.visit.repository.VisitReviewRepository.Dispute;
 import com.sairo.be.domain.visit.repository.VisitReviewRepository.OpsRow;
 import com.sairo.be.domain.visit.repository.VisitReviewRepository.Review;
+import com.sairo.be.global.config.VisitReviewProperties;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
@@ -48,6 +49,7 @@ public class OpsVisitReviewService {
   private final OfficeDirectory officeDirectory;
   private final BusinessDayRepository businessDays;
   private final OpsAuditLogRepository auditLogRepository;
+  private final VisitReviewProperties reviewPolicy;
   private final Clock clock;
 
   public OpsVisitReviewService(
@@ -56,12 +58,14 @@ public class OpsVisitReviewService {
       OfficeDirectory officeDirectory,
       BusinessDayRepository businessDays,
       OpsAuditLogRepository auditLogRepository,
+      VisitReviewProperties reviewPolicy,
       Clock clock) {
     this.reviewRepository = reviewRepository;
     this.nameRepository = nameRepository;
     this.officeDirectory = officeDirectory;
     this.businessDays = businessDays;
     this.auditLogRepository = auditLogRepository;
+    this.reviewPolicy = reviewPolicy;
     this.clock = clock;
   }
 
@@ -89,7 +93,9 @@ public class OpsVisitReviewService {
                       TimeRules.toDisplayOffset(dispute.filedAt()),
                       TimeRules.toDisplayOffset(
                           businessDays.dueAfter(
-                              dispute.filedAt(), VisitTrustService.DISPUTE_TARGET_BUSINESS_DAYS)),
+                              dispute.filedAt(),
+                              reviewPolicy.disputeTargetBusinessDays(),
+                              reviewPolicy.disputeDueTime())),
                       new OpsDisputedReview(
                           review.id(),
                           review.itemId(),

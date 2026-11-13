@@ -32,7 +32,7 @@ import tools.jackson.databind.JsonNode;
 public class GuestPrivacyIntakeService {
 
   static final int RESULT_DUE_DAYS = 10;
-  static final int INTERNAL_DUE_DAYS = 7;
+  static final int INTERNAL_DUE_DAYS = 3;
   static final int ACCESS_LOG_DEFAULT_DAYS = 365;
   static final int HMAC_KEY_VERSION = 1;
   static final String ACCESS_LOG_RULE = "GUEST_LINK_ACCESS_LOG";

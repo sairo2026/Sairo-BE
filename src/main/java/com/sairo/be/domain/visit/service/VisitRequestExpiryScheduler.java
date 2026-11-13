@@ -1,5 +1,6 @@
 package com.sairo.be.domain.visit.service;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,6 +18,7 @@ public class VisitRequestExpiryScheduler {
   }
 
   @Scheduled(fixedDelayString = "PT5M")
+  @SchedulerLock(name = "visit-request-expiry", lockAtMostFor = "PT15M", lockAtLeastFor = "PT1M")
   public void run() {
     expiryService.expireOverdue();
   }

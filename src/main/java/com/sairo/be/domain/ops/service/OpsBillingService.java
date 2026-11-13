@@ -241,7 +241,8 @@ public class OpsBillingService {
     }
     Long eventId = body.reasonEventId() == null ? null : Long.valueOf(body.reasonEventId());
     RefundRequest refund =
-        refunds.review(refundId, operatorId, new ReviewCommand(approve, note, eventId));
+        refunds.review(
+            refundId, operatorId, new ReviewCommand(approve, note, eventId, body.amount()));
     auditLog.insert(
         operatorId,
         approve ? "REFUND_APPROVED" : "REFUND_REJECTED",

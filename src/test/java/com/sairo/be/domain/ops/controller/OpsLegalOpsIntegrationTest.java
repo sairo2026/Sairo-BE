@@ -61,6 +61,7 @@ class OpsLegalOpsIntegrationTest extends OpsConsoleTestBase {
     opsSession = sessionOf(ops);
     privacy = operator("정개인", OperatorRole.PRIVACY);
     privacySession = sessionOf(privacy);
+    stepUp(privacySession);
     reader.clear();
     kakaoUnlink.clear();
   }
@@ -369,5 +370,26 @@ class OpsLegalOpsIntegrationTest extends OpsConsoleTestBase {
     assertError(
         post(UNLINK + "/" + failing + "/retry", "", privacySession), ErrorCode.INVALID_TRANSITION);
     assertThat(auditCount("KAKAO_UNLINK_RETRY_REQUESTED")).isEqualTo(1);
+  }
+
+  @Test
+  void 보관_기간_규칙_수정은_재인증이_없거나_만료되면_401이고_재인증_뒤에는_고쳐진다() throws Exception {
+    String code = "GUEST_INPUT_AFTER_APPROVAL_END";
+    insertRule(code);
+    Cookie fresh = sessionOf(operator("한개인", OperatorRole.PRIVACY));
+    String body = ruleBody(120, "LAWYER_CONFIRMED", "변호사 검토 답변 반영");
+
+    assertError(putRule(code, "1", body, fresh), ErrorCode.STEP_UP_REQUIRED);
+    expireStepUp(fresh);
+    assertError(putRule(code, "1", body, fresh), ErrorCode.STEP_UP_REQUIRED);
+    assertThat(retentionRuleLookup.retentionDays(code)).hasValue(90);
+    assertThat(auditCount("RETENTION_RULE_CHANGED")).isZero();
+    assertError(putRule("NO_SUCH_RULE", "1", body, fresh), ErrorCode.RESOURCE_NOT_FOUND);
+
+    stepUp(fresh);
+    putRule(code, "1", body, fresh)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.retentionDays").value(120))
+        .andExpect(jsonPath("$.version").value(2));
   }
 }

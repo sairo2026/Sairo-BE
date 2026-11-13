@@ -53,8 +53,10 @@ class OpsTrialPriceIntegrationTest extends OpsConsoleTestBase {
     fixtures = new BillingFixtures(jdbcTemplate);
     billing = operator("박결제", OperatorRole.BILLING);
     billingSession = sessionOf(billing);
+    stepUp(billingSession);
     billingApprover = operator("이결제", OperatorRole.BILLING);
     billingApproverSession = sessionOf(billingApprover);
+    stepUp(billingApproverSession);
     ops = operator("최운영", OperatorRole.OPS);
     opsSession = sessionOf(ops);
     opsApprover = operator("한운영", OperatorRole.OPS);
@@ -549,5 +551,24 @@ class OpsTrialPriceIntegrationTest extends OpsConsoleTestBase {
                 Long.class))
         .isEqualTo(ops.id());
     assertThat(auditCount("BUSINESS_CALENDAR_UPDATED")).isEqualTo(4);
+  }
+
+  @Test
+  void 요금표_승인은_재인증이_없거나_만료되면_401이고_재인증_뒤에는_승인된다() throws Exception {
+    long price = createPrice("2031-05-01T00:00:00+09:00", "2031-03-01T00:00:00+09:00", null);
+    Cookie fresh = sessionOf(operator("정결제", OperatorRole.BILLING));
+    String approve = PRICES + "/" + price + "/approve";
+
+    assertError(post(approve, "", fresh), ErrorCode.STEP_UP_REQUIRED);
+    expireStepUp(fresh);
+    assertError(post(approve, "", fresh), ErrorCode.STEP_UP_REQUIRED);
+    assertThat(rowStatus("price_schedule", price)).isEqualTo("DRAFT");
+    assertThat(auditCount("PRICE_SCHEDULE_APPROVED")).isZero();
+    assertError(post(PRICES + "/999999/approve", "", fresh), ErrorCode.RESOURCE_NOT_FOUND);
+
+    stepUp(fresh);
+    post(approve, "", fresh)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("SCHEDULED"));
   }
 }
