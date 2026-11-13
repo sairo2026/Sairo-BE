@@ -42,8 +42,9 @@ KAKAO_STEP_UP_REDIRECT_URI="https://app.sairo.agency/api/auth/step-up/kakao/call
 KAKAO_LINK_REDIRECT_URI="https://app.sairo.agency/settings/login-methods/kakao-callback"
 KAKAO_OPERATOR_REDIRECT_URI="https://app.sairo.agency/api/ops/auth/kakao/callback"
 KAKAO_OPERATOR_INVITATION_REDIRECT_URI="https://app.sairo.agency/api/ops/auth/invitations/kakao/callback"
-SAIRO_MAIL_FROM="noreply@sairo.agency"
-SAIRO_STORAGE_BUCKET="sairo-prod-objects-632154834220-ap-northeast-2"
+SAIRO_MAIL_DOMAIN="sairo.agency"
+SAIRO_MAIL_FROM="noreply@${SAIRO_MAIL_DOMAIN}"
+SAIRO_STORAGE_BUCKET="sairo-prod-objects-$(aws sts get-caller-identity --query Account --output text)-${AWS_REGION}"
 
 echo "[deploy] fetching secrets from Secrets Manager"
 APP_SECRET_JSON=$(aws secretsmanager get-secret-value --region "${AWS_REGION}" \
