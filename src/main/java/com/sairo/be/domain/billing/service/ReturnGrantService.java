@@ -100,9 +100,15 @@ public class ReturnGrantService {
   @Transactional(readOnly = true)
   public ExportResponse exportStatus(GrantPrincipal principal, Long grantId, Long exportId) {
     ReturnGrant grant = requireUsable(principal, grantId);
+    Long membershipId =
+        queryRepository
+            .findLatestMembershipId(grant.getGrantedToUserId(), grant.getOfficeId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.RETURN_GRANT_INVALID));
     ExportJob job =
         exportJobRepository
             .findByIdAndOfficeId(exportId, grant.getOfficeId())
+            .filter(found -> "FULL".equals(found.getScope()))
+            .filter(found -> membershipId.equals(found.getCreatedByMembershipId()))
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
     Instant now = clock.instant();
     if (!now.isBefore(job.getFileExpiresAt())) {
