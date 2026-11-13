@@ -155,27 +155,29 @@ class OperatorInvitationIntegrationTest extends OpsIntegrationTestBase {
   }
 
   @Test
-  void 콜백은_state가_틀리면_400이고_이미_운영자_계정이_있는_식별값이면_409다() throws Exception {
+  void 콜백은_state가_틀리거나_이미_운영자_계정이_있는_식별값이면_오류_쿼리로_302_이동한다() throws Exception {
     insertInvitation(TOKEN, "김운영", "PENDING", 48, OperatorRole.OPS);
     OpsStart start = startKakao(TOKEN);
-    assertThat(callback(start, KAKAO_ID, "wrong").getResponse().getStatus()).isEqualTo(400);
+    assertThat(callback(start, KAKAO_ID, "wrong").getResponse().getHeader("Location"))
+        .endsWith("/ops/invitations/accept?error=INVALID_REQUEST");
 
     createOperator(KAKAO_ID, "기존", OperatorRole.OPS);
     OpsStart second = startKakao(TOKEN);
     MvcResult conflict = callback(second, KAKAO_ID, second.state());
-    assertThat(conflict.getResponse().getStatus()).isEqualTo(409);
-    assertThat(conflict.getResponse().getContentAsString()).contains("OPERATOR_ALREADY_EXISTS");
+    assertThat(conflict.getResponse().getStatus()).isEqualTo(302);
+    assertThat(conflict.getResponse().getHeader("Location"))
+        .endsWith("/ops/invitations/accept?error=OPERATOR_ALREADY_EXISTS");
     assertThat(
             mockMvc
                 .perform(get("/api/ops/auth/invitations/kakao/callback").param("code", "1"))
                 .andReturn()
                 .getResponse()
-                .getStatus())
-        .isEqualTo(400);
+                .getHeader("Location"))
+        .endsWith("/ops/invitations/accept?error=INVALID_REQUEST");
   }
 
   @Test
-  void 콜백은_그_사이_취소된_초대면_409다() throws Exception {
+  void 콜백은_그_사이_취소된_초대면_오류_쿼리로_302_이동한다() throws Exception {
     long invitationId = insertInvitation(TOKEN, "김운영", "PENDING", 48, OperatorRole.OPS);
     OpsStart start = startKakao(TOKEN);
     var inviter = createOperator("canceller", "취소자", OperatorRole.SECURITY_ADMIN);
@@ -185,10 +187,9 @@ class OperatorInvitationIntegrationTest extends OpsIntegrationTestBase {
         inviter.id(),
         invitationId);
     MvcResult result = callback(start, KAKAO_ID, start.state());
-    assertThat(result.getResponse().getStatus()).isEqualTo(409);
-    assertThat(result.getResponse().getContentAsString())
-        .contains("INVITATION_NOT_USABLE")
-        .contains("CANCELLED");
+    assertThat(result.getResponse().getStatus()).isEqualTo(302);
+    assertThat(result.getResponse().getHeader("Location"))
+        .endsWith("/ops/invitations/accept?error=INVITATION_NOT_USABLE");
   }
 
   @Test
