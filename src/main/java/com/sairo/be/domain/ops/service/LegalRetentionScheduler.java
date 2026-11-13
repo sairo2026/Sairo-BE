@@ -42,6 +42,10 @@ public class LegalRetentionScheduler {
   }
 
   @Scheduled(cron = "0 40 3 * * *", zone = "Asia/Seoul")
+  @SchedulerLock(
+      name = "legal-approver-phone-encrypt",
+      lockAtMostFor = "PT2H",
+      lockAtLeastFor = "PT5M")
   public void encryptApproverPhones() {
     service.runScheduled(LegalRetentionJobService.APPROVER_PHONE_ENCRYPT_JOB, clock.instant());
   }
