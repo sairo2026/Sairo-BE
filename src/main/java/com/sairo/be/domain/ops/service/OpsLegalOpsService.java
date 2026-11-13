@@ -4,6 +4,7 @@ import static com.sairo.be.domain.ops.service.OpsSystemJobService.offset;
 
 import com.sairo.be.domain.billing.service.SystemJobFailure;
 import com.sairo.be.domain.billing.service.SystemJobRunService;
+import com.sairo.be.domain.billing.service.SystemJobSkipped;
 import com.sairo.be.domain.ops.dto.request.OpsLegalOpsRequests.RetentionRuleUpdateRequest;
 import com.sairo.be.domain.ops.dto.response.OpsLegalOpsResponses.KakaoUnlinkEventItem;
 import com.sairo.be.domain.ops.dto.response.OpsLegalOpsResponses.KakaoUnlinkEventListResponse;
@@ -139,6 +140,10 @@ public class OpsLegalOpsService {
         "terms-hash-check:" + day,
         TimeRules.startOfDisplayDay(day).plus(4, ChronoUnit.HOURS),
         () -> {
+          TermsDocumentReader port = reader.getIfAvailable();
+          if (port == null || !port.configured()) {
+            throw new SystemJobSkipped(SystemJobSkipped.NOT_CONFIGURED);
+          }
           TermsHashCheckRunResponse result = checkAll();
           if (result.mismatchCount() + result.errorCount() > 0) {
             log.warn(

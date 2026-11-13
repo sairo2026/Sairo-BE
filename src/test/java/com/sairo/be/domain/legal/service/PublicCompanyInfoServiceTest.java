@@ -1,7 +1,6 @@
 package com.sairo.be.domain.legal.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -10,8 +9,6 @@ import com.sairo.be.domain.legal.dto.response.PublicCompanyInfoResponse;
 import com.sairo.be.domain.legal.repository.CompanyServiceInfoRepository;
 import com.sairo.be.domain.legal.repository.PolicyDocumentRepository;
 import com.sairo.be.global.config.CompanyProperties;
-import com.sairo.be.global.error.BusinessException;
-import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.support.RequestRateLimiter;
 import java.time.Clock;
 import java.time.Instant;
@@ -36,19 +33,20 @@ class PublicCompanyInfoServiceTest {
   }
 
   @Test
-  void 필수_사업자_정보가_하나라도_비면_게시되지_않은_것으로_본다() {
+  void 필수_사업자_정보가_비어도_오류_없이_그_항목만_null로_준다() {
     CompanyProperties blankName =
         new CompanyProperties("", "김태환", "704-16-02872", "주소", null, null, null, null, null);
-    PublicCompanyInfoService service = service(blankName);
 
-    assertThatThrownBy(() -> service.current("127.0.0.1"))
-        .isInstanceOfSatisfying(
-            BusinessException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.COMPANY_INFO_NOT_PUBLISHED));
+    PublicCompanyInfoResponse response = service(blankName).current("127.0.0.1");
+
+    assertThat(response.businessName()).isNull();
+    assertThat(response.representativeName()).isEqualTo("김태환");
+    assertThat(response.versionNo()).isNull();
+    assertThat(response.publishedAt()).isNull();
   }
 
   @Test
-  void 선택_항목이_공백이면_응답에서_뺀다() {
+  void 선택_항목이_공백이면_null로_준다() {
     CompanyProperties properties =
         new CompanyProperties(
             "사이로(SAIRO)", "김태환", "704-16-02872", "주소", " ", "", "help@example.com", null, null);

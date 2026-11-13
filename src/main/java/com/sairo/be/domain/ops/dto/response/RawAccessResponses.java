@@ -2,6 +2,7 @@ package com.sairo.be.domain.ops.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.OffsetDateTime;
+import tools.jackson.databind.JsonNode;
 
 /** 원문 접근 승인·실행 응답이다. */
 public final class RawAccessResponses {
@@ -100,4 +101,15 @@ public final class RawAccessResponses {
   @Schema(description = "원문 접근 회수 결과")
   public record RawAccessRevokeResponse(
       Long grantId, OffsetDateTime revokedAt, Long revokedByOperatorId) {}
+
+  @Schema(description = "원문 보기 내용. 응답은 저장하지 않는다")
+  public record RawAccessContentResponse(
+      Long grantId,
+      Long approvalRequestId,
+      String targetType,
+      Long targetId,
+      OffsetDateTime expiresAt,
+      OffsetDateTime readAt,
+      @Schema(description = "대상 원문. 비밀번호 해시·카카오 식별 키·파일 저장 키는 뺀다", type = "object")
+          JsonNode content) {}
 }

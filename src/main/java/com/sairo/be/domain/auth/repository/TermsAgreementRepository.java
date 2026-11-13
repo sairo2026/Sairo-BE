@@ -23,6 +23,8 @@ public interface TermsAgreementRepository extends JpaRepository<TermsAgreement, 
       """)
   List<TermsAgreement> findLatestPerCode(@Param("userId") Long userId);
 
+  boolean existsByUserId(Long userId);
+
   Optional<TermsAgreement> findFirstByUserIdAndTermsCodeOrderByIdDesc(
       Long userId, String termsCode);
 

@@ -17,6 +17,7 @@ import com.sairo.be.global.support.TextCipher;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.OpsConsoleTestBase;
 import com.sairo.be.support.fixture.BillingFixtures;
+import com.sairo.be.support.fixture.PolicyFixtures;
 import com.sairo.be.support.fixture.TestData;
 import jakarta.servlet.http.Cookie;
 import java.sql.Timestamp;
@@ -62,12 +63,14 @@ class OpsSystemIntegrationTest extends OpsConsoleTestBase {
     privacy = operator("정개인", OperatorRole.PRIVACY);
     privacySession = sessionOf(privacy);
     probe.clear();
+    probe.configure(true);
     gateway.reset();
   }
 
   @AfterEach
   void tearDown() {
     probe.clear();
+    probe.configure(false);
   }
 
   private static String at(Instant instant) {
@@ -388,7 +391,25 @@ class OpsSystemIntegrationTest extends OpsConsoleTestBase {
                         "CONTRACT_SIGNED",
                         "CONSENT",
                         "CONTRACT_NOTICE_REVIEW",
-                        "COMPANY_INFO_PUBLISHED_VERSION")));
+                        "COMPANY_INFO_PUBLISHED_VERSION",
+                        "POLICY_DOCUMENTS_NOT_PUBLISHED",
+                        "STANDARD_PRICE_SCHEDULE_NOT_APPROVED")));
+    PolicyFixtures.publish(jdbcTemplate, "TERMS", ops.id());
+    PolicyFixtures.publish(jdbcTemplate, "PRIVACY", ops.id());
+    new BillingFixtures(jdbcTemplate)
+        .price(
+            "2027-DRAFT-STD", "STANDARD", Instant.now().plus(40, ChronoUnit.DAYS), "DRAFT", 39_900);
+    assertError(
+            patch(INTEGRATIONS + "/" + prod, "{\"enabled\":true}", opsSession),
+            ErrorCode.INTEGRATION_PREREQUISITE_INCOMPLETE)
+        .andExpect(
+            jsonPath("$.missingItems")
+                .value(
+                    Matchers.hasItems(
+                        "POLICY_DOCUMENTS_NOT_PUBLISHED", "STANDARD_PRICE_SCHEDULE_NOT_APPROVED")));
+    PolicyFixtures.publish(jdbcTemplate, "REFUND", ops.id());
+    new BillingFixtures(jdbcTemplate)
+        .standardPrice("2026-LAUNCH-STD", Instant.now().minus(1, ChronoUnit.DAYS));
     String ready =
         "{\"enabled\":true,\"contractStatus\":\"SIGNED\",\"consentStatus\":\"GRANTED\","
             + "\"contractNoticeReviewed\":true}";
@@ -599,5 +620,54 @@ class OpsSystemIntegrationTest extends OpsConsoleTestBase {
     assertFieldError(
         post(JOBS + "/billing-retry/rerun", "{}", billingSession), "runId", "REQUIRED");
     assertThat(auditCount("SYSTEM_JOB_RERUN")).isEqualTo(2);
+  }
+
+  @Test
+  void 연결_검사_수단이_없으면_검사를_건너뛰고_실행은_성공과_NOT_CONFIGURED로_남는다() throws Exception {
+    long id = insertIntegration("TEST", "storage-provider", "STORAGE");
+    probe.configure(false);
+
+    post(INTEGRATIONS + "/" + id + "/check", "", opsSession)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.integrationId").value(id))
+        .andExpect(jsonPath("$.lastCheckResult").value("NOT_TESTED"))
+        .andExpect(jsonPath("$.lastSuccessAt").value(Matchers.nullValue()));
+    assertThat(
+            jdbcTemplate.queryForMap(
+                "SELECT status, error_code, attempt_count FROM system_job_run WHERE job_name ="
+                    + " 'ops-integration-check'"))
+        .containsEntry("status", "SUCCESS")
+        .containsEntry("error_code", "NOT_CONFIGURED")
+        .containsEntry("attempt_count", 1);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT last_success_at FROM integration_config WHERE id = ?", Timestamp.class, id))
+        .isNull();
+    mockMvc
+        .perform(get(JOBS).param("status", "FAILED").cookie(opsSession))
+        .andExpect(jsonPath("$.totalElements").value(0));
+    mockMvc
+        .perform(get(JOBS).param("jobName", "ops-integration-check").cookie(opsSession))
+        .andExpect(jsonPath("$.items[0].status").value("SUCCESS"))
+        .andExpect(jsonPath("$.items[0].errorCode").value("NOT_CONFIGURED"));
+
+    probe.configure(true);
+    probe.failWith(id, "PROVIDER_TIMEOUT");
+    post(INTEGRATIONS + "/" + id + "/check", "", opsSession)
+        .andExpect(jsonPath("$.lastCheckResult").value("FAILED"));
+    long failedRun =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM system_job_run WHERE job_name = 'ops-integration-check' AND status ="
+                + " 'FAILED'",
+            Long.class);
+    probe.configure(false);
+    rerun("ops-integration-check", failedRun, opsSession)
+        .andExpect(status().isAccepted())
+        .andExpect(jsonPath("$.status").value("SUCCESS"))
+        .andExpect(jsonPath("$.attemptCount").value(2));
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT error_code FROM system_job_run WHERE id = ?", String.class, failedRun))
+        .isEqualTo("NOT_CONFIGURED");
   }
 }

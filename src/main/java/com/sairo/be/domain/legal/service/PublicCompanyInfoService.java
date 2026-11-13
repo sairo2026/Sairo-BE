@@ -7,8 +7,6 @@ import com.sairo.be.domain.legal.mapper.CompanyInfoMapper;
 import com.sairo.be.domain.legal.repository.CompanyServiceInfoRepository;
 import com.sairo.be.domain.legal.repository.PolicyDocumentRepository;
 import com.sairo.be.global.config.CompanyProperties;
-import com.sairo.be.global.error.BusinessException;
-import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.support.RequestRateLimiter;
 import java.time.Clock;
 import java.time.Instant;
@@ -60,14 +58,7 @@ public class PublicCompanyInfoService {
     return infoRepository
         .findLatestPublished(now)
         .map(info -> CompanyInfoMapper.fromPublished(info, links))
-        .orElseGet(() -> fromConfiguration(links));
-  }
-
-  private PublicCompanyInfoResponse fromConfiguration(List<PolicyLink> links) {
-    if (!CompanyInfoMapper.isComplete(properties)) {
-      throw new BusinessException(ErrorCode.COMPANY_INFO_NOT_PUBLISHED);
-    }
-    return CompanyInfoMapper.fromConfiguration(properties, links);
+        .orElseGet(() -> CompanyInfoMapper.fromConfiguration(properties, links));
   }
 
   private List<PolicyLink> policyLinks(Instant now) {

@@ -13,6 +13,7 @@ import com.sairo.be.support.AuthFlowSupport;
 import com.sairo.be.support.AuthFlowSupport.KakaoStart;
 import com.sairo.be.support.AuthIntegrationTestBase;
 import com.sairo.be.support.IntegrationTest;
+import com.sairo.be.support.fixture.TermsFixtures;
 import jakarta.servlet.http.Cookie;
 import java.util.List;
 import java.util.Map;
@@ -220,5 +221,46 @@ class KakaoSignupIntegrationTest extends AuthIntegrationTestBase {
             jsonPost("/api/auth/signup/kakao", body("홍길동", "x", null, requiredTerms()))),
         ErrorCode.UNAUTHENTICATED);
     assertThat(List.of(1)).isNotEmpty();
+  }
+
+  @Test
+  void 동의_기록이_없는_가입_미완료_세션은_재동의_대상이_아니어서_가입을_마칠_수_있다() throws Exception {
+    TermsFixtures.insert(
+        jdbcTemplate,
+        "SEPARATE",
+        "2026-12-01",
+        "별도 동의",
+        "SEPARATE_CONSENT",
+        false,
+        "2026-06-01T00:00:00Z",
+        true,
+        "신규 항목");
+
+    mockMvc.perform(get("/api/me").cookie(session)).andExpect(status().isOk());
+    mockMvc
+        .perform(get("/api/me/terms-reconsent").cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.reconsentRequired").value(false))
+        .andExpect(jsonPath("$.items.length()").value(0));
+    mockMvc
+        .perform(get("/api/auth/context").cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.reconsentRequired").value(false));
+
+    String ticket = flow.sendAndVerifyPhone(PHONE);
+    MvcResult result =
+        mockMvc
+            .perform(
+                jsonPost(
+                    "/api/auth/signup/kakao", body("홍길동", ticket, null, requiredTerms()), session))
+            .andExpect(status().isCreated())
+            .andReturn();
+
+    Cookie renewed = AuthFlowSupport.sessionCookie(result);
+    assertError(mockMvc.perform(get("/api/me").cookie(renewed)), ErrorCode.RECONSENT_REQUIRED);
+    mockMvc
+        .perform(get("/api/me/terms-reconsent").cookie(renewed))
+        .andExpect(jsonPath("$.reconsentRequired").value(true))
+        .andExpect(jsonPath("$.items[0].termsCode").value("SEPARATE"));
   }
 }

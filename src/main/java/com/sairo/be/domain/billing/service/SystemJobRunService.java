@@ -39,6 +39,10 @@ public class SystemJobRunService {
       work.run();
       finish(idempotencyKey, "SUCCESS", null);
       return true;
+    } catch (SystemJobSkipped e) {
+      log.info("배치 작업을 건너뛰었습니다. job={} key={} code={}", jobName, idempotencyKey, e.code());
+      finish(idempotencyKey, "SUCCESS", e.code());
+      return true;
     } catch (RuntimeException e) {
       log.warn("배치 작업이 실패했습니다. job={} key={}", jobName, idempotencyKey, e);
       finish(idempotencyKey, "FAILED", errorCode(e));
@@ -70,6 +74,10 @@ public class SystemJobRunService {
     try {
       work.run();
       finish(idempotencyKey, "SUCCESS", null);
+      return RerunOutcome.SUCCESS;
+    } catch (SystemJobSkipped e) {
+      log.info("재실행을 건너뛰었습니다. key={} code={}", idempotencyKey, e.code());
+      finish(idempotencyKey, "SUCCESS", e.code());
       return RerunOutcome.SUCCESS;
     } catch (RuntimeException e) {
       log.warn("재실행이 실패했습니다. key={}", idempotencyKey, e);

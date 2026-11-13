@@ -34,23 +34,16 @@ public final class CompanyInfoMapper {
     return new PublicCompanyInfoResponse(
         null,
         null,
-        properties.businessName(),
-        properties.representativeName(),
-        properties.businessNumber(),
-        properties.address(),
+        blankToNull(properties.businessName()),
+        blankToNull(properties.representativeName()),
+        blankToNull(properties.businessNumber()),
+        blankToNull(properties.address()),
         blankToNull(properties.contactPhone()),
         blankToNull(properties.ecommerceNotice()),
         blankToNull(properties.supportEmail()),
         blankToNull(properties.privacyContact()),
         blankToNull(properties.privacyRequestPath()),
         links);
-  }
-
-  public static boolean isComplete(CompanyProperties properties) {
-    return !isBlank(properties.businessName())
-        && !isBlank(properties.representativeName())
-        && !isBlank(properties.businessNumber())
-        && !isBlank(properties.address());
   }
 
   private static String blankToNull(String value) {

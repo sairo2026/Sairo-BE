@@ -62,12 +62,14 @@ class OpsLegalOpsIntegrationTest extends OpsConsoleTestBase {
     privacy = operator("정개인", OperatorRole.PRIVACY);
     privacySession = sessionOf(privacy);
     reader.clear();
+    reader.configure(true);
     kakaoUnlink.clear();
   }
 
   @AfterEach
   void tearDown() {
     reader.clear();
+    reader.configure(false);
     kakaoUnlink.clear();
   }
 
@@ -369,5 +371,31 @@ class OpsLegalOpsIntegrationTest extends OpsConsoleTestBase {
     assertError(
         post(UNLINK + "/" + failing + "/retry", "", privacySession), ErrorCode.INVALID_TRANSITION);
     assertThat(auditCount("KAKAO_UNLINK_RETRY_REQUESTED")).isEqualTo(1);
+  }
+
+  @Test
+  void 약관_원문_읽기_수단이_없으면_매일_대조를_건너뛰고_실행은_성공과_NOT_CONFIGURED로_남는다() throws Exception {
+    Instant now = Instant.now();
+    insertTerms("TOS", "1.0", sha256("사이로 이용약관"), now.minus(10, ChronoUnit.DAYS));
+    reader.configure(false);
+
+    legalOpsService.runScheduledTermsHashCheck(now);
+
+    assertThat(
+            jdbcTemplate.queryForMap(
+                "SELECT status, error_code, attempt_count FROM system_job_run WHERE job_name ="
+                    + " 'ops-terms-hash-check'"))
+        .containsEntry("status", "SUCCESS")
+        .containsEntry("error_code", "NOT_CONFIGURED")
+        .containsEntry("attempt_count", 1);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT last_hash_check_result FROM terms_catalog WHERE terms_code = 'TOS' AND"
+                    + " terms_version = '1.0'",
+                String.class))
+        .isNull();
+    legalOpsService.runScheduledTermsHashCheck(now);
+    assertThat(count("SELECT count(*) FROM system_job_run WHERE job_name = 'ops-terms-hash-check'"))
+        .isEqualTo(1);
   }
 }
