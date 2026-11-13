@@ -90,6 +90,15 @@ public class OpsSystemRepository {
     return where.toString();
   }
 
+  public boolean jobKeyExists(String idempotencyKey) {
+    return jdbcClient
+            .sql("SELECT count(*) FROM system_job_run WHERE idempotency_key = :key")
+            .param("key", idempotencyKey)
+            .query(Long.class)
+            .single()
+        > 0;
+  }
+
   public Optional<JobRow> job(long id) {
     return jdbcClient
         .sql(JOB_SELECT + " WHERE j.id = :id")
