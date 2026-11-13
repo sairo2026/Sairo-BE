@@ -123,7 +123,7 @@ class WithdrawalHandoverIntegrationTest extends VisitOutcomeTestBase {
                 + " WHERE id = ?",
             coordination);
     assertThat(row.get("status")).isEqualTo("RESCHEDULE_REQUIRED");
-    assertThat(row.get("reschedule_trigger_type")).isEqualTo("SCHEDULE_CHANGED");
+    assertThat(row.get("reschedule_trigger_type")).isEqualTo("ASSIGNEE_HANDOVER");
     assertThat(
             count(
                 "SELECT count(*) FROM visit_coordination_status_history WHERE coordination_id = ?"

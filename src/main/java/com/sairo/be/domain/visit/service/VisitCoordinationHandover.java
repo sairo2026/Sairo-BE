@@ -108,7 +108,7 @@ public class VisitCoordinationHandover implements MemberWorkHandover {
       if (conflict && coordination.getStatus() == CoordinationStatus.CONFIRMED) {
         statusService.raiseReschedule(
             coordination,
-            RescheduleTriggerType.SCHEDULE_CHANGED,
+            RescheduleTriggerType.ASSIGNEE_HANDOVER,
             StatusChangeSource.SYSTEM,
             null,
             CONFLICT_REASON);
