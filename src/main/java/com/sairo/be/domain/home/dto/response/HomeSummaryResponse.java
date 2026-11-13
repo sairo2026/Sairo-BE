@@ -12,6 +12,8 @@ public record HomeSummaryResponse(
     long activeCoordinationCount,
     List<OpenTask> openTasks,
     long unreadNotificationCount,
+    long unreadVisitRequestNoticeCount,
+    VisitRequestSummary visitRequestSummary,
     List<StatusCount> coordinationStatusCounts,
     long leaseExpiringWithin90DaysCount,
     List<CalendarDay> calendarDays) {
@@ -33,6 +35,9 @@ public record HomeSummaryResponse(
       Long assigneeMembershipId,
       String assigneeName,
       boolean overdue) {}
+
+  public record VisitRequestSummary(
+      long pendingCount, long revalidationFailedCount, long timeClosedCount) {}
 
   public record StatusCount(String status, long count) {}
 

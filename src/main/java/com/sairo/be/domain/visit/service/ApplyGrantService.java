@@ -25,6 +25,7 @@ import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.error.FieldErrorItem;
 import com.sairo.be.global.port.OfficeDirectory;
+import com.sairo.be.global.port.OfficeWriteRestriction;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.PageResponse;
@@ -64,6 +65,7 @@ public class ApplyGrantService {
   private final ApprovalAccess access;
   private final ApplyGrantRepository grantRepository;
   private final OfficeDirectory officeDirectory;
+  private final OfficeWriteRestriction writeRestriction;
   private final MembershipNameRepository names;
   private final VisitCoordinationRepository coordinationRepository;
   private final VisitRequestRepository requestRepository;
@@ -75,6 +77,7 @@ public class ApplyGrantService {
       ApprovalAccess access,
       ApplyGrantRepository grantRepository,
       OfficeDirectory officeDirectory,
+      OfficeWriteRestriction writeRestriction,
       MembershipNameRepository names,
       VisitCoordinationRepository coordinationRepository,
       VisitRequestRepository requestRepository,
@@ -84,6 +87,7 @@ public class ApplyGrantService {
     this.access = access;
     this.grantRepository = grantRepository;
     this.officeDirectory = officeDirectory;
+    this.writeRestriction = writeRestriction;
     this.names = names;
     this.coordinationRepository = coordinationRepository;
     this.requestRepository = requestRepository;
@@ -101,6 +105,9 @@ public class ApplyGrantService {
     Long granteeMembershipId = CustomerInput.optionalLong(body, "granteeMembershipId");
     OffsetDateTime expiresInput = CustomerInput.optionalDateTime(body, "expiresAt");
     PropertyAccessApproval approval = access.lock(principal, propertyId, approvalId);
+    if (writeRestriction.restricted(principal.officeId())) {
+      throw new BusinessException(ErrorCode.FORBIDDEN);
+    }
     Instant now = now();
     if (!approval.isPrimary() || approval.isRevoked() || !approval.getValidUntil().isAfter(now)) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);

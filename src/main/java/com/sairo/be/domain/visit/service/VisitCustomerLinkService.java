@@ -3,6 +3,7 @@ package com.sairo.be.domain.visit.service;
 import com.sairo.be.domain.legal.service.RetentionRuleLookup;
 import com.sairo.be.domain.visit.dto.response.CustomerLinkIssueResponse;
 import com.sairo.be.domain.visit.dto.response.CustomerLinkReissueResponse;
+import com.sairo.be.domain.visit.entity.CoordinationStatus;
 import com.sairo.be.domain.visit.entity.VisitCoordination;
 import com.sairo.be.domain.visit.entity.VisitCustomerLink;
 import com.sairo.be.domain.visit.entity.VisitCustomerTimeSlot;
@@ -96,7 +97,8 @@ public class VisitCustomerLinkService {
   }
 
   private void requireIssuable(VisitCoordination coordination) {
-    if (!coordination.getStatus().acceptsCustomerResponse()) {
+    if (!coordination.getStatus().acceptsCustomerResponse()
+        && coordination.getStatus() != CoordinationStatus.CONFIRMED) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
   }

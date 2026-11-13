@@ -34,6 +34,7 @@ import com.sairo.be.domain.visit.service.ConditionSpec.Limit;
 import com.sairo.be.domain.visit.service.ConditionSpec.Window;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
+import com.sairo.be.global.port.OfficeWriteRestriction;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.AdvisoryLock;
 import com.sairo.be.global.support.TimeRules;
@@ -73,6 +74,7 @@ public class ApproverConditionService {
   private final AdvisoryLock advisoryLock;
   private final ApproverPortalAccess portalAccess;
   private final ApproverProfileRepository profileRepository;
+  private final OfficeWriteRestriction writeRestriction;
   private final Clock clock;
 
   public ApproverConditionService(
@@ -92,6 +94,7 @@ public class ApproverConditionService {
       AdvisoryLock advisoryLock,
       ApproverPortalAccess portalAccess,
       ApproverProfileRepository profileRepository,
+      OfficeWriteRestriction writeRestriction,
       Clock clock) {
     this.access = access;
     this.approvalRepository = approvalRepository;
@@ -109,6 +112,7 @@ public class ApproverConditionService {
     this.advisoryLock = advisoryLock;
     this.portalAccess = portalAccess;
     this.profileRepository = profileRepository;
+    this.writeRestriction = writeRestriction;
     this.clock = clock;
   }
 
@@ -310,6 +314,9 @@ public class ApproverConditionService {
     if (!approval.isUsableAt(now)) {
       return new BulkItemOutcome("FAILED", null, null, "APPROVAL_INACTIVE", 0);
     }
+    if (propertyOfficeRestricted(approval)) {
+      return new BulkItemOutcome("FAILED", null, null, "OFFICE_RESTRICTED", 0);
+    }
     int affected = affectedFor(approvalId, parsed.spec()).size();
     if (affected > 0 && !impactAcknowledged) {
       return new BulkItemOutcome("NEEDS_IMPACT_ACK", null, null, null, affected);
@@ -324,6 +331,14 @@ public class ApproverConditionService {
     ApproverConditionResponse saved =
         save(approval, acknowledged, InputSource.DIRECT, null, null, profileId, notice, now, null);
     return new BulkItemOutcome("APPLIED", saved.conditionId(), saved.versionNo(), null, affected);
+  }
+
+  public boolean propertyOfficeRestricted(PropertyAccessApproval approval) {
+    return propertyReferences
+        .find(approval.getPropertyId())
+        .map(PropertyReferenceService.PropertySummary::officeId)
+        .filter(writeRestriction::restricted)
+        .isPresent();
   }
 
   @Transactional
