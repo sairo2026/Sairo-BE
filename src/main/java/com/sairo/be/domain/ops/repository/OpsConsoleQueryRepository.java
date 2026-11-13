@@ -124,7 +124,9 @@ public class OpsConsoleQueryRepository {
                 + " (SELECT count(*) FROM refund_request WHERE status = 'FAILED'),"
                 + " (SELECT count(*) FROM import_support_request WHERE status = 'REVIEW'),"
                 + " (SELECT count(*) FROM privacy_request WHERE status NOT IN ('COMPLETED',"
-                + " 'REJECTED') AND legal_due_at <= :privacyDeadline),"
+                + " 'REJECTED') AND legal_due_at <= :privacyDeadline) + (SELECT count(*) FROM"
+                + " legal_guest_privacy_intake WHERE status = 'RECEIVED' AND internal_due_at <="
+                + " :privacyDeadline),"
                 + " (SELECT count(*) FROM deletion_queue WHERE cancelled_at IS NULL AND"
                 + " ('FAILED' IN (result, storage_result, search_index_result, file_result,"
                 + " temporary_export_result))),"
@@ -142,6 +144,21 @@ public class OpsConsoleQueryRepository {
                     rs.getLong(6),
                     rs.getLong(7),
                     rs.getLong(8)))
+        .single();
+  }
+
+  public record GuestIntakeDeadlineCounts(long approaching, long overdue) {}
+
+  /** 아직 처리하지 않은 비회원 권리 요청 접수 중 내부 기한이 window 안으로 들어온 건과 이미 지난 건의 수다. */
+  public GuestIntakeDeadlineCounts guestIntakeDeadlineCounts(Instant now, Instant window) {
+    return jdbcClient
+        .sql(
+            "SELECT count(*) FILTER (WHERE internal_due_at <= :window),"
+                + " count(*) FILTER (WHERE internal_due_at < :now) FROM"
+                + " legal_guest_privacy_intake WHERE status = 'RECEIVED'")
+        .param("window", Timestamp.from(window))
+        .param("now", Timestamp.from(now))
+        .query((rs, i) -> new GuestIntakeDeadlineCounts(rs.getLong(1), rs.getLong(2)))
         .single();
   }
 
