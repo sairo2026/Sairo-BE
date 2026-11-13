@@ -227,21 +227,27 @@ class ReturnGrantIntegrationTest extends GrantTestBase {
   }
 
   @Test
-  void 반환권한은_같은_사무소의_다른_작성자나_일반_표_내보내기를_조회할_수_없다()
-      throws Exception {
+  void 반환권한은_같은_사무소의_다른_작성자나_일반_표_내보내기를_조회할_수_없다() throws Exception {
     Session session = session();
-    Session other = session();
+    var other =
+        data()
+            .approvedStaffIn(
+                session.holder().former().office(),
+                appUserRepository.saveAndFlush(
+                    com.sairo.be.support.fixture.AppUserBuilder.anAppUser().build()),
+                com.sairo.be.domain.office.entity.OfficeMembershipRole.AGENT);
     long exportId = createExport(session);
     jdbcTemplate.update(
         "UPDATE export_job SET created_by_membership_id = ? WHERE id = ?",
-        other.holder().former().membership().getId(),
+        other.membership().getId(),
         exportId);
     assertError(
         mockMvc.perform(getRequest(exportUrl(session, exportId)).apply(session.cookie())),
         ErrorCode.RESOURCE_NOT_FOUND);
 
     jdbcTemplate.update(
-        "UPDATE export_job SET created_by_membership_id = ?, scope = 'TABLES' WHERE id = ?",
+        "UPDATE export_job SET created_by_membership_id = ?, scope = 'TABLES',"
+            + " table_codes = '[\"TASK\"]'::jsonb WHERE id = ?",
         session.holder().former().membership().getId(),
         exportId);
     assertError(
