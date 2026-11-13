@@ -21,12 +21,13 @@ fi
 AWS_REGION="ap-northeast-2"
 ECR_REGISTRY="632154834220.dkr.ecr.ap-northeast-2.amazonaws.com"
 ECR_REPOSITORY_URI="${ECR_REGISTRY}/sairo-be"
-COMPOSE_DIR="/opt/sairo"
+COMPOSE_DIR="${SAIRO_DEPLOY_DIR:-/opt/sairo}"
 COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.prod.yml"
 ENV_DIR="${COMPOSE_DIR}/env"
 ENV_FILE="${ENV_DIR}/app.env"
 MIGRATE_ENV_FILE="${ENV_DIR}/migrate.env"
 LAST_GOOD_FILE="${COMPOSE_DIR}/last-good-tag"
+VERIFIED_GOOD_FILE="${COMPOSE_DIR}/last-good-verified"
 API_DISABLED_FILE="${COMPOSE_DIR}/api-deploy-disabled"
 HEALTH_URL="http://127.0.0.1:8080/actuator/health"
 
@@ -133,6 +134,7 @@ RESEND_API_KEY=$(jq -r '.resendApiKey // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_API_KEY=$(jq -r '.solapiApiKey // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_API_SECRET=$(jq -r '.solapiApiSecret // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_SENDER_NUMBER=$(jq -r '.solapiSenderNumber // ""' <<<"${APP_SECRETS_JSON}")
+SECRET_HEALTH_WAIT_SECONDS=$(jq -r '.healthWaitSeconds // "" | tostring' <<<"${APP_SECRETS_JSON}")
 
 umask 077
 {
@@ -184,9 +186,23 @@ unset APP_SECRET_JSON MIGRATOR_SECRET_JSON APP_SECRETS_JSON DB_APP_PASSWORD DB_M
   AUTH_UNSUBSCRIBE_SECRET AUTH_KAKAO_KEY_ENCRYPTION_SECRET BILLING_KEY_ENCRYPTION_SECRET \
   RESEND_API_KEY SOLAPI_API_KEY SOLAPI_API_SECRET SOLAPI_SENDER_NUMBER
 
+HEALTH_WAIT_SECONDS="${HEALTH_WAIT_SECONDS:-${SECRET_HEALTH_WAIT_SECONDS:-180}}"
+HEALTH_INTERVAL_SECONDS=3
+if [[ ! "${HEALTH_WAIT_SECONDS}" =~ ^[0-9]+$ ]] \
+  || [ "${HEALTH_WAIT_SECONDS}" -lt 30 ] || [ "${HEALTH_WAIT_SECONDS}" -gt 900 ]; then
+  echo "[deploy] health wait must be an integer between 30 and 900 seconds" >&2
+  exit 1
+fi
+HEALTH_ATTEMPTS=$(( (HEALTH_WAIT_SECONDS + HEALTH_INTERVAL_SECONDS - 1) / HEALTH_INTERVAL_SECONDS ))
+
 PREVIOUS_TAG=""
 if [ -f "${LAST_GOOD_FILE}" ]; then
   PREVIOUS_TAG=$(cat "${LAST_GOOD_FILE}")
+fi
+ROLLBACK_TAG=""
+if [ -n "${PREVIOUS_TAG}" ] && [ -f "${VERIFIED_GOOD_FILE}" ] \
+  && [ "$(cat "${VERIFIED_GOOD_FILE}")" = "${PREVIOUS_TAG}" ]; then
+  ROLLBACK_TAG="${PREVIOUS_TAG}"
 fi
 
 run_migration() {
@@ -210,11 +226,11 @@ deploy_tag() {
 }
 
 wait_for_healthy() {
-  for _ in $(seq 1 20); do
+  for _ in $(seq 1 "${HEALTH_ATTEMPTS}"); do
     if curl -fsS "${HEALTH_URL}" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 3
+    sleep "${HEALTH_INTERVAL_SECONDS}"
   done
   return 1
 }
@@ -234,25 +250,31 @@ fi
 
 deploy_tag "${IMAGE_TAG}"
 
-echo "[deploy] waiting for health check"
+echo "[deploy] waiting up to ${HEALTH_WAIT_SECONDS}s for health check"
 if wait_for_healthy; then
   echo "[deploy] healthy, recording ${IMAGE_TAG} as last-good"
   echo "${IMAGE_TAG}" > "${LAST_GOOD_FILE}"
+  echo "${IMAGE_TAG}" > "${VERIFIED_GOOD_FILE}"
   exit 0
 fi
 
 echo "[deploy] health check failed for ${IMAGE_TAG}"
-if [ -n "${PREVIOUS_TAG}" ] && [ "${PREVIOUS_TAG}" != "${IMAGE_TAG}" ]; then
-  echo "[deploy] rolling back to ${PREVIOUS_TAG}"
-  deploy_tag "${PREVIOUS_TAG}"
+if [ -n "${ROLLBACK_TAG}" ] && [ "${ROLLBACK_TAG}" != "${IMAGE_TAG}" ]; then
+  echo "[deploy] rolling back to ${ROLLBACK_TAG}"
+  deploy_tag "${ROLLBACK_TAG}"
 
   echo "[deploy] waiting for health check after rollback"
   if wait_for_healthy; then
-    echo "[deploy] rollback to ${PREVIOUS_TAG} is healthy"
+    echo "[deploy] rollback to ${ROLLBACK_TAG} is healthy"
   else
     echo "[deploy] rollback failed health check" >&2
   fi
 else
-  echo "[deploy] no previous good tag available to roll back to"
+  echo "[deploy] no verified rollback target, ${IMAGE_TAG} is left running for inspection" >&2
+  echo "[deploy] the previous image was never confirmed healthy against the current schema, so no automatic rollback was attempted" >&2
+  IMAGE_TAG="${IMAGE_TAG}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
+    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" ps api >&2 || true
+  IMAGE_TAG="${IMAGE_TAG}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
+    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" logs --tail 80 api >&2 || true
 fi
 exit 1
