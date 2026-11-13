@@ -30,6 +30,9 @@ public class ExportJob {
   @Column(nullable = false, length = 10, updatable = false)
   private String scope;
 
+  @Column(name = "archive_grant_id", updatable = false)
+  private Long archiveGrantId;
+
   @Column(nullable = false, length = 10)
   private String status;
 
@@ -59,6 +62,14 @@ public class ExportJob {
     job.fileExpiresAt = fileExpiresAt;
     job.createdAt = now;
     job.updatedAt = now;
+    return job;
+  }
+
+  public static ExportJob archiveExport(
+      Long officeId, Long membershipId, Long archiveGrantId, Instant now, Instant fileExpiresAt) {
+    ExportJob job = fullExport(officeId, membershipId, now, fileExpiresAt);
+    job.scope = "ARCHIVE";
+    job.archiveGrantId = archiveGrantId;
     return job;
   }
 

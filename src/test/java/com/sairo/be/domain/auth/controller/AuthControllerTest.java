@@ -237,6 +237,24 @@ class AuthControllerTest extends AuthIntegrationTestBase {
   }
 
   @Test
+  void 반환_보관_권한자_용도의_실패는_인증_화면의_오류_쿼리로_이동한다() throws Exception {
+    KakaoStart start = flow.startKakao("/api/auth/kakao/start?purpose=GRANT", null);
+
+    String location =
+        mockMvc
+            .perform(
+                get("/api/auth/kakao/callback")
+                    .cookie(start.cookie())
+                    .param("code", "5001001")
+                    .param("state", "wrong"))
+            .andReturn()
+            .getResponse()
+            .getHeader("Location");
+
+    assertThat(location).isEqualTo(FRONT + "/grant/verify?error=INVALID_REQUEST");
+  }
+
+  @Test
   void 탈퇴한_사용자는_로그인할_수_없다() throws Exception {
     appUserRepository.saveAndFlush(AppUserBuilder.anAppUser().kakaoProviderKey("5001005").build());
     jdbcTemplate.update("UPDATE app_user SET account_status = 'WITHDRAWN', withdrawn_at = now()");
