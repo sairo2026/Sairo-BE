@@ -191,6 +191,36 @@ public class HomeSummaryRepository {
         .list();
   }
 
+  public record RequestCounts(long pending, long revalidationFailed, long timeClosed) {}
+
+  public RequestCounts requestCounts(Long officeId, Long manager) {
+    return jdbcClient
+        .sql(
+            "SELECT count(*) FILTER (WHERE r.status = 'PENDING') AS pending, count(*) FILTER"
+                + " (WHERE r.status = 'REVALIDATION_FAILED') AS failed, count(*) FILTER (WHERE"
+                + " r.status = 'TIME_CLOSED') AS closed FROM visit_request r JOIN"
+                + " visit_coordination vc ON vc.id = r.coordination_id AND vc.office_id ="
+                + " r.applicant_office_id WHERE vc.office_id = :office AND vc.status NOT IN"
+                + " ('VISIT_COMPLETED','VISIT_INCOMPLETE','CANCELLED')"
+                + managerClause(manager))
+        .params(scope(officeId, manager))
+        .query(
+            (rs, rowNum) ->
+                new RequestCounts(
+                    rs.getLong("pending"), rs.getLong("failed"), rs.getLong("closed")))
+        .single();
+  }
+
+  public long unreadVisitRequestNotices(Long membershipId) {
+    return jdbcClient
+        .sql(
+            "SELECT count(*) FROM visit_request_notice WHERE recipient_membership_id ="
+                + " :member AND read_at IS NULL")
+        .param("member", membershipId)
+        .query(Long.class)
+        .single();
+  }
+
   private static String managerClause(Long manager) {
     return manager == null ? "" : " AND vc.manager_membership_id = :manager";
   }

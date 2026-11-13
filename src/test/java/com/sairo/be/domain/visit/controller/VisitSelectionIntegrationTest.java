@@ -129,7 +129,7 @@ class VisitSelectionIntegrationTest extends VisitSelectionTestBase {
   }
 
   @Test
-  void 선호_표시는_위쪽_묶음으로_보일_뿐_선택은_어느_신청이든_같다() throws Exception {
+  void 선호_표시는_칩으로만_보이고_순서는_접수순이며_선택은_어느_신청이든_같다() throws Exception {
     SelectionFixture s = selectionFixture();
     var agent = staffIn(s.base().owner().office(), OfficeMembershipRole.AGENT);
     SecondRequest second = secondRequest(s.base(), cookieOf(agent), "11:00", "11:30", 9, 17);
@@ -148,9 +148,10 @@ class VisitSelectionIntegrationTest extends VisitSelectionTestBase {
 
     compare(s.token())
         .andExpect(jsonPath("$.items.length()").value(2))
-        .andExpect(jsonPath("$.items[0].requestId").value(second.requestId()))
-        .andExpect(jsonPath("$.items[0].isPreferredBroker").value(true))
-        .andExpect(jsonPath("$.items[1].requestId").value(s.requestId()));
+        .andExpect(jsonPath("$.items[0].requestId").value(s.requestId()))
+        .andExpect(jsonPath("$.items[0].isPreferredBroker").value(false))
+        .andExpect(jsonPath("$.items[1].requestId").value(second.requestId()))
+        .andExpect(jsonPath("$.items[1].isPreferredBroker").value(true));
 
     selectNow(s.token(), s.requestId())
         .andExpect(status().isOk())

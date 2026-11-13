@@ -465,7 +465,11 @@ class HomeTaskNotificationIntegrationTest extends VisitOutcomeTestBase {
         .andExpect(jsonPath("$.items[0].notificationId").value(second));
     mockMvc
         .perform(authedGet("/api/home", cookie))
-        .andExpect(jsonPath("$.unreadNotificationCount").value(1));
+        .andExpect(jsonPath("$.unreadNotificationCount").value(1))
+        .andExpect(jsonPath("$.unreadVisitRequestNoticeCount").value(0))
+        .andExpect(jsonPath("$.visitRequestSummary.pendingCount").value(0))
+        .andExpect(jsonPath("$.visitRequestSummary.revalidationFailedCount").value(0))
+        .andExpect(jsonPath("$.visitRequestSummary.timeClosedCount").value(0));
     assertError(
         mockMvc.perform(jsonPostAs("/api/notifications/" + agents + "/read", "", cookie)),
         ErrorCode.RESOURCE_NOT_FOUND);

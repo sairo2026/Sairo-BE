@@ -198,12 +198,22 @@ class CustomerLinkIntegrationTest extends VisitIntegrationTestBase {
     Fixture f = fixture(10, 20);
     issueToken(f.cookie(), f.coordinationId());
 
-    for (String statusValue : new String[] {"APPLYING", "CONFIRMED", "CANCELLED"}) {
+    for (String statusValue : new String[] {"APPLYING", "CANCELLED"}) {
       setCoordinationStatus(f.coordinationId(), statusValue);
       assertError(
           mockMvc.perform(jsonPostAs(linkUrl(f, "/reissue"), "", f.cookie())),
           ErrorCode.INVALID_TRANSITION);
     }
+  }
+
+  @Test
+  void 확정_상태에서도_살아있는_링크가_없으면_발급한다() throws Exception {
+    Fixture f = fixture(10, 20);
+    setCoordinationStatus(f.coordinationId(), "CONFIRMED");
+
+    assertThat(issueToken(f.cookie(), f.coordinationId())).isNotBlank();
+    assertError(
+        mockMvc.perform(jsonPostAs(linkUrl(f, ""), "", f.cookie())), ErrorCode.INVALID_TRANSITION);
   }
 
   @Test

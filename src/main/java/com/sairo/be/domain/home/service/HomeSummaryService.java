@@ -6,6 +6,7 @@ import com.sairo.be.domain.home.dto.response.HomeSummaryResponse.FollowupTask;
 import com.sairo.be.domain.home.dto.response.HomeSummaryResponse.OpenTask;
 import com.sairo.be.domain.home.dto.response.HomeSummaryResponse.StatusCount;
 import com.sairo.be.domain.home.dto.response.HomeSummaryResponse.TodayVisit;
+import com.sairo.be.domain.home.dto.response.HomeSummaryResponse.VisitRequestSummary;
 import com.sairo.be.domain.home.repository.HomeSummaryRepository;
 import com.sairo.be.domain.home.repository.HomeSummaryRepository.DayCount;
 import com.sairo.be.domain.home.repository.NotificationRepository;
@@ -117,12 +118,17 @@ public class HomeSummaryService {
             ? 0
             : repository.leaseExpiringWithin(officeId, today, today.plusDays(LEASE_WINDOW_DAYS));
 
+    HomeSummaryRepository.RequestCounts requests = repository.requestCounts(officeId, scope);
+
     return new HomeSummaryResponse(
         visits,
         followups,
         repository.activeCoordinations(officeId, scope),
         openTasks,
         notificationRepository.count(principal.userId(), officeId, true),
+        repository.unreadVisitRequestNotices(principal.membershipId()),
+        new VisitRequestSummary(
+            requests.pending(), requests.revalidationFailed(), requests.timeClosed()),
         statusCounts,
         leaseExpiring,
         calendar(officeId, scope, deputy, YearMonth.from(today)));
