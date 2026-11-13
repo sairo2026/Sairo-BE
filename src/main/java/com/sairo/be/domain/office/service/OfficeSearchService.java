@@ -20,7 +20,7 @@ public class OfficeSearchService {
 
   private static final String VERIFIED =
       " FROM office o WHERE EXISTS (SELECT 1 FROM office_registration r WHERE"
-          + " r.resulting_office_id = o.id AND r.status = 'APPROVED')";
+          + " r.resulting_office_id = o.id AND r.status = 'APPROVED') AND o.closed_at IS NULL";
 
   private final JdbcClient jdbcClient;
 

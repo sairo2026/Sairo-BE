@@ -198,8 +198,9 @@ public class MembershipApplicationService {
     Long found =
         jdbcClient
             .sql(
-                "SELECT count(*) FROM office_registration WHERE resulting_office_id = :id AND"
-                    + " status = 'APPROVED'")
+                "SELECT count(*) FROM office_registration r JOIN office o ON o.id ="
+                    + " r.resulting_office_id WHERE r.resulting_office_id = :id AND r.status ="
+                    + " 'APPROVED' AND o.closed_at IS NULL")
             .param("id", officeId)
             .query(Long.class)
             .single();

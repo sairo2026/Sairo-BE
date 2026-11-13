@@ -4,6 +4,7 @@ import com.sairo.be.domain.billing.service.SystemJobRunService;
 import com.sairo.be.domain.legal.service.LegalRetentionBatchService;
 import com.sairo.be.domain.legal.service.LegalRetentionBatchService.AnonymizeResult;
 import com.sairo.be.domain.legal.service.LegalRetentionBatchService.SweepResult;
+import com.sairo.be.domain.legal.service.OfficeDataPurgeScanService;
 import com.sairo.be.global.support.TimeRules;
 import java.time.Duration;
 import java.time.Instant;
@@ -28,26 +29,36 @@ public class LegalRetentionJobService {
   public static final String ANONYMIZE_JOB = "approver-anonymize";
   public static final String LINK_LOG_PURGE_JOB = "legal-link-log-purge";
   public static final String APPROVER_PHONE_ENCRYPT_JOB = "approver-phone-encrypt";
+  public static final String OFFICE_DATA_PURGE_SCAN_JOB = "office-data-purge-scan";
   public static final Set<String> JOBS =
-      Set.of(SWEEP_JOB, ANONYMIZE_JOB, LINK_LOG_PURGE_JOB, APPROVER_PHONE_ENCRYPT_JOB);
+      Set.of(
+          SWEEP_JOB,
+          ANONYMIZE_JOB,
+          LINK_LOG_PURGE_JOB,
+          APPROVER_PHONE_ENCRYPT_JOB,
+          OFFICE_DATA_PURGE_SCAN_JOB);
 
   private static final Map<String, Duration> SCHEDULED_AT =
       Map.of(
           SWEEP_JOB, Duration.ofMinutes(3 * 60 + 10),
           ANONYMIZE_JOB, Duration.ofMinutes(3 * 60 + 20),
           LINK_LOG_PURGE_JOB, Duration.ofMinutes(3 * 60 + 30),
-          APPROVER_PHONE_ENCRYPT_JOB, Duration.ofMinutes(3 * 60 + 40));
+          APPROVER_PHONE_ENCRYPT_JOB, Duration.ofMinutes(3 * 60 + 40),
+          OFFICE_DATA_PURGE_SCAN_JOB, Duration.ofMinutes(3 * 60 + 40));
 
   private final LegalRetentionBatchService batchService;
   private final ApproverPhoneEncryptService phoneEncryptService;
+  private final OfficeDataPurgeScanService officeDataPurgeScanService;
   private final SystemJobRunService jobRunService;
 
   public LegalRetentionJobService(
       LegalRetentionBatchService batchService,
       ApproverPhoneEncryptService phoneEncryptService,
+      OfficeDataPurgeScanService officeDataPurgeScanService,
       SystemJobRunService jobRunService) {
     this.batchService = batchService;
     this.phoneEncryptService = phoneEncryptService;
+    this.officeDataPurgeScanService = officeDataPurgeScanService;
     this.jobRunService = jobRunService;
   }
 
@@ -94,6 +105,8 @@ public class LegalRetentionJobService {
           () -> log.info("비회원 링크 접속 로그 삭제: {}건", batchService.purgeLinkAccessLogs());
       case APPROVER_PHONE_ENCRYPT_JOB ->
           () -> log.info("승인자 연락처 암호화: {}건", phoneEncryptService.encryptPlainRows());
+      case OFFICE_DATA_PURGE_SCAN_JOB ->
+          () -> log.info("종료 사무소 파기 큐 등록: {}건", officeDataPurgeScanService.scan());
       default -> throw new IllegalArgumentException("알 수 없는 법률 배치다: " + jobName);
     };
   }
