@@ -5,7 +5,9 @@ import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.security.OperatorAuthentication;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.security.core.Authentication;
@@ -20,14 +22,18 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class AccessInterceptor implements HandlerInterceptor {
 
   private final AccessPolicy accessPolicy;
+  private final String frontendBaseUrl;
 
-  public AccessInterceptor(AccessPolicy accessPolicy) {
+  public AccessInterceptor(
+      AccessPolicy accessPolicy,
+      @Value("${app.frontend-base-url:http://localhost:3000}") String frontendBaseUrl) {
     this.accessPolicy = accessPolicy;
+    this.frontendBaseUrl = frontendBaseUrl;
   }
 
   @Override
-  public boolean preHandle(
-      HttpServletRequest request, HttpServletResponse response, Object handler) {
+  public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+      throws IOException {
     if (!(handler instanceof HandlerMethod handlerMethod)) {
       return true;
     }
@@ -38,9 +44,20 @@ public class AccessInterceptor implements HandlerInterceptor {
     }
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     AccessSubject subject = AccessSubject.from(authentication);
-    accessPolicy.check(
-        new AccessRequest(
-            annotation.value(), subject, request.getMethod(), request.getRequestURI()));
+    try {
+      accessPolicy.check(
+          new AccessRequest(
+              annotation.value(), subject, request.getMethod(), request.getRequestURI()));
+    } catch (BusinessException e) {
+      RedirectOnUnauthenticated redirect =
+          handlerMethod.getMethodAnnotation(RedirectOnUnauthenticated.class);
+      if (redirect != null && e.getErrorCode() == ErrorCode.UNAUTHENTICATED) {
+        response.sendRedirect(
+            frontendBaseUrl + redirect.value() + "?error=" + ErrorCode.UNAUTHENTICATED.name());
+        return false;
+      }
+      throw e;
+    }
     RequiresOperatorRole roleAnnotation = findRoleAnnotation(handlerMethod);
     if (roleAnnotation != null && !hasAnyRole(authentication, roleAnnotation)) {
       throw new BusinessException(ErrorCode.FORBIDDEN);
