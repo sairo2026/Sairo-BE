@@ -1,5 +1,6 @@
 package com.sairo.be.global.port.prod;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -12,11 +13,19 @@ import software.amazon.awssdk.services.sesv2.SesV2Client;
 @Profile("prod")
 class ProductionPortConfig {
   @Bean
+  @ConditionalOnProperty(
+      name = "sairo.delivery.mail.provider",
+      havingValue = "ses",
+      matchIfMissing = true)
   SesV2Client sesV2Client() {
     return SesV2Client.create();
   }
 
   @Bean
+  @ConditionalOnProperty(
+      name = "sairo.delivery.sms.provider",
+      havingValue = "aws",
+      matchIfMissing = true)
   PinpointSmsVoiceV2Client smsClient() {
     return PinpointSmsVoiceV2Client.create();
   }

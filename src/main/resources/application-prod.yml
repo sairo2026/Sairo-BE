@@ -23,9 +23,19 @@ kakao:
 sairo:
   delivery:
     mail:
+      provider: ${SAIRO_MAIL_PROVIDER:ses}
       from: ${SAIRO_MAIL_FROM}
+      resend:
+        api-key: ${RESEND_API_KEY:}
+        base-url: ${RESEND_API_BASE_URL:https://api.resend.com}
     sms:
+      provider: ${SAIRO_SMS_PROVIDER:aws}
       origination-identity: ${SAIRO_SMS_ORIGINATION_IDENTITY:}
+      solapi:
+        api-key: ${SOLAPI_API_KEY:}
+        api-secret: ${SOLAPI_API_SECRET:}
+        sender-number: ${SOLAPI_SENDER_NUMBER:}
+        base-url: ${SOLAPI_API_BASE_URL:https://api.solapi.com}
     storage:
       bucket: ${SAIRO_STORAGE_BUCKET}
     scanner:
