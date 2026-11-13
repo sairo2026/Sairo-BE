@@ -159,6 +159,125 @@ class ExportGenerationIntegrationTest extends ExportIntegrationTestBase {
     assertThat(generationService.generatePending()).isZero();
   }
 
+  private long insertRetainedDocument(
+      long contractId,
+      long revisionId,
+      long membershipId,
+      String type,
+      int years,
+      String retentionEnd,
+      String objectKey) {
+    Long id =
+        jdbcTemplate.queryForObject(
+            "INSERT INTO contract_document (contract_id, contract_revision_id, document_type,"
+                + " version_no, written_date, delivered_date, retention_end_date, retention_years,"
+                + " object_key, uploaded_by_membership_id) VALUES (?, ?, ?, 1, current_date,"
+                + " current_date, ?::date, ?, ?, ?) RETURNING id",
+            Long.class,
+            contractId,
+            revisionId,
+            type,
+            retentionEnd,
+            years,
+            objectKey,
+            membershipId);
+    return id == null ? -1 : id;
+  }
+
+  @Test
+  void 보관권한_내보내기는_법정_보존_계약_서류와_거래_기록만_담는다() throws Exception {
+    jdbcTemplate.update(
+        "INSERT INTO legal_retention_rule (rule_code, data_group_label, retention_days,"
+            + " anchor_event, basis_note, status) VALUES ('OFFICE_CONTRACT_DOCUMENT', '거래계약서',"
+            + " 1825, 'RECORDED_AT', '시험', 'ASSUMPTION'), ('OFFICE_EXPLANATION_DOCUMENT',"
+            + " '확인설명서', 1095, 'RECORDED_AT', '시험', 'ASSUMPTION') ON CONFLICT (rule_code) DO"
+            + " NOTHING");
+    var owner = newStaff(OfficeMembershipRole.OWNER);
+    long officeId = owner.office().getId();
+    long membershipId = owner.membership().getId();
+    long propertyId = createProperty(cookieOf(owner), "보관 제외 매물", categoryIdOf("APARTMENT"));
+    insertCustomer(officeId, membershipId, "보관제외고객");
+    Long contractId =
+        jdbcTemplate.queryForObject(
+            "INSERT INTO contract (office_id, property_id, deal_type, managing_membership_id)"
+                + " VALUES (?, ?, 'SALE', ?) RETURNING id",
+            Long.class,
+            officeId,
+            propertyId,
+            membershipId);
+    Long revisionId =
+        jdbcTemplate.queryForObject(
+            "INSERT INTO contract_revision (contract_id, revision_no, revision_type,"
+                + " current_snapshot, effective_at, recorded_by_membership_id) VALUES (?, 1,"
+                + " 'SIGNED', '{}'::jsonb, now(), ?) RETURNING id",
+            Long.class,
+            contractId,
+            membershipId);
+    objectStorage.put("contracts/kept.pdf", new byte[] {7, 8, 9}, "application/pdf");
+    objectStorage.put("contracts/past.pdf", new byte[] {1}, "application/pdf");
+    long kept =
+        insertRetainedDocument(
+            contractId,
+            revisionId,
+            membershipId,
+            "SALES_CONTRACT",
+            5,
+            "2031-01-01",
+            "contracts/kept.pdf");
+    long past =
+        insertRetainedDocument(
+            contractId,
+            revisionId,
+            membershipId,
+            "DISCLOSURE_STATEMENT",
+            3,
+            "2020-01-01",
+            "contracts/past.pdf");
+    long grantId =
+        jdbcTemplate.queryForObject(
+            "INSERT INTO archive_grant (office_id, granted_to_user_id, contract_reference) VALUES"
+                + " (?, ?, 'ARCHIVE-1') RETURNING id",
+            Long.class,
+            officeId,
+            owner.user().getId());
+    Long exportId =
+        jdbcTemplate.queryForObject(
+            "INSERT INTO export_job (office_id, created_by_membership_id, scope, archive_grant_id,"
+                + " status, file_expires_at, created_at, updated_at) VALUES (?, ?, 'ARCHIVE', ?,"
+                + " 'PENDING', now() + interval '24 hours', now(), now()) RETURNING id",
+            Long.class,
+            officeId,
+            membershipId,
+            grantId);
+
+    generationService.generate(exportId);
+
+    assertThat(exportStatus(exportId)).isEqualTo("COMPLETED");
+    Map<String, byte[]> entries = unzipExport(exportId);
+    assertThat(entries.keySet())
+        .contains(
+            "data/contract.csv",
+            "data/contract_document.csv",
+            "data/contract_fee.csv",
+            "data/contract_payment_schedule.csv",
+            "attachments/contract_document/" + kept + ".pdf",
+            "manifest.json")
+        .doesNotContain(
+            "data/property.csv",
+            "data/customer.csv",
+            "data/task.csv",
+            "attachments/contract_document/" + past + ".pdf");
+    assertThat(entries.get("attachments/contract_document/" + kept + ".pdf"))
+        .containsExactly(7, 8, 9);
+    assertThat(text(entries, "data/contract_document.csv"))
+        .contains("SALES_CONTRACT")
+        .doesNotContain("DISCLOSURE_STATEMENT");
+    JsonNode manifest = JsonMapper.builder().build().readTree(entries.get("manifest.json"));
+    assertThat(manifest.get("scope").asString()).isEqualTo("ARCHIVE");
+    assertThat(manifest.get("archiveGrantId").longValue()).isEqualTo(grantId);
+    assertThat(manifest.get("attachmentSummary").get("included").longValue()).isEqualTo(1);
+  }
+
   @Test
   void 이미_처리한_내보내기는_다시_생성하지_않는다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
