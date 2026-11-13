@@ -30,6 +30,16 @@ public enum NotificationType {
   SUPPORT_REPLY(null, EnumSet.of(NotificationTargetType.SUPPORT_TICKET)),
   TERMS_CHANGED(null, EnumSet.of(NotificationTargetType.NONE));
 
+  private static final Set<NotificationType> EMAIL_DELIVERED =
+      EnumSet.of(
+          OFFICE_REVIEW,
+          TRIAL_ENDING,
+          PLAN_CHANGED,
+          PAYMENT,
+          RETURN_SCHEDULED,
+          DELETION_SCHEDULED,
+          TERMS_CHANGED);
+
   private final String preferenceKey;
   private final Set<NotificationTargetType> targets;
 
@@ -41,6 +51,11 @@ public enum NotificationType {
   /** 수신 설정 키다. 서비스 필수 알림은 null이며 설정과 무관하게 항상 남긴다. */
   public String preferenceKey() {
     return preferenceKey;
+  }
+
+  /** 알림함 외에 이메일로도 전달하는 서비스 고지 종류인지 돌려준다. */
+  public boolean deliversByEmail() {
+    return EMAIL_DELIVERED.contains(this);
   }
 
   public boolean allows(NotificationTargetType target) {
