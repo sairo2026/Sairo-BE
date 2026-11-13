@@ -175,15 +175,10 @@ public class BillingNoticeDispatcher {
     }
     BillingNotice notice =
         BillingNoticeComposer.compose(BillingNoticeTemplate.AUTH_SUSPENDED, values);
+    String inApp = notice.inAppText() != null ? notice.inAppText() : notice.body();
     return publisher.publishToOwners(
         officeId,
-        new Notice(
-            officeId,
-            null,
-            "OFFICE_REVIEW",
-            notice.inAppText(),
-            "OFFICE_REGISTRATION",
-            registrationId));
+        new Notice(officeId, null, "OFFICE_REVIEW", inApp, "OFFICE_REGISTRATION", registrationId));
   }
 
   private List<Long> send(
