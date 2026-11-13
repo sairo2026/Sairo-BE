@@ -11,6 +11,7 @@ public record KakaoProperties(
     String stepUpRedirectUri,
     String linkRedirectUri,
     String operatorRedirectUri,
+    String operatorInvitationRedirectUri,
     String adminKey,
     String appId) {
 
@@ -21,6 +22,7 @@ public record KakaoProperties(
           case LINK -> linkRedirectUri;
           case STEP_UP -> stepUpRedirectUri;
           case OPERATOR -> operatorRedirectUri;
+          case OPERATOR_INVITATION -> operatorInvitationRedirectUri;
         };
     return specific == null || specific.isBlank() ? redirectUri : specific;
   }

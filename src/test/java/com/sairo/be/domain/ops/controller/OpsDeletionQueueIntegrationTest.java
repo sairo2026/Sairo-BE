@@ -133,6 +133,11 @@ class OpsDeletionQueueIntegrationTest extends OpsConsoleTestBase {
         post(BASE + "/" + queueId + "/cancel", "{\"reason\":\"늦은 취소\"}", cookie),
         ErrorCode.INVALID_TRANSITION);
 
+    assertThat(
+            json(read(BASE + "/" + queueId, cookie).andExpect(status().isOk()).andReturn())
+                .get("verificationEvidence")
+                .isNull())
+        .isTrue();
     assertError(
         post(BASE + "/" + queueId + "/verify", VERIFY_ALL, cookie),
         ErrorCode.SELF_APPROVAL_FORBIDDEN);
@@ -164,8 +169,17 @@ class OpsDeletionQueueIntegrationTest extends OpsConsoleTestBase {
     JsonNode one = json(read(BASE + "/" + queueId, cookie).andExpect(status().isOk()).andReturn());
     assertThat(one.get("result").asString()).isEqualTo("SUCCESS");
     assertThat(one.get("executedByOperatorId").longValue()).isEqualTo(executor.id());
+    assertThat(one.get("verificationEvidence").asString()).isEqualTo("삭제 로그 1");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT verification_evidence FROM deletion_queue WHERE id = ?",
+                String.class,
+                queueId))
+        .isEqualTo("삭제 로그 1");
     JsonNode filtered = json(read(BASE + "?queueId=" + queueId, cookie).andReturn());
     assertThat(filtered.get("totalElements").longValue()).isEqualTo(1);
+    assertThat(filtered.get("items").get(0).get("verificationEvidence").asString())
+        .isEqualTo("삭제 로그 1");
     JsonNode done = json(read(BASE + "?state=SUCCESS", cookie).andReturn());
     assertThat(done.get("totalElements").longValue()).isEqualTo(1);
     for (String action :
@@ -195,14 +209,21 @@ class OpsDeletionQueueIntegrationTest extends OpsConsoleTestBase {
                 .andReturn());
     assertThat(failed.get("result").asString()).isEqualTo("FAILED");
     assertThat(failed.get("verifiedAt").isNull()).isTrue();
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT verification_evidence FROM deletion_queue WHERE id = ?",
+                String.class,
+                queueId))
+        .isEqualTo("삭제 로그 1");
     JsonNode retried =
         json(
             post(BASE + "/" + queueId + "/execute", "", cookie)
                 .andExpect(status().isAccepted())
                 .andReturn());
     assertThat(retried.get("retryCount").intValue()).isEqualTo(1);
-    assertThat(json(read(BASE + "/" + queueId, cookie).andReturn()).get("result").isNull())
-        .isTrue();
+    JsonNode afterRetry = json(read(BASE + "/" + queueId, cookie).andReturn());
+    assertThat(afterRetry.get("result").isNull()).isTrue();
+    assertThat(afterRetry.get("verificationEvidence").isNull()).isTrue();
   }
 
   @Test

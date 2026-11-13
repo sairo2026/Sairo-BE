@@ -32,7 +32,7 @@ public final class RawAccessRequests {
       @Schema(description = "대상 ID") @NotNull @Min(1) Long targetId,
       @Schema(description = "목적") @NotBlank @PlainText(max = 1000) String purpose,
       @Schema(description = "접근 범위") @NotBlank @PlainText(max = 1000) String scope,
-      @Schema(description = "요청 접근 시간(분). 실행 뒤 접근 창은 60분으로 고정한다") @NotNull @Min(1) @Max(60) Integer requestedExpiresMinutes,
+      @Schema(description = "요청 접근 시간(분). 실행 뒤 접근 창을 이 길이만큼 연다. 생략하면 60분이다") @Min(1) @Max(60) Integer requestedExpiresMinutes,
       @Schema(
               description = "근거 종류",
               allowableValues = {"REPRESENTATIVE_REQUEST", "LEGAL_BASIS"})

@@ -58,7 +58,7 @@ public final class OpsPrivacyOpsResponses {
       @Schema(nullable = true) String assignedOperatorName,
       @Schema(nullable = true) OffsetDateTime completedAt,
       List<PrivacyRequestEventItem> events,
-      @Schema(description = "처리 이력 수로 정한 변경 번호. 처리마다 1씩 오른다") Long version,
+      @Schema(description = "권리 요청의 변경 번호. 처리 요청의 If-Match에 보내고 처리마다 1씩 오른다") Long version,
       String handlerType,
       @Schema(description = "지금 상태에서 받을 수 있는 처리 단계") List<String> allowedActions) {}
 
@@ -130,6 +130,8 @@ public final class OpsPrivacyOpsResponses {
       @Schema(nullable = true) OffsetDateTime exclusionReviewedAt,
       @Schema(nullable = true) Long verifiedByOperatorId,
       @Schema(nullable = true) OffsetDateTime verifiedAt,
+      @Schema(description = "검증 요청으로 받은 파기 검증 증빙. 검증 전에는 비어 있다", nullable = true)
+          String verificationEvidence,
       @Schema(nullable = true) OffsetDateTime cancelledAt,
       @Schema(nullable = true) Long cancelledByOperatorId,
       @Schema(nullable = true) String cancelReason,

@@ -1,6 +1,7 @@
 package com.sairo.be.domain.visit.controller;
 
 import static com.sairo.be.support.ErrorResponseAssertions.assertError;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -98,7 +99,9 @@ class VisitAssistantNoticeIntegrationTest extends VisitOutcomeTestBase {
     confirm(ownerCookie, noticeId, "{}")
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.confirmedByMembershipId").value(v.owner().membership().getId()))
-        .andExpect(jsonPath("$.confirmedAt").isNotEmpty());
+        .andExpect(jsonPath("$.confirmedAt").isNotEmpty())
+        .andExpect(jsonPath("$.supervisorAdditionalNotice").value(nullValue()))
+        .andExpect(jsonPath("$.supervisorAdditionalNoticedAt").value(nullValue()));
     assertError(confirm(ownerCookie, noticeId, "{}"), ErrorCode.INVALID_TRANSITION);
 
     mockMvc
@@ -112,6 +115,40 @@ class VisitAssistantNoticeIntegrationTest extends VisitOutcomeTestBase {
         .perform(authedGet("/api/visit-assistant-notices?confirmed=false", ownerCookie))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.totalElements").value(0));
+  }
+
+  @Test
+  void 감독_확인에_추가_안내를_보내면_저장하고_안내_시각을_확인_시각으로_채운다() throws Exception {
+    DeputyVisit v = deputyVisit();
+    long noticeId =
+        AuthFlowSupport.json(
+                record(cookieOf(v.deputy()), v.itemId(), notified("CUSTOMER", 2, ""))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.supervisorAdditionalNotice").value(nullValue()))
+                    .andReturn())
+            .get("noticeId")
+            .longValue();
+
+    var confirmed =
+        AuthFlowSupport.json(
+            confirm(
+                    cookieOf(v.owner()),
+                    noticeId,
+                    "{\"supervisorAdditionalNotice\":\"현장에서 한 번 더 안내할 것\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.supervisorAdditionalNotice").value("현장에서 한 번 더 안내할 것"))
+                .andExpect(jsonPath("$.supervisorAdditionalNoticedAt").isNotEmpty())
+                .andReturn());
+    assertThat(confirmed.get("supervisorAdditionalNoticedAt").asString())
+        .isEqualTo(confirmed.get("confirmedAt").asString());
+
+    var row =
+        jdbcTemplate.queryForMap(
+            "SELECT supervisor_additional_notice, supervisor_additional_noticed_at = confirmed_at"
+                + " AS same_time FROM visit_assistant_notice_log WHERE id = ?",
+            noticeId);
+    assertThat(row.get("supervisor_additional_notice")).isEqualTo("현장에서 한 번 더 안내할 것");
+    assertThat(row.get("same_time")).isEqualTo(true);
   }
 
   @Test
@@ -196,8 +233,13 @@ class VisitAssistantNoticeIntegrationTest extends VisitOutcomeTestBase {
     assertError(confirm(null, noticeId, "{}"), ErrorCode.UNAUTHENTICATED);
     assertError(confirm(deputyCookie, noticeId, "{}"), ErrorCode.FORBIDDEN);
     assertError(confirm(cookieOf(stranger), noticeId, "{}"), ErrorCode.RESOURCE_NOT_FOUND);
-    confirm(ownerCookie, noticeId, "{\"supervisorAdditionalNotice\":\"다시 안내할 것\"}")
-        .andExpect(status().isBadRequest());
+    assertError(
+        confirm(ownerCookie, noticeId, "{\"supervisorAdditionalNotice\":123}"),
+        ErrorCode.INVALID_REQUEST);
+    assertError(
+        confirm(
+            ownerCookie, noticeId, "{\"supervisorAdditionalNotice\":\"" + "가".repeat(501) + "\"}"),
+        ErrorCode.INVALID_REQUEST);
     confirm(cookieOf(agent), noticeId, "{}").andExpect(status().isOk());
 
     assertError(

@@ -195,8 +195,9 @@ public class RetentionDeletionTargets {
     }
     return jdbcClient
         .sql(
-            "UPDATE property_access_approval SET approver_name = NULL, approver_phone = NULL,"
-                + " approver_phone_hash = NULL, anonymized_at = :at WHERE id IN (:ids)")
+            "UPDATE property_access_approval SET approver_name = NULL,"
+                + " approver_phone_encrypted = NULL, approver_phone_hash = NULL, anonymized_at ="
+                + " :at WHERE id IN (:ids)")
         .param("at", at)
         .param("ids", ids)
         .update();

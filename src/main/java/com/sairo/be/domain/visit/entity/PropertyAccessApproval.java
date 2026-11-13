@@ -36,8 +36,8 @@ public class PropertyAccessApproval {
   @Column(name = "approver_name", length = 50)
   private String approverName;
 
-  @Column(name = "approver_phone", length = 30)
-  private String approverPhone;
+  @Column(name = "approver_phone_encrypted")
+  private String approverPhoneEncrypted;
 
   @JdbcTypeCode(SqlTypes.CHAR)
   @Column(name = "approver_phone_hash", length = 64)
@@ -88,7 +88,7 @@ public class PropertyAccessApproval {
       Long propertyId,
       ApproverType approverType,
       String approverName,
-      String approverPhone,
+      String approverPhoneEncrypted,
       String approverPhoneHash,
       ApprovalRole approvalRole,
       Instant validFrom,
@@ -102,7 +102,7 @@ public class PropertyAccessApproval {
     approval.propertyId = propertyId;
     approval.approverType = approverType;
     approval.approverName = approverName;
-    approval.approverPhone = approverPhone;
+    approval.approverPhoneEncrypted = approverPhoneEncrypted;
     approval.approverPhoneHash = approverPhoneHash;
     approval.approvalRole = approvalRole;
     approval.validFrom = validFrom;

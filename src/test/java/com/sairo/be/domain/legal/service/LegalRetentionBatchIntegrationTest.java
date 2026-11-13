@@ -200,11 +200,12 @@ class LegalRetentionBatchIntegrationTest extends VisitOutcomeTestBase {
 
     Map<String, Object> row =
         jdbcTemplate.queryForMap(
-            "SELECT approver_name, approver_phone, approver_phone_hash, anonymized_at FROM"
+            "SELECT approver_name, approver_phone_encrypted, approver_phone_hash, anonymized_at"
+                + " FROM"
                 + " property_access_approval WHERE id = ?",
             approvalId);
     assertThat(row.get("approver_name")).isNull();
-    assertThat(row.get("approver_phone")).isNull();
+    assertThat(row.get("approver_phone_encrypted")).isNull();
     assertThat(row.get("approver_phone_hash")).isNull();
     assertThat(row.get("anonymized_at")).isNotNull();
     assertThat(
