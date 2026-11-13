@@ -41,6 +41,9 @@ sairo:
     scanner:
       host: ${SAIRO_SCANNER_HOST:scanner}
       port: ${SAIRO_SCANNER_PORT:3310}
+  bootstrap:
+    operator:
+      enabled: ${SAIRO_BOOTSTRAP_OPERATOR_ENABLED:false}
   session:
     approver-cookie-name: __Host-APPROVER_SESSION
   public-link:

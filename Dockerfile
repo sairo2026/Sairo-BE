@@ -15,7 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && useradd --system --gid sairo --no-create-home --shell /usr/sbin/nologin sairo
 WORKDIR /app
 COPY --from=build /app/build/libs/*.jar app.jar
-RUN chown sairo:sairo /app/app.jar
+RUN chown sairo:sairo /app/app.jar \
+    && mkdir -p /var/sairo/bootstrap \
+    && chown sairo:sairo /var/sairo/bootstrap \
+    && chmod 700 /var/sairo/bootstrap
 USER sairo
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

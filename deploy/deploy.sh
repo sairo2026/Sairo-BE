@@ -133,6 +133,12 @@ RESEND_API_KEY=$(jq -r '.resendApiKey // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_API_KEY=$(jq -r '.solapiApiKey // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_API_SECRET=$(jq -r '.solapiApiSecret // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_SENDER_NUMBER=$(jq -r '.solapiSenderNumber // ""' <<<"${APP_SECRETS_JSON}")
+SAIRO_BOOTSTRAP_OPERATOR_ENABLED=$(jq -r 'if .bootstrapOperatorEnabled == null then "" else (.bootstrapOperatorEnabled | tostring) end' <<<"${APP_SECRETS_JSON}")
+SAIRO_BOOTSTRAP_OPERATOR_EMAIL=$(jq -r '.bootstrapOperatorEmail // ""' <<<"${APP_SECRETS_JSON}")
+if [[ -n "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" && "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" != "true" && "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" != "false" ]]; then
+  echo "[deploy] bootstrapOperatorEnabled must be true or false" >&2
+  exit 1
+fi
 
 umask 077
 {
@@ -165,6 +171,12 @@ umask 077
   echo "SOLAPI_SENDER_NUMBER=${SOLAPI_SENDER_NUMBER}"
   echo "SAIRO_MAIL_FROM=${SAIRO_MAIL_FROM}"
   echo "SAIRO_STORAGE_BUCKET=${SAIRO_STORAGE_BUCKET}"
+  if [[ -n "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" ]]; then
+    echo "SAIRO_BOOTSTRAP_OPERATOR_ENABLED=${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}"
+  fi
+  if [[ -n "${SAIRO_BOOTSTRAP_OPERATOR_EMAIL}" ]]; then
+    echo "SAIRO_BOOTSTRAP_OPERATOR_EMAIL=${SAIRO_BOOTSTRAP_OPERATOR_EMAIL}"
+  fi
 } > "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
