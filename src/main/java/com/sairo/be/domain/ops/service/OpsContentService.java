@@ -98,6 +98,7 @@ public class OpsContentService {
   private final OpsAuditLogRepository auditLog;
   private final AdvisoryLock advisoryLock;
   private final SystemJobRunService jobRunService;
+  private final TermsChangeNoticeService termsChangeNotice;
   private final Clock clock;
 
   public OpsContentService(
@@ -105,11 +106,13 @@ public class OpsContentService {
       OpsAuditLogRepository auditLog,
       AdvisoryLock advisoryLock,
       SystemJobRunService jobRunService,
+      TermsChangeNoticeService termsChangeNotice,
       Clock clock) {
     this.repository = repository;
     this.auditLog = auditLog;
     this.advisoryLock = advisoryLock;
     this.jobRunService = jobRunService;
+    this.termsChangeNotice = termsChangeNotice;
     this.clock = clock;
   }
 
@@ -404,6 +407,7 @@ public class OpsContentService {
         id,
         row.docType() + " " + row.version(),
         now);
+    termsChangeNotice.sendOnce(row, now);
     return new PolicyDocumentPublishResponse(id, row.version(), "PUBLISHED", toDisplayOffset(now));
   }
 

@@ -126,6 +126,66 @@ public class BillingNoticeDispatcher {
         officeId, "PLAN_CHANGED", BillingNoticeTemplate.START_CUSTOMER_GUARANTEE_ENDING, values);
   }
 
+  /** 해지 예약 완료 안내(PLAN_CHANGED)다. */
+  public List<Long> cancellationScheduled(Long officeId, Instant endsAt) {
+    Map<String, String> values = base(officeId);
+    values.put("종료 예정 일시", format(endsAt));
+    return send(officeId, "PLAN_CHANGED", BillingNoticeTemplate.CANCELLATION_SCHEDULED, values);
+  }
+
+  /** 환불 신청 접수 안내(PAYMENT)다. */
+  public List<Long> refundReceived(Long officeId, Instant receivedAt) {
+    Map<String, String> values = base(officeId);
+    values.put("접수 시각", format(receivedAt));
+    return send(officeId, "PAYMENT", BillingNoticeTemplate.REFUND_RECEIVED, values);
+  }
+
+  /** 환불 승인 안내(PAYMENT)다. */
+  public List<Long> refundApproved(Long officeId, long amount, String basis) {
+    Map<String, String> values = base(officeId);
+    values.put("환불 금액", String.format("%,d", amount));
+    values.put("계산 근거", basis);
+    return send(officeId, "PAYMENT", BillingNoticeTemplate.REFUND_APPROVED, values);
+  }
+
+  /** 환불 거절 안내(PAYMENT)다. */
+  public List<Long> refundRejected(Long officeId, String reason) {
+    Map<String, String> values = base(officeId);
+    values.put("사유", reason);
+    return send(officeId, "PAYMENT", BillingNoticeTemplate.REFUND_REJECTED, values);
+  }
+
+  /** 환불 완료 안내(PAYMENT)다. */
+  public List<Long> refundCompleted(Long officeId, long amount) {
+    Map<String, String> values = base(officeId);
+    values.put("환불 금액", String.format("%,d", amount));
+    return send(officeId, "PAYMENT", BillingNoticeTemplate.REFUND_COMPLETED, values);
+  }
+
+  /** 환불 처리 실패 안내(PAYMENT)다. */
+  public List<Long> refundFailed(Long officeId) {
+    return send(officeId, "PAYMENT", BillingNoticeTemplate.REFUND_FAILED, base(officeId));
+  }
+
+  /** 사무소 인증 중단 안내(OFFICE_REVIEW)다. 재개 기한을 알면 마지막 문장이 들어간다. */
+  public List<Long> authSuspended(Long officeId, Long registrationId, Instant resumeDeadline) {
+    Map<String, String> values = base(officeId);
+    if (resumeDeadline != null) {
+      values.put("재개 기한", format(resumeDeadline));
+    }
+    BillingNotice notice =
+        BillingNoticeComposer.compose(BillingNoticeTemplate.AUTH_SUSPENDED, values);
+    return publisher.publishToOwners(
+        officeId,
+        new Notice(
+            officeId,
+            null,
+            "OFFICE_REVIEW",
+            notice.inAppText(),
+            "OFFICE_REGISTRATION",
+            registrationId));
+  }
+
   private List<Long> send(
       Long officeId, String type, BillingNoticeTemplate template, Map<String, String> values) {
     BillingNotice notice = BillingNoticeComposer.compose(template, values);
