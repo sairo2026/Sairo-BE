@@ -28,6 +28,9 @@ import org.junit.jupiter.api.Test;
 @IntegrationTest
 class OfficeCloseIntegrationTest extends PaymentTestBase {
 
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.sairo.be.domain.legal.service.OfficeDataPurgeScanService purgeScanService;
+
   private static final String CLOSE = "/api/offices/current/close";
   private static final String DECLINE = "{\"confirmed\":true,\"archiveChoice\":\"DECLINE\"}";
   private static final String REQUEST = "{\"confirmed\":true,\"archiveChoice\":\"REQUEST\"}";
@@ -201,6 +204,51 @@ class OfficeCloseIntegrationTest extends PaymentTestBase {
     assertThat(sessions.exists(sessionIdOf(ownerCookie))).isFalse();
     assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM support_inquiry", Long.class))
         .isZero();
+  }
+
+  @Test
+  void 종료하면_사무소_종료_시각을_기록한다() throws Exception {
+    Ready ready =
+        ready(seed -> seed.status("ACTIVE").period(daysFromNow(-10), daysFromNow(20)), true, true);
+    TestData.Staff owner = ready.owner();
+    mockMvc
+        .perform(postRequest(CLOSE, DECLINE).apply(cookieWithStepUp(owner)))
+        .andExpect(status().isOk());
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT closed_at IS NOT NULL FROM office WHERE id = ?",
+                Boolean.class,
+                owner.office().getId()))
+        .isTrue();
+  }
+
+  @Test
+  void 반환_기간이_끝난_종료_사무소만_파기_큐에_한_번_등록한다() throws Exception {
+    Ready ready =
+        ready(seed -> seed.status("ACTIVE").period(daysFromNow(-10), daysFromNow(20)), true, true);
+    TestData.Staff owner = ready.owner();
+    long officeId = owner.office().getId();
+    assertThat(purgeScanService.scan()).isZero();
+    mockMvc
+        .perform(postRequest(CLOSE, DECLINE).apply(cookieWithStepUp(owner)))
+        .andExpect(status().isOk());
+    assertThat(purgeScanService.scan()).isZero();
+    Timestamp granted = Timestamp.from(Instant.now().minusSeconds(86_400L * 31));
+    jdbcTemplate.update(
+        "UPDATE return_grant SET granted_at = ?, expires_at = ? WHERE office_id = ?",
+        granted,
+        Timestamp.from(granted.toInstant().plusSeconds(86_400L * 30)),
+        officeId);
+    assertThat(purgeScanService.scan()).isEqualTo(1);
+    assertThat(purgeScanService.scan()).isZero();
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM deletion_queue WHERE target_type = 'OFFICE_DATA' AND"
+                    + " target_id = ? AND office_id = ?",
+                Long.class,
+                officeId,
+                officeId))
+        .isEqualTo(1L);
   }
 
   @Test

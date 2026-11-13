@@ -58,6 +58,11 @@ public class OfficeClosureMembershipService {
   public List<Long> releaseAll(Long officeId, Instant now) {
     Timestamp at = Timestamp.from(now);
     jdbcClient
+        .sql("UPDATE office SET closed_at = COALESCE(closed_at, :at) WHERE id = :office")
+        .param("at", at)
+        .param("office", officeId)
+        .update();
+    jdbcClient
         .sql(
             "UPDATE office_owner_transfer SET status = 'WITHDRAWN', withdrawn_at = :at WHERE"
                 + " office_id = :office AND status IN ('PENDING','UNDER_REVIEW')")
