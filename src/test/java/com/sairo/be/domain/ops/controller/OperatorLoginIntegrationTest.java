@@ -24,6 +24,7 @@ class OperatorLoginIntegrationTest extends OpsIntegrationTestBase {
 
   private Cookie pendingCookie(String kakaoId) throws Exception {
     OpsStart start = startOps("/api/ops/auth/kakao/start");
+    assertThat(start.location()).endsWith("flow=OPERATOR");
     MvcResult result =
         mockMvc
             .perform(

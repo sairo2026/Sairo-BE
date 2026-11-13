@@ -31,7 +31,7 @@ class KakaoUnlinkClientTest {
     client =
         new KakaoUnlinkClient(
             new KakaoProperties(
-                "key", "secret", "https://x/cb", null, null, null, "admin-key", "1"),
+                "key", "secret", "https://x/cb", null, null, null, null, "admin-key", "1"),
             builder);
   }
 
