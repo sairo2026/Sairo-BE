@@ -183,6 +183,22 @@ class MembershipIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
+  void 종료한_사무소는_검색과_참여_요청에서_빠진다() throws Exception {
+    Cookie cookie = plainCookie(plainUser());
+    jdbcTemplate.update("UPDATE office SET closed_at = now() WHERE id = ?", office.getId());
+    mockMvc
+        .perform(
+            get("/api/offices/search?businessRegistrationNumber="
+                    + office.getBusinessRegistrationNumber())
+                .cookie(cookie))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(0));
+    assertError(
+        post("/api/offices/" + office.getId() + "/memberships", AGENT_BODY, cookie),
+        ErrorCode.RESOURCE_NOT_FOUND);
+  }
+
+  @Test
   void 검색은_조건이_부족하면_400이고_로그인이_없으면_401이다() throws Exception {
     Cookie cookie = plainCookie(plainUser());
     assertError(

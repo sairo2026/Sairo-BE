@@ -2,6 +2,7 @@ package com.sairo.be.domain.billing.controller;
 
 import com.sairo.be.domain.billing.dto.request.ArchiveGrantCreateRequest;
 import com.sairo.be.domain.billing.dto.response.ArchiveGrantCreateResponse;
+import com.sairo.be.domain.billing.dto.response.ExportResponse;
 import com.sairo.be.domain.billing.dto.response.GrantStatusResponse;
 import com.sairo.be.domain.billing.service.ArchiveGrantService;
 import com.sairo.be.global.security.GrantPrincipal;
@@ -14,6 +15,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,5 +47,26 @@ public class ArchiveGrantController {
   @RequiresAccess(AccessPermission.ARCHIVE_GRANT)
   public GrantStatusResponse current(@AuthenticationPrincipal GrantPrincipal principal) {
     return archiveGrantService.current(principal);
+  }
+
+  @Operation(
+      summary = "법정보존문서 내보내기 생성",
+      description = "보관 규칙이 법정 보존으로 지정한 계약 서류와 거래 기록의 내보내기 작업을 만든다.")
+  @PostMapping("/{grantId}/documents/export")
+  @RequiresAccess(AccessPermission.ARCHIVE_GRANT)
+  @ResponseStatus(HttpStatus.CREATED)
+  public ExportResponse createExport(
+      @PathVariable Long grantId, @AuthenticationPrincipal GrantPrincipal principal) {
+    return archiveGrantService.createExport(principal, grantId);
+  }
+
+  @Operation(summary = "법정보존문서 내보내기 진행 상태 조회", description = "완료되면 10분 유효한 다운로드 주소를 준다.")
+  @GetMapping("/{grantId}/documents/exports/{exportId}")
+  @RequiresAccess(AccessPermission.ARCHIVE_GRANT)
+  public ExportResponse exportStatus(
+      @PathVariable Long grantId,
+      @PathVariable Long exportId,
+      @AuthenticationPrincipal GrantPrincipal principal) {
+    return archiveGrantService.exportStatus(principal, grantId, exportId);
   }
 }

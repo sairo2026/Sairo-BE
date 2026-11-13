@@ -114,15 +114,18 @@ class StepUpIntegrationTest extends AuthIntegrationTestBase {
     KakaoStart start = flow.startKakao("/api/auth/step-up/kakao/start", session);
     assertThat(start.location()).contains("flow=STEP_UP");
 
-    mockMvc
-        .perform(
-            get("/api/auth/step-up/kakao/callback")
-                .cookie(session)
-                .param("code", "7001002")
-                .param("state", start.state()))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.stepUpValid").value(true))
-        .andExpect(jsonPath("$.stepUpExpiresAt").isNotEmpty());
+    String location =
+        mockMvc
+            .perform(
+                get("/api/auth/step-up/kakao/callback")
+                    .cookie(session)
+                    .param("code", "7001002")
+                    .param("state", start.state()))
+            .andExpect(status().isFound())
+            .andReturn()
+            .getResponse()
+            .getHeader("Location");
+    assertThat(location).endsWith("/auth/kakao/step-up/callback");
     assertThat(sessionAttribute(session, StepUpState.STEP_UP_UNTIL_ATTRIBUTE)).isNotNull();
   }
 
@@ -134,13 +137,18 @@ class StepUpIntegrationTest extends AuthIntegrationTestBase {
     Cookie session = kakaoSessionFor(user);
     KakaoStart start = flow.startKakao("/api/auth/step-up/kakao/start", session);
 
-    assertError(
-        mockMvc.perform(
-            get("/api/auth/step-up/kakao/callback")
-                .cookie(session)
-                .param("code", "9999999")
-                .param("state", start.state())),
-        ErrorCode.STEP_UP_ACCOUNT_MISMATCH);
+    assertThat(
+            mockMvc
+                .perform(
+                    get("/api/auth/step-up/kakao/callback")
+                        .cookie(session)
+                        .param("code", "9999999")
+                        .param("state", start.state()))
+                .andExpect(status().isFound())
+                .andReturn()
+                .getResponse()
+                .getHeader("Location"))
+        .endsWith("/auth/kakao/step-up/callback?error=STEP_UP_ACCOUNT_MISMATCH");
     assertThat(sessionAttribute(session, StepUpState.STEP_UP_UNTIL_ATTRIBUTE)).isNull();
   }
 
@@ -152,20 +160,20 @@ class StepUpIntegrationTest extends AuthIntegrationTestBase {
     Cookie session = kakaoSessionFor(user);
     KakaoStart start = flow.startKakao("/api/auth/step-up/kakao/start", session);
 
-    assertError(
-        mockMvc.perform(
-            get("/api/auth/step-up/kakao/callback")
-                .cookie(session)
-                .param("code", "7001004")
-                .param("state", "wrong")),
-        ErrorCode.INVALID_REQUEST);
-    assertError(
-        mockMvc.perform(
-            get("/api/auth/step-up/kakao/callback")
-                .cookie(session)
-                .param("code", "7001004")
-                .param("state", start.state())),
-        ErrorCode.INVALID_REQUEST);
+    for (String state : new String[] {"wrong", start.state()}) {
+      assertThat(
+              mockMvc
+                  .perform(
+                      get("/api/auth/step-up/kakao/callback")
+                          .cookie(session)
+                          .param("code", "7001004")
+                          .param("state", state))
+                  .andExpect(status().isFound())
+                  .andReturn()
+                  .getResponse()
+                  .getHeader("Location"))
+          .endsWith("/auth/kakao/step-up/callback?error=INVALID_REQUEST");
+    }
   }
 
   @Test
