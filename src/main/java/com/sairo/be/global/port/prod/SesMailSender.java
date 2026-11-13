@@ -2,6 +2,7 @@ package com.sairo.be.global.port.prod;
 
 import com.sairo.be.global.port.MailSender;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.sesv2.SesV2Client;
@@ -14,6 +15,10 @@ import software.amazon.awssdk.services.sesv2.model.SendEmailRequest;
 
 @Component
 @Profile("prod")
+@ConditionalOnProperty(
+    name = "sairo.delivery.mail.provider",
+    havingValue = "ses",
+    matchIfMissing = true)
 class SesMailSender implements MailSender {
   private final SesV2Client client;
   private final String from;

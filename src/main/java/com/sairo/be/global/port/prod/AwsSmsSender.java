@@ -2,6 +2,7 @@ package com.sairo.be.global.port.prod;
 
 import com.sairo.be.global.port.SmsSender;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.pinpointsmsvoicev2.PinpointSmsVoiceV2Client;
@@ -10,6 +11,10 @@ import software.amazon.awssdk.services.pinpointsmsvoicev2.model.SendTextMessageR
 
 @Component
 @Profile("prod")
+@ConditionalOnProperty(
+    name = "sairo.delivery.sms.provider",
+    havingValue = "aws",
+    matchIfMissing = true)
 class AwsSmsSender implements SmsSender {
   private final PinpointSmsVoiceV2Client client;
   private final String originationIdentity;
