@@ -141,6 +141,25 @@ if [[ -n "${SAIRO_BATCH_ENABLED}" && "${SAIRO_BATCH_ENABLED}" != "true" && "${SA
   exit 1
 fi
 
+COMPANY_ENV_LINES=()
+for pair in \
+  companyContactPhone:COMPANY_CONTACT_PHONE \
+  companyEcommerceNotice:COMPANY_ECOMMERCE_NOTICE \
+  companySupportEmail:COMPANY_SUPPORT_EMAIL \
+  companyPrivacyContact:COMPANY_PRIVACY_CONTACT \
+  companyPrivacyRequestPath:COMPANY_PRIVACY_REQUEST_PATH; do
+  company_field="${pair%%:*}"
+  company_name="${pair##*:}"
+  company_value=$(jq -r --arg field "${company_field}" '.[$field] // "" | tostring' <<<"${APP_SECRETS_JSON}")
+  if [[ "${company_value}" == *$'\n'* || "${company_value}" == *$'\r'* ]]; then
+    echo "[deploy] ${company_field} must be a single line" >&2
+    exit 1
+  fi
+  if [[ -n "${company_value}" ]]; then
+    COMPANY_ENV_LINES+=("${company_name}=${company_value}")
+  fi
+done
+
 umask 077
 {
   echo "DB_HOST=${DB_HOST}"
@@ -175,6 +194,9 @@ umask 077
   if [[ -n "${SAIRO_BATCH_ENABLED}" ]]; then
     echo "SAIRO_BATCH_ENABLED=${SAIRO_BATCH_ENABLED}"
   fi
+  if [[ ${#COMPANY_ENV_LINES[@]} -gt 0 ]]; then
+    printf '%s\n' "${COMPANY_ENV_LINES[@]}"
+  fi
 } > "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
@@ -192,7 +214,7 @@ unset APP_SECRET_JSON MIGRATOR_SECRET_JSON APP_SECRETS_JSON DB_APP_PASSWORD DB_M
   KAKAO_REST_API_KEY KAKAO_CLIENT_SECRET KAKAO_ADMIN_KEY KAKAO_APP_ID PUBLIC_LINK_HMAC_SECRET \
   AUTH_TICKET_SECRET AUTH_RATE_LIMIT_HMAC_SECRET AUTH_KAKAO_KEY_HMAC_SECRET \
   AUTH_UNSUBSCRIBE_SECRET AUTH_KAKAO_KEY_ENCRYPTION_SECRET BILLING_KEY_ENCRYPTION_SECRET \
-  RESEND_API_KEY SOLAPI_API_KEY SOLAPI_API_SECRET SOLAPI_SENDER_NUMBER
+  RESEND_API_KEY SOLAPI_API_KEY SOLAPI_API_SECRET SOLAPI_SENDER_NUMBER COMPANY_ENV_LINES
 
 HEALTH_WAIT_SECONDS="${HEALTH_WAIT_SECONDS:-${SECRET_HEALTH_WAIT_SECONDS:-180}}"
 HEALTH_INTERVAL_SECONDS=3
