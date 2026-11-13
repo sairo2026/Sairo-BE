@@ -32,12 +32,13 @@ public class ExportJobJdbcRepository {
       String fileObjectKey,
       Instant fileExpiresAt,
       String failureReason,
-      Instant createdAt) {}
+      Instant createdAt,
+      Long archiveGrantId) {}
 
   private static final ObjectMapper MAPPER = JsonMapper.builder().build();
   private static final String COLUMNS =
       "id, office_id, created_by_membership_id, scope, table_codes::text, status,"
-          + " file_object_key, file_expires_at, failure_reason, created_at";
+          + " file_object_key, file_expires_at, failure_reason, created_at, archive_grant_id";
 
   private static final RowMapper<Row> ROW_MAPPER = ExportJobJdbcRepository::mapRow;
 
@@ -86,7 +87,11 @@ public class ExportJobJdbcRepository {
 
   public Optional<Row> findByIdAndOffice(long id, long officeId) {
     return jdbcClient
-        .sql("SELECT " + COLUMNS + " FROM export_job WHERE id = :id AND office_id = :officeId")
+        .sql(
+            "SELECT "
+                + COLUMNS
+                + " FROM export_job WHERE id = :id AND office_id = :officeId AND scope <>"
+                + " 'ARCHIVE'")
         .param("id", id)
         .param("officeId", officeId)
         .query(ROW_MAPPER)
@@ -166,8 +171,8 @@ public class ExportJobJdbcRepository {
         .sql(
             "SELECT "
                 + COLUMNS
-                + " FROM export_job WHERE office_id = :officeId AND file_expires_at > :now"
-                + " AND status IN (:statuses) AND (CAST(:creator AS BIGINT) IS NULL OR"
+                + " FROM export_job WHERE office_id = :officeId AND scope <> 'ARCHIVE' AND"
+                + " file_expires_at > :now AND status IN (:statuses) AND (CAST(:creator AS BIGINT) IS NULL OR"
                 + " created_by_membership_id = :creator) ORDER BY created_at DESC, id DESC"
                 + " OFFSET :offset LIMIT :limit")
         .param("officeId", officeId)
@@ -185,8 +190,8 @@ public class ExportJobJdbcRepository {
     Long total =
         jdbcClient
             .sql(
-                "SELECT count(*) FROM export_job WHERE office_id = :officeId AND file_expires_at >"
-                    + " :now AND status IN (:statuses) AND (CAST(:creator AS BIGINT) IS NULL OR"
+                "SELECT count(*) FROM export_job WHERE office_id = :officeId AND scope <>"
+                    + " 'ARCHIVE' AND file_expires_at > :now AND status IN (:statuses) AND (CAST(:creator AS BIGINT) IS NULL OR"
                     + " created_by_membership_id = :creator)")
             .param("officeId", officeId)
             .param("now", Timestamp.from(now))
@@ -239,6 +244,7 @@ public class ExportJobJdbcRepository {
         rs.getString(7),
         rs.getTimestamp(8).toInstant(),
         rs.getString(9),
-        rs.getTimestamp(10).toInstant());
+        rs.getTimestamp(10).toInstant(),
+        (Long) rs.getObject(11));
   }
 }

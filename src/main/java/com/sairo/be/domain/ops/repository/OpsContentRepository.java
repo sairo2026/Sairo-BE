@@ -372,6 +372,13 @@ public class OpsContentRepository {
         .update();
   }
 
+  public java.util.List<Long> activeUserIds() {
+    return jdbcClient
+        .sql("SELECT id FROM app_user WHERE account_status = 'ACTIVE' ORDER BY id")
+        .query(Long.class)
+        .list();
+  }
+
   public void publishPolicy(long id, long operatorId, Instant now) {
     jdbcClient
         .sql(

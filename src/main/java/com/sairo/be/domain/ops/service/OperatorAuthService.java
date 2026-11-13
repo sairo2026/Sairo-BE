@@ -79,7 +79,8 @@ public class OperatorAuthService {
         authorizationService.resolveProviderKey(
             session, KakaoAuthFlow.OPERATOR_LOGIN, code, state, error);
     if (providerKey.isEmpty()) {
-      throw new BusinessException(ErrorCode.INVALID_REQUEST);
+      response.sendRedirect(frontendBaseUrl + "/ops/login?error=INVALID_REQUEST");
+      return;
     }
     Optional<OperatorAccountRepository.Row> account =
         accountRepository.findByKakaoProviderKey(providerKey.get());
