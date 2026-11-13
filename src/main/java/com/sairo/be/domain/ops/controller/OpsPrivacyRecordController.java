@@ -6,6 +6,7 @@ import com.sairo.be.domain.ops.dto.request.OpsPrivacyRecordRequests.GuestPrivacy
 import com.sairo.be.domain.ops.dto.request.OpsPrivacyRecordRequests.ProviderContractCopyCreateRequest;
 import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.AuthorityRequestItem;
 import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.AuthorityRequestResponse;
+import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.GuestPrivacyIntakeDetailResponse;
 import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.GuestPrivacyIntakeItem;
 import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.GuestPrivacyIntakeResolveResponse;
 import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.ProviderContractCopyListResponse;
@@ -57,6 +58,13 @@ public class OpsPrivacyRecordController {
       @RequestParam(required = false) Integer page,
       @RequestParam(required = false) Integer size) {
     return service.intakes(status, officeId, PageQuery.of(page, size));
+  }
+
+  @Operation(summary = "비회원 권리 요청 접수 단건", description = "목록 항목과 같은 값에 종결 사유를 더해 보이고 연락처는 가려서 보인다.")
+  @GetMapping("/guest-privacy-intakes/{intakeId}")
+  @RequiresOperatorRole(OperatorRole.PRIVACY)
+  public GuestPrivacyIntakeDetailResponse intake(@PathVariable Long intakeId) {
+    return service.intake(intakeId);
   }
 
   @Operation(

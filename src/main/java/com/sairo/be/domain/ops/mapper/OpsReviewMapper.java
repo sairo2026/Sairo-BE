@@ -15,6 +15,7 @@ import com.sairo.be.domain.ops.dto.response.ReviewChecklistItemResponse;
 import com.sairo.be.domain.ops.entity.ReviewItemCode;
 import com.sairo.be.domain.ops.repository.RegistrationReviewCheckRepository;
 import com.sairo.be.global.support.TimeRules;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -67,7 +68,8 @@ public final class OpsReviewMapper {
       List<OfficeRegistrationRecordRepository.RevisionRow> revisions,
       Map<Integer, List<EvidenceType>> evidenceByRevision,
       List<ReviewChecklistItemResponse> checklist,
-      List<OfficeRegistrationRecordRepository.HistoryRow> history) {
+      List<OfficeRegistrationRecordRepository.HistoryRow> history,
+      Instant reviewDueAt) {
     boolean hasEvidence =
         !evidenceByRevision.getOrDefault(registration.getCurrentRevisionNo(), List.of()).isEmpty();
     return new OperatorRegistrationDetailResponse(
@@ -111,7 +113,9 @@ public final class OpsReviewMapper {
                         row.changedByOperatorId(),
                         row.reason(),
                         TimeRules.toDisplayOffset(row.createdAt())))
-            .toList());
+            .toList(),
+        registration.getResultingOfficeId(),
+        TimeRules.toDisplayOffset(reviewDueAt));
   }
 
   public static OpsRegistrationResponse toRegistrationResponse(OfficeRegistration registration) {

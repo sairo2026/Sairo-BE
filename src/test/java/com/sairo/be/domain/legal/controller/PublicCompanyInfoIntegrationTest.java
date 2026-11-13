@@ -2,7 +2,7 @@ package com.sairo.be.domain.legal.controller;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasKey;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -63,10 +63,18 @@ class PublicCompanyInfoIntegrationTest extends AuthIntegrationTestBase {
         .andExpect(jsonPath("$.representativeName").value("김태환"))
         .andExpect(jsonPath("$.businessNumber").value("704-16-02872"))
         .andExpect(jsonPath("$.address").value("경기도 고양시 덕양구 백양로 51, 902호 A-5(화정동, 네이버타운)"))
-        .andExpect(jsonPath("$", not(hasKey("ecommerceNotice"))))
-        .andExpect(jsonPath("$", not(hasKey("contactPhone"))))
-        .andExpect(jsonPath("$", not(hasKey("supportEmail"))))
-        .andExpect(jsonPath("$", not(hasKey("versionNo"))))
+        .andExpect(jsonPath("$", hasKey("ecommerceNotice")))
+        .andExpect(jsonPath("$.ecommerceNotice").value(nullValue()))
+        .andExpect(jsonPath("$", hasKey("contactPhone")))
+        .andExpect(jsonPath("$.contactPhone").value(nullValue()))
+        .andExpect(jsonPath("$", hasKey("supportEmail")))
+        .andExpect(jsonPath("$.supportEmail").value(nullValue()))
+        .andExpect(jsonPath("$", hasKey("privacyContact")))
+        .andExpect(jsonPath("$", hasKey("privacyRequestPath")))
+        .andExpect(jsonPath("$", hasKey("versionNo")))
+        .andExpect(jsonPath("$.versionNo").value(nullValue()))
+        .andExpect(jsonPath("$", hasKey("publishedAt")))
+        .andExpect(jsonPath("$.publishedAt").value(nullValue()))
         .andExpect(jsonPath("$.links.length()").value(3))
         .andExpect(jsonPath("$.links[0].kind").value("TERMS"))
         .andExpect(jsonPath("$.links[0].title").value("이용약관"))

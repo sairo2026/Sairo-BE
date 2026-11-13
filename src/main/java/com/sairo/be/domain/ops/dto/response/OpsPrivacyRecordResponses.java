@@ -26,6 +26,23 @@ public final class OpsPrivacyRecordResponses {
       OffsetDateTime internalDueAt,
       Long privacyRequestId) {}
 
+  @Schema(description = "비회원 권리 요청 접수 단건. 연락처는 가려서 보이고 요청 본문 원문은 담지 않는다")
+  public record GuestPrivacyIntakeDetailResponse(
+      Long intakeId,
+      Long officeId,
+      String officeName,
+      String linkKind,
+      String requestType,
+      String requesterRole,
+      String contactChannel,
+      String maskedContact,
+      String verificationStatus,
+      String status,
+      OffsetDateTime receivedAt,
+      OffsetDateTime internalDueAt,
+      Long privacyRequestId,
+      String closedReason) {}
+
   @Schema(description = "비회원 권리 요청 처리 결과")
   public record GuestPrivacyIntakeResolveResponse(
       Long intakeId,

@@ -24,7 +24,9 @@ public record OperatorRegistrationDetailResponse(
     List<ReviewChecklistItemResponse> reviewChecklist,
     boolean canApprove,
     String rejectionReason,
-    List<History> statusHistory) {
+    List<History> statusHistory,
+    @Schema(description = "승인으로 만들어진 사무소. 승인 전에는 null") Long officeId,
+    @Schema(description = "심사 목표 기한. 심사 대기 상태가 아니면 null") OffsetDateTime reviewDueAt) {
 
   public record Revision(
       int revisionNo,

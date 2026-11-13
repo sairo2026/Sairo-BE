@@ -21,20 +21,21 @@ class ScheduledLockDeclarationTest {
   private static final int LOCK_NAME_COLUMN_LENGTH = 64;
   private static final Pattern LOCK_NAME = Pattern.compile("^[a-z][a-z0-9-]*$");
 
-  private static final JavaClasses APPLICATION_CLASSES =
-      new ClassFileImporter()
-          .withImportOption(new ImportOption.DoNotIncludeTests())
-          .importPackages("com.sairo.be");
+  private static final List<Method> SCHEDULED_METHODS = scheduledMethods();
 
-  private static final List<Method> SCHEDULED_METHODS =
-      APPLICATION_CLASSES.stream()
-          .flatMap(javaClass -> javaClass.getMethods().stream())
-          .filter(
-              method ->
-                  method.isAnnotatedWith(Scheduled.class)
-                      || method.isAnnotatedWith(Schedules.class))
-          .map(JavaMethod::reflect)
-          .toList();
+  private static List<Method> scheduledMethods() {
+    JavaClasses applicationClasses =
+        new ClassFileImporter()
+            .withImportOption(new ImportOption.DoNotIncludeTests())
+            .importPackages("com.sairo.be");
+    return applicationClasses.stream()
+        .flatMap(javaClass -> javaClass.getMethods().stream())
+        .filter(
+            method ->
+                method.isAnnotatedWith(Scheduled.class) || method.isAnnotatedWith(Schedules.class))
+        .map(JavaMethod::reflect)
+        .toList();
+  }
 
   private static String describe(Method method) {
     return method.getDeclaringClass().getSimpleName() + "." + method.getName();

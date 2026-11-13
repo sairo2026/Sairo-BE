@@ -111,6 +111,26 @@ public class OperatorAccountRepository {
         .update();
   }
 
+  public record Option(long id, String name, List<String> roles) {}
+
+  public List<Option> activeOptions() {
+    return jdbcClient
+        .sql(
+            "SELECT a.id, a.name, COALESCE(string_agg(r.role, ',' ORDER BY r.id), '') AS roles"
+                + " FROM operator_account a LEFT JOIN operator_role_assignment r"
+                + " ON r.operator_account_id = a.id WHERE a.status = 'ACTIVE'"
+                + " GROUP BY a.id, a.name ORDER BY a.name, a.id")
+        .query(
+            (rs, i) -> {
+              String roles = rs.getString("roles");
+              return new Option(
+                  rs.getLong("id"),
+                  rs.getString("name"),
+                  roles.isEmpty() ? List.of() : List.of(roles.split(",")));
+            })
+        .list();
+  }
+
   public record Summary(long id, String name, OperatorStatus status, Instant createdAt) {}
 
   public List<Summary> list(int limit, long offset) {
