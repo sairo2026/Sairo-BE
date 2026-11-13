@@ -511,6 +511,9 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/return-grants/{grantId}/exports/{exportId}", Set.of("200")),
           Map.entry("POST /api/archive-grants", Set.of("201")),
           Map.entry("GET /api/archive-grants/current", Set.of("200")),
+          Map.entry("POST /api/archive-grants/{grantId}/documents/export", Set.of("201")),
+          Map.entry(
+              "GET /api/archive-grants/{grantId}/documents/exports/{exportId}", Set.of("200")),
           Map.entry("POST /api/import-batches", Set.of("200")),
           Map.entry("GET /api/import-batches", Set.of("200")),
           Map.entry("GET /api/import-batches/{batchId}", Set.of("200")),
