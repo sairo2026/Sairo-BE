@@ -144,6 +144,26 @@ public class OperatorAccountRepository {
         .list();
   }
 
+  public long countActive() {
+    return jdbcClient
+        .sql("SELECT count(*) FROM operator_account WHERE status = 'ACTIVE'")
+        .query(Long.class)
+        .single();
+  }
+
+  public long ensureSystemAccount(String kakaoProviderKey, String name) {
+    return jdbcClient
+        .sql(
+            "INSERT INTO operator_account (kakao_provider_key, name, status, mfa_enabled,"
+                + " totp_secret_encrypted) VALUES (:key, :name, 'DISABLED', true, 'SYSTEM_ACCOUNT')"
+                + " ON CONFLICT (kakao_provider_key) DO UPDATE SET name = operator_account.name"
+                + " RETURNING id")
+        .param("key", kakaoProviderKey)
+        .param("name", name)
+        .query(Long.class)
+        .single();
+  }
+
   public long count() {
     return jdbcClient.sql("SELECT count(*) FROM operator_account").query(Long.class).single();
   }

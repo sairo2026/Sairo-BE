@@ -69,6 +69,12 @@ sairo:
     customer-key-ttl: PT15M
     charging-started: false
     key-encryption-secret: ${BILLING_KEY_ENCRYPTION_SECRET:sairo-local-dev-billing-key-encryption-do-not-use-in-prod}
+  bootstrap:
+    operator:
+      enabled: false
+      email: ${SAIRO_BOOTSTRAP_OPERATOR_EMAIL:}
+      name: ${SAIRO_BOOTSTRAP_OPERATOR_NAME:최초 운영자}
+      invitation-file: ${SAIRO_BOOTSTRAP_OPERATOR_INVITATION_FILE:/var/sairo/bootstrap/invitation.txt}
   company:
     business-name: ${COMPANY_BUSINESS_NAME:사이로(SAIRO)}
     representative-name: ${COMPANY_REPRESENTATIVE_NAME:김태환}
