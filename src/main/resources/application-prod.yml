@@ -21,6 +21,8 @@ kakao:
   operator-invitation-redirect-uri: ${KAKAO_OPERATOR_INVITATION_REDIRECT_URI}
 
 sairo:
+  batch:
+    enabled: ${SAIRO_BATCH_ENABLED:true}
   delivery:
     mail:
       provider: ${SAIRO_MAIL_PROVIDER:ses}

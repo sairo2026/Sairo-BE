@@ -133,6 +133,11 @@ RESEND_API_KEY=$(jq -r '.resendApiKey // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_API_KEY=$(jq -r '.solapiApiKey // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_API_SECRET=$(jq -r '.solapiApiSecret // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_SENDER_NUMBER=$(jq -r '.solapiSenderNumber // ""' <<<"${APP_SECRETS_JSON}")
+SAIRO_BATCH_ENABLED=$(jq -r 'if .batchEnabled == null then "" else (.batchEnabled | tostring) end' <<<"${APP_SECRETS_JSON}")
+if [[ -n "${SAIRO_BATCH_ENABLED}" && "${SAIRO_BATCH_ENABLED}" != "true" && "${SAIRO_BATCH_ENABLED}" != "false" ]]; then
+  echo "[deploy] batchEnabled must be true or false" >&2
+  exit 1
+fi
 
 COMPANY_ENV_LINES=()
 for pair in \
@@ -184,8 +189,12 @@ umask 077
   echo "SOLAPI_SENDER_NUMBER=${SOLAPI_SENDER_NUMBER}"
   echo "SAIRO_MAIL_FROM=${SAIRO_MAIL_FROM}"
   echo "SAIRO_STORAGE_BUCKET=${SAIRO_STORAGE_BUCKET}"
+  if [[ -n "${SAIRO_BATCH_ENABLED}" ]]; then
+    echo "SAIRO_BATCH_ENABLED=${SAIRO_BATCH_ENABLED}"
+  fi
   if [[ ${#COMPANY_ENV_LINES[@]} -gt 0 ]]; then
-    printf '%s\n' "${COMPANY_ENV_LINES[@]}"
+    printf '%s
+' "${COMPANY_ENV_LINES[@]}"
   fi
 } > "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
