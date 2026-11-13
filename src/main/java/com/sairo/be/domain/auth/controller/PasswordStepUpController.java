@@ -22,6 +22,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import java.io.IOException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -42,14 +43,17 @@ public class PasswordStepUpController {
   private final PasswordResetService passwordResetService;
   private final StepUpService stepUpService;
   private final KakaoAuthorizationService authorizationService;
+  private final String frontendBaseUrl;
 
   public PasswordStepUpController(
       PasswordResetService passwordResetService,
       StepUpService stepUpService,
-      KakaoAuthorizationService authorizationService) {
+      KakaoAuthorizationService authorizationService,
+      @Value("${app.frontend-base-url:http://localhost:3000}") String frontendBaseUrl) {
     this.passwordResetService = passwordResetService;
     this.stepUpService = stepUpService;
     this.authorizationService = authorizationService;
+    this.frontendBaseUrl = frontendBaseUrl;
   }
 
   @Operation(summary = "비밀번호 재설정 링크 발송", description = "가입 여부와 관계없이 같은 응답을 돌려준다.")
@@ -96,16 +100,24 @@ public class PasswordStepUpController {
   @Operation(summary = "카카오 재인증 콜백", description = "현재 회원과 같은 카카오 계정이면 10분 재인증 상태를 기록한다.")
   @RequiresAccess(AccessPermission.AUTHENTICATED)
   @GetMapping("/step-up/kakao/callback")
-  public StepUpResponse kakaoStepUpCallback(
+  public void kakaoStepUpCallback(
       @RequestParam(required = false) String code,
       @RequestParam(required = false) String state,
       @RequestParam(required = false) String error,
       @AuthenticationPrincipal StaffPrincipal principal,
-      HttpSession session) {
-    String providerKey =
-        authorizationService
-            .resolveProviderKey(session, KakaoAuthFlow.STEP_UP, code, state, error)
-            .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST));
-    return stepUpService.withKakao(principal.userId(), providerKey, session);
+      HttpSession session,
+      HttpServletResponse response)
+      throws IOException {
+    String target = frontendBaseUrl + "/auth/kakao/step-up/callback";
+    try {
+      String providerKey =
+          authorizationService
+              .resolveProviderKey(session, KakaoAuthFlow.STEP_UP, code, state, error)
+              .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST));
+      stepUpService.withKakao(principal.userId(), providerKey, session);
+      response.sendRedirect(target);
+    } catch (BusinessException e) {
+      response.sendRedirect(target + "?error=" + e.getErrorCode().name());
+    }
   }
 }
