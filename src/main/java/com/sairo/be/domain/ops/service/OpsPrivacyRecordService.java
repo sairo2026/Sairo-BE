@@ -11,6 +11,7 @@ import com.sairo.be.domain.ops.dto.request.OpsPrivacyRecordRequests.GuestPrivacy
 import com.sairo.be.domain.ops.dto.request.OpsPrivacyRecordRequests.ProviderContractCopyCreateRequest;
 import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.AuthorityRequestItem;
 import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.AuthorityRequestResponse;
+import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.GuestPrivacyIntakeDetailResponse;
 import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.GuestPrivacyIntakeItem;
 import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.GuestPrivacyIntakeResolveResponse;
 import com.sairo.be.domain.ops.dto.response.OpsPrivacyRecordResponses.ProviderContractCopyItem;
@@ -117,6 +118,29 @@ public class OpsPrivacyRecordService {
             .toList();
     return PageResponse.of(
         items, page.page(), page.size(), records.countIntakes(resolvedStatus, resolvedOffice));
+  }
+
+  @Transactional(readOnly = true)
+  public GuestPrivacyIntakeDetailResponse intake(long intakeId) {
+    IntakeRow row =
+        records
+            .intake(intakeId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    return new GuestPrivacyIntakeDetailResponse(
+        row.id(),
+        row.officeId(),
+        row.officeName(),
+        row.linkKind(),
+        row.requestType(),
+        row.requesterRole(),
+        row.contactChannel(),
+        maskedContact(row),
+        row.verificationStatus(),
+        row.status(),
+        toDisplayOffset(row.receivedAt()),
+        toDisplayOffset(row.internalDueAt()),
+        row.privacyRequestId(),
+        row.closedReason());
   }
 
   @Transactional

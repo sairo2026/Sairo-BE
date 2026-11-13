@@ -1,6 +1,7 @@
 package com.sairo.be.domain.auth.service;
 
 import com.sairo.be.domain.auth.entity.TermsAgreement;
+import com.sairo.be.domain.auth.repository.AppUserRepository;
 import com.sairo.be.domain.auth.repository.TermsAgreementRepository;
 import com.sairo.be.domain.legal.service.TermsCatalogService;
 import com.sairo.be.domain.legal.service.TermsVersionView;
@@ -19,11 +20,15 @@ public class ReconsentService implements ReconsentStatusProvider {
 
   private final TermsCatalogService termsCatalogService;
   private final TermsAgreementRepository termsAgreementRepository;
+  private final AppUserRepository appUserRepository;
 
   public ReconsentService(
-      TermsCatalogService termsCatalogService, TermsAgreementRepository termsAgreementRepository) {
+      TermsCatalogService termsCatalogService,
+      TermsAgreementRepository termsAgreementRepository,
+      AppUserRepository appUserRepository) {
     this.termsCatalogService = termsCatalogService;
     this.termsAgreementRepository = termsAgreementRepository;
+    this.appUserRepository = appUserRepository;
   }
 
   @Override
@@ -33,7 +38,11 @@ public class ReconsentService implements ReconsentStatusProvider {
 
   public List<PendingReconsent> findPending(Long userId) {
     List<PendingReconsent> pending = new ArrayList<>();
-    for (TermsVersionView candidate : termsCatalogService.findReconsentCandidates()) {
+    List<TermsVersionView> candidates = termsCatalogService.findReconsentCandidates();
+    if (candidates.isEmpty() || isSignupPendingWithoutAgreement(userId)) {
+      return pending;
+    }
+    for (TermsVersionView candidate : candidates) {
       Optional<TermsAgreement> latest =
           termsAgreementRepository.findFirstByUserIdAndTermsCodeOrderByIdDesc(
               userId, candidate.termsCode());
@@ -54,6 +63,11 @@ public class ReconsentService implements ReconsentStatusProvider {
       pending.add(new PendingReconsent(candidate, previousVersion, previousUrl));
     }
     return pending;
+  }
+
+  private boolean isSignupPendingWithoutAgreement(Long userId) {
+    return appUserRepository.findById(userId).filter(user -> !user.isSignupCompleted()).isPresent()
+        && !termsAgreementRepository.existsByUserId(userId);
   }
 
   public record PendingReconsent(

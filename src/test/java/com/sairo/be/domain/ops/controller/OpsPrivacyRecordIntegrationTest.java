@@ -379,4 +379,49 @@ class OpsPrivacyRecordIntegrationTest extends OpsConsoleTestBase {
         .andExpect(jsonPath("$.items[0].storageKey").doesNotExist());
     assertThat(auditCount("PROVIDER_CONTRACT_COPY_REGISTERED")).isEqualTo(2);
   }
+
+  @Test
+  void 접수_단건은_목록_항목에_종결_사유를_더해_주고_연락처와_요청_본문을_드러내지_않는다() throws Exception {
+    long id = intake("EMAIL", "requester@example.com", 2);
+    String path = INTAKES + "/" + id;
+
+    assertError(mockMvc.perform(get(path)), ErrorCode.UNAUTHENTICATED);
+    assertError(mockMvc.perform(get(path).cookie(securitySession)), ErrorCode.FORBIDDEN);
+    assertError(mockMvc.perform(get(path).cookie(memberSession(owner))), ErrorCode.UNAUTHENTICATED);
+    assertError(
+        mockMvc.perform(get(INTAKES + "/999999").cookie(privacySession)),
+        ErrorCode.RESOURCE_NOT_FOUND);
+
+    String body =
+        mockMvc
+            .perform(get(path).cookie(privacySession))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.intakeId").value(id))
+            .andExpect(jsonPath("$.officeId").value(owner.office().getId()))
+            .andExpect(jsonPath("$.officeName").value(owner.office().getName()))
+            .andExpect(jsonPath("$.linkKind").value("APPROVER_PROPERTY"))
+            .andExpect(jsonPath("$.requestType").value("ACCESS"))
+            .andExpect(jsonPath("$.requesterRole").value("SELF"))
+            .andExpect(jsonPath("$.contactChannel").value("EMAIL"))
+            .andExpect(jsonPath("$.maskedContact").isString())
+            .andExpect(jsonPath("$.verificationStatus").isString())
+            .andExpect(jsonPath("$.status").value("RECEIVED"))
+            .andExpect(jsonPath("$.receivedAt").isNotEmpty())
+            .andExpect(jsonPath("$.internalDueAt").isNotEmpty())
+            .andExpect(jsonPath("$.privacyRequestId").value(Matchers.nullValue()))
+            .andExpect(jsonPath("$.closedReason").value(Matchers.nullValue()))
+            .andReturn()
+            .getResponse()
+            .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+    assertThat(body).doesNotContain("requester@example.com").doesNotContain("조건 열람 요청");
+
+    jdbcTemplate.update(
+        "UPDATE legal_guest_privacy_intake SET status = 'CLOSED', closed_at = now(),"
+            + " closed_reason = 'DUPLICATE' WHERE id = ?",
+        id);
+    mockMvc
+        .perform(get(path).cookie(privacySession))
+        .andExpect(jsonPath("$.status").value("CLOSED"))
+        .andExpect(jsonPath("$.closedReason").value("DUPLICATE"));
+  }
 }

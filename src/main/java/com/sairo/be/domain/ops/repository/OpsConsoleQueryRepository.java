@@ -156,6 +156,17 @@ public class OpsConsoleQueryRepository {
         .list();
   }
 
+  public Instant reviewReceivedAt(long registrationId) {
+    return jdbcClient
+        .sql(
+            "SELECT COALESCE((SELECT max(h.created_at) FROM office_registration_status_history h"
+                + " WHERE h.registration_id = r.id AND h.to_status = 'PENDING_REVIEW'),"
+                + " r.created_at) FROM office_registration r WHERE r.id = :id")
+        .param("id", registrationId)
+        .query((rs, i) -> rs.getTimestamp(1).toInstant())
+        .single();
+  }
+
   public Map<LocalDate, Boolean> businessDayOverrides(LocalDate from, LocalDate to) {
     Map<LocalDate, Boolean> overrides = new HashMap<>();
     jdbcClient

@@ -15,6 +15,7 @@ import com.sairo.be.domain.office.repository.OfficeRepository;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.port.stub.InMemoryObjectStorage;
 import com.sairo.be.global.security.OperatorRole;
+import com.sairo.be.global.support.TimeRules;
 import com.sairo.be.support.AuthFlowSupport;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.OpsIntegrationTestBase;
@@ -238,10 +239,67 @@ class OperatorRegistrationReviewIntegrationTest extends OpsIntegrationTestBase {
             .andExpect(jsonPath("$.reviewChecklist.length()").value(5))
             .andExpect(jsonPath("$.reviewChecklist[0].checked").value(false))
             .andExpect(jsonPath("$.canApprove").value(false))
+            .andExpect(jsonPath("$.officeId").value(org.hamcrest.Matchers.nullValue()))
+            .andExpect(jsonPath("$.reviewDueAt").isNotEmpty())
             .andReturn()
             .getResponse()
             .getContentAsString();
     assertThat(body).doesNotContain("object_key").doesNotContain("test/" + id);
+    Instant received =
+        jdbcTemplate
+            .queryForObject(
+                "SELECT created_at FROM office_registration WHERE id = ?",
+                java.sql.Timestamp.class,
+                id)
+            .toInstant();
+    java.time.LocalDate dueDay = TimeRules.displayDate(received);
+    for (int counted = 0; counted < 2; ) {
+      dueDay = dueDay.plusDays(1);
+      if (dueDay.getDayOfWeek() != java.time.DayOfWeek.SATURDAY
+          && dueDay.getDayOfWeek() != java.time.DayOfWeek.SUNDAY) {
+        counted++;
+      }
+    }
+    String reviewDueAt = body.replaceAll("(?s).*\"reviewDueAt\":\"([^\"]+)\".*", "$1");
+    assertThat(java.time.OffsetDateTime.parse(reviewDueAt).toInstant())
+        .isEqualTo(TimeRules.startOfDisplayDay(dueDay.plusDays(1)));
+  }
+
+  @Test
+  void 상세의_심사_목표_기한은_영업일_달력을_따르고_승인_뒤에는_사무소를_주고_기한은_비운다() throws Exception {
+    AppUser user = applicant();
+    long id = submittedRegistration(user.getId(), "PENDING_REVIEW");
+    java.time.LocalDate today = TimeRules.displayDate(Instant.now());
+    for (int offset = 1; offset <= 14; offset++) {
+      jdbcTemplate.update(
+          "INSERT INTO ops_business_calendar (calendar_date, is_business_day, reason,"
+              + " updated_by_operator_id) VALUES (?,"
+              + " ?, '시험', ?)",
+          java.sql.Date.valueOf(today.plusDays(offset)),
+          offset == 9 || offset == 13,
+          reviewer.id());
+    }
+    String body =
+        mockMvc
+            .perform(get("/api/ops/office-registrations/" + id).cookie(reviewSession))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    String reviewDueAt = body.replaceAll("(?s).*\"reviewDueAt\":\"([^\"]+)\".*", "$1");
+    assertThat(java.time.OffsetDateTime.parse(reviewDueAt).toInstant())
+        .isEqualTo(TimeRules.startOfDisplayDay(today.plusDays(14)));
+
+    checkAll(id);
+    post("/api/ops/office-registrations/" + id + "/approve", "", reviewSession)
+        .andExpect(status().isOk());
+    Long officeId = jdbcTemplate.queryForObject("SELECT id FROM office", Long.class);
+    mockMvc
+        .perform(get("/api/ops/office-registrations/" + id).cookie(reviewSession))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("APPROVED"))
+        .andExpect(jsonPath("$.officeId").value(officeId))
+        .andExpect(jsonPath("$.reviewDueAt").value(org.hamcrest.Matchers.nullValue()));
   }
 
   @Test
