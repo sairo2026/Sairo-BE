@@ -49,4 +49,10 @@ public class LegalRetentionScheduler {
   public void encryptApproverPhones() {
     service.runScheduled(LegalRetentionJobService.APPROVER_PHONE_ENCRYPT_JOB, clock.instant());
   }
+
+  @Scheduled(cron = "0 40 3 * * *", zone = "Asia/Seoul")
+  @SchedulerLock(name = "office-data-purge-scan", lockAtMostFor = "PT2H", lockAtLeastFor = "PT5M")
+  public void scanOfficeDataPurge() {
+    service.runScheduled(LegalRetentionJobService.OFFICE_DATA_PURGE_SCAN_JOB, clock.instant());
+  }
 }

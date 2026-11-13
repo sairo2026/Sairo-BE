@@ -106,7 +106,114 @@ public class ExportGenerationService {
     }
   }
 
+  private static final String RETAINED_DOCUMENT_CONDITION =
+      " AND (t.retention_end_date IS NULL OR t.retention_end_date >= CURRENT_DATE)"
+          + " AND EXISTS (SELECT 1 FROM legal_retention_rule r WHERE r.rule_code ="
+          + " CASE t.document_type WHEN 'SALES_CONTRACT' THEN 'OFFICE_CONTRACT_DOCUMENT'"
+          + " ELSE 'OFFICE_EXPLANATION_DOCUMENT' END)";
+
+  private static final List<ExportTables.Source> ARCHIVE_SOURCES =
+      List.of(
+          new ExportTables.Source(
+              "contract.csv",
+              "SELECT t.* FROM contract t WHERE t.office_id = :officeId ORDER BY t.id"),
+          new ExportTables.Source(
+              "contract_document.csv",
+              "SELECT t.id, t.contract_id, t.contract_revision_id, t.document_type, t.version_no,"
+                  + " t.supersedes_document_id, t.written_date, t.delivered_date,"
+                  + " t.date_pending_reason, t.retention_end_date, t.retention_years,"
+                  + " t.pii_masking_confirmed, t.uploaded_by_membership_id, t.uploaded_at FROM"
+                  + " contract_document t JOIN contract c ON c.id = t.contract_id WHERE"
+                  + " c.office_id = :officeId"
+                  + RETAINED_DOCUMENT_CONDITION
+                  + " ORDER BY t.id"),
+          new ExportTables.Source(
+              "contract_fee.csv",
+              "SELECT t.* FROM contract_fee t JOIN contract c ON c.id = t.contract_id"
+                  + " WHERE c.office_id = :officeId ORDER BY t.id"),
+          new ExportTables.Source(
+              "contract_fee_transaction.csv",
+              "SELECT t.* FROM contract_fee_transaction t JOIN contract_fee f ON f.id = t.fee_id"
+                  + " JOIN contract c ON c.id = f.contract_id WHERE c.office_id = :officeId"
+                  + " ORDER BY t.id"),
+          new ExportTables.Source(
+              "contract_payment_schedule.csv",
+              "SELECT t.* FROM contract_payment_schedule t JOIN contract c ON c.id ="
+                  + " t.contract_id WHERE c.office_id = :officeId ORDER BY t.id"),
+          new ExportTables.Source(
+              "contract_payment_transaction.csv",
+              "SELECT t.* FROM contract_payment_transaction t JOIN contract_payment_schedule s ON"
+                  + " s.id = t.schedule_id JOIN contract c ON c.id = s.contract_id WHERE"
+                  + " c.office_id = :officeId ORDER BY t.id"));
+
+  private byte[] buildArchive(Row job) {
+    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+    Map<String, Long> rowCounts = new LinkedHashMap<>();
+    try (ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {
+      for (ExportTables.Source source : ARCHIVE_SOURCES) {
+        zip.putNextEntry(new ZipEntry("data/" + source.fileName()));
+        rowCounts.put(
+            "data/" + source.fileName(), writeCsvQuery(zip, source.sql(), job.officeId()));
+        zip.closeEntry();
+      }
+      ArrayNode attachmentsNode = MAPPER.createArrayNode();
+      long included = 0;
+      long missing = 0;
+      for (Attachment attachment : retainedDocumentAttachments(job.officeId())) {
+        Optional<byte[]> content = objectStorage.find(attachment.objectKey());
+        ObjectNode node = attachmentsNode.addObject();
+        String path = attachmentPath(attachment);
+        node.put("path", path);
+        if (content.isPresent()) {
+          zip.putNextEntry(new ZipEntry(path));
+          zip.write(content.get());
+          zip.closeEntry();
+          node.put("included", true);
+          included++;
+        } else {
+          node.put("included", false);
+          missing++;
+        }
+      }
+      ObjectNode manifest = MAPPER.createObjectNode();
+      manifest.put("exportId", job.id());
+      manifest.put("scope", job.scope());
+      manifest.put("archiveGrantId", job.archiveGrantId());
+      manifest.put("generatedAt", clock.instant().toString());
+      manifest.put("encoding", "UTF-8 (BOM)");
+      ObjectNode files = manifest.putObject("rowCounts");
+      rowCounts.forEach(files::put);
+      manifest.putObject("attachmentSummary").put("included", included).put("missing", missing);
+      manifest.set("attachments", attachmentsNode);
+      zip.putNextEntry(new ZipEntry("manifest.json"));
+      zip.write(MAPPER.writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest));
+      zip.closeEntry();
+    } catch (IOException e) {
+      throw new IllegalStateException("내보내기 압축 파일을 만들 수 없습니다.", e);
+    }
+    return bytes.toByteArray();
+  }
+
+  private List<Attachment> retainedDocumentAttachments(long officeId) {
+    List<Attachment> result = new ArrayList<>();
+    jdbcClient
+        .sql(
+            "SELECT t.id, t.object_key FROM contract_document t JOIN contract c ON c.id ="
+                + " t.contract_id WHERE c.office_id = :officeId"
+                + RETAINED_DOCUMENT_CONDITION
+                + " ORDER BY t.id")
+        .param("officeId", officeId)
+        .query(
+            rs -> {
+              result.add(new Attachment("contract_document", rs.getLong(1), rs.getString(2)));
+            });
+    return result;
+  }
+
   private byte[] build(Row job) {
+    if (job.scope().equals("ARCHIVE")) {
+      return buildArchive(job);
+    }
     boolean full = job.scope().equals("FULL");
     List<ExportTables> tables =
         full
