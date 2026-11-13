@@ -107,6 +107,22 @@ public class OperatorInvitationAuthService {
       String state,
       String error)
       throws IOException {
+    try {
+      bindKakao(request, response, ipAddress, code, state, error);
+    } catch (BusinessException e) {
+      response.sendRedirect(
+          frontendBaseUrl + "/ops/invitations/accept?error=" + e.getErrorCode().name());
+    }
+  }
+
+  private void bindKakao(
+      HttpServletRequest request,
+      HttpServletResponse response,
+      String ipAddress,
+      String code,
+      String state,
+      String error)
+      throws IOException {
     rateLimiter.hit(OpsRateLimits.PUBLIC_IP, ipAddress);
     HttpSession session = request.getSession(false);
     Optional<Long> invitationId = sessionState.startInvitation(session);
