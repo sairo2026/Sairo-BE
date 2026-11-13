@@ -21,6 +21,7 @@ public final class VisitFeasibility {
 
   public static final List<String> RULE_ORDER =
       List.of(
+          DEPUTY_VISIT_LOCKED,
           ApproverConditionEvaluator.CONDITION_EXPIRED,
           VisitRequestChecker.NO_PERMISSION,
           ApproverConditionEvaluator.WINDOW_MISMATCH,
