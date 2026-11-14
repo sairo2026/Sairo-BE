@@ -11,6 +11,7 @@ import com.sairo.be.global.port.SmsSender.SmsMessage;
 import com.sairo.be.global.security.SecurityProperties;
 import com.sairo.be.global.support.HmacSupport;
 import com.sairo.be.global.support.PhoneNumbers;
+import com.sairo.be.global.support.PhoneVerificationRequirement;
 import com.sairo.be.global.support.PublicLinkTokenGenerator;
 import com.sairo.be.global.support.RateLimitRule;
 import com.sairo.be.global.support.RequestRateLimiter;
@@ -22,6 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -61,7 +63,8 @@ public class ApproverOtpService {
       Set.of("purpose", "phone", "code", "linkToken", "acknowledgedNoticeVersion");
 
   private final StringRedisTemplate redis;
-  private final SmsSender smsSender;
+  private final ObjectProvider<SmsSender> smsSender;
+  private final PhoneVerificationRequirement requirement;
   private final RequestRateLimiter rateLimiter;
   private final TokenGenerator tokenGenerator;
   private final PublicLinkTokenGenerator linkTokens;
@@ -73,7 +76,8 @@ public class ApproverOtpService {
 
   public ApproverOtpService(
       StringRedisTemplate redis,
-      SmsSender smsSender,
+      ObjectProvider<SmsSender> smsSender,
+      PhoneVerificationRequirement requirement,
       RequestRateLimiter rateLimiter,
       TokenGenerator tokenGenerator,
       PublicLinkTokenGenerator linkTokens,
@@ -84,6 +88,7 @@ public class ApproverOtpService {
       Clock clock) {
     this.redis = redis;
     this.smsSender = smsSender;
+    this.requirement = requirement;
     this.rateLimiter = rateLimiter;
     this.tokenGenerator = tokenGenerator;
     this.linkTokens = linkTokens;
@@ -95,6 +100,7 @@ public class ApproverOtpService {
   }
 
   public ApproverOtpSendResponse send(JsonNode body, Long sessionProfileId, String clientIp) {
+    requirement.requireSmsAvailable();
     CustomerInput.requireObject(body, SEND_KEYS);
     Purpose purpose = purpose(body);
     String phone = phone(body);
@@ -129,7 +135,9 @@ public class ApproverOtpService {
       state.put("issuedAt", String.valueOf(clock.instant().getEpochSecond()));
       redis.opsForHash().putAll(key, state);
       redis.expire(key, RETENTION);
-      smsSender.send(new SmsMessage(phone, "[사이로] 승인자 계정 인증번호는 " + code + "입니다. 5분 안에 입력해 주세요."));
+      smsSender
+          .getObject()
+          .send(new SmsMessage(phone, "[사이로] 승인자 계정 인증번호는 " + code + "입니다. 5분 안에 입력해 주세요."));
     }
     return new ApproverOtpSendResponse(
         true, (int) CODE_VALIDITY.toSeconds(), (int) RESEND_INTERVAL.toSeconds());
