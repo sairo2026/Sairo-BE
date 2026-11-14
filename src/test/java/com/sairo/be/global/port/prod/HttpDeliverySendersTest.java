@@ -114,6 +114,7 @@ class HttpDeliverySendersTest {
   void providerGuardRequiresCredentialsForSelectedProvider() {
     DeliveryProviderGuard.validate("ses", "", "aws", true);
     DeliveryProviderGuard.validate("resend", "key", "solapi", false);
+    DeliveryProviderGuard.validate("ses", "", "none", true);
     assertThrows(
         IllegalStateException.class,
         () -> DeliveryProviderGuard.validate("resend", "", "aws", true));

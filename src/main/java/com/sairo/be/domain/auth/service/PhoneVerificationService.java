@@ -15,6 +15,7 @@ import com.sairo.be.global.security.SignedTicketService.IssuedTicket;
 import com.sairo.be.global.security.TicketType;
 import com.sairo.be.global.support.HmacSupport;
 import com.sairo.be.global.support.PhoneNumbers;
+import com.sairo.be.global.support.PhoneVerificationRequirement;
 import com.sairo.be.global.support.RequestRateLimiter;
 import com.sairo.be.global.support.TimeRules;
 import com.sairo.be.global.support.TokenGenerator;
@@ -24,6 +25,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -43,7 +45,8 @@ public class PhoneVerificationService {
   private static final String FIELD_USER_ID = "userId";
 
   private final StringRedisTemplate redis;
-  private final SmsSender smsSender;
+  private final ObjectProvider<SmsSender> smsSender;
+  private final PhoneVerificationRequirement requirement;
   private final SignedTicketService ticketService;
   private final RequestRateLimiter rateLimiter;
   private final TokenGenerator tokenGenerator;
@@ -52,7 +55,8 @@ public class PhoneVerificationService {
 
   public PhoneVerificationService(
       StringRedisTemplate redis,
-      SmsSender smsSender,
+      ObjectProvider<SmsSender> smsSender,
+      PhoneVerificationRequirement requirement,
       SignedTicketService ticketService,
       RequestRateLimiter rateLimiter,
       TokenGenerator tokenGenerator,
@@ -60,6 +64,7 @@ public class PhoneVerificationService {
       Clock clock) {
     this.redis = redis;
     this.smsSender = smsSender;
+    this.requirement = requirement;
     this.ticketService = ticketService;
     this.rateLimiter = rateLimiter;
     this.tokenGenerator = tokenGenerator;
@@ -69,6 +74,7 @@ public class PhoneVerificationService {
 
   public VerificationSendResponse send(
       Long currentUserId, String rawPhone, PhoneVerificationPurpose purpose, String clientIp) {
+    requirement.requireSmsAvailable();
     String phone = requirePhone(rawPhone);
     requireLoginForChange(currentUserId, purpose);
     rateLimiter.hit(AuthRateLimits.PHONE_SEND_IP_HOURLY, clientIp);
@@ -87,7 +93,9 @@ public class PhoneVerificationService {
     }
     redis.opsForHash().putAll(key, state);
     redis.expire(key, RETENTION);
-    smsSender.send(new SmsMessage(phone, "[사이로] 인증번호는 " + code + "입니다. 5분 안에 입력해 주세요."));
+    smsSender
+        .getObject()
+        .send(new SmsMessage(phone, "[사이로] 인증번호는 " + code + "입니다. 5분 안에 입력해 주세요."));
     return new VerificationSendResponse(true, (int) AuthRateLimits.RESEND_INTERVAL.toSeconds());
   }
 

@@ -22,10 +22,7 @@ class ProductionPortConfig {
   }
 
   @Bean
-  @ConditionalOnProperty(
-      name = "sairo.delivery.sms.provider",
-      havingValue = "aws",
-      matchIfMissing = true)
+  @ConditionalOnProperty(name = "sairo.delivery.sms.provider", havingValue = "aws")
   PinpointSmsVoiceV2Client smsClient() {
     return PinpointSmsVoiceV2Client.create();
   }
