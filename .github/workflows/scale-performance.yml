@@ -70,7 +70,7 @@ jobs:
           --health-retries 12
 
     env:
-      MODE: ${{ inputs.mode || 'baseline-and-current' }}
+      MODE: ${{ inputs.mode || 'current-only' }}
       SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/sairo?options=-c%20statement_timeout=20000
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ""
@@ -134,4 +134,4 @@ jobs:
             build/perf-results-baseline
             build/perf-results-current
           if-no-files-found: warn
-# run 4
+# run 5

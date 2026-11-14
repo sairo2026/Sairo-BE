@@ -806,6 +806,11 @@ class ScalePerformanceTest {
                   + IMPORT_ROWS
                   + "행이다. 실행은 요청 스레드에서 동기로 처리한다.\n");
           PerfReport.line("| 단계 | 시간(ms) | 힙 | 비고 |\n|---|---|---|---|");
+          jdbc.update(
+              "UPDATE import_batch SET executed_at = executed_at - interval '40 days',"
+                  + " cancellable_until = cancellable_until - interval '40 days' WHERE office_id ="
+                  + " ? AND executed_at IS NOT NULL",
+              fixture.largeOffice);
           Cookie owner = ownerLarge;
           int half = IMPORT_ROWS / 2;
           runImport(
