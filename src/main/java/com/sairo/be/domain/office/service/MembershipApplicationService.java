@@ -14,6 +14,8 @@ import com.sairo.be.domain.office.repository.OfficeMembershipHistoryRepository;
 import com.sairo.be.domain.office.repository.OfficeMembershipHistoryRepository.Actor;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
+import com.sairo.be.global.port.NotificationPublisher;
+import com.sairo.be.global.port.NotificationPublisher.Notice;
 import com.sairo.be.global.support.AdvisoryLock;
 import com.sairo.be.global.support.TimeRules;
 import java.time.Clock;
@@ -33,6 +35,7 @@ public class MembershipApplicationService {
   private final OfficeMembershipHistoryRepository historyRepository;
   private final JdbcClient jdbcClient;
   private final AdvisoryLock advisoryLock;
+  private final NotificationPublisher notificationPublisher;
   private final Clock clock;
 
   public MembershipApplicationService(
@@ -40,11 +43,13 @@ public class MembershipApplicationService {
       OfficeMembershipHistoryRepository historyRepository,
       JdbcClient jdbcClient,
       AdvisoryLock advisoryLock,
+      NotificationPublisher notificationPublisher,
       Clock clock) {
     this.repository = repository;
     this.historyRepository = historyRepository;
     this.jdbcClient = jdbcClient;
     this.advisoryLock = advisoryLock;
+    this.notificationPublisher = notificationPublisher;
     this.clock = clock;
   }
 
@@ -149,6 +154,7 @@ public class MembershipApplicationService {
         true,
         now);
     Row updated = repository.find(membershipId).orElseThrow();
+    publishApprovalNeeded(membershipId, updated.officeId(), userId, updated.role());
     return new MembershipInvitationAcceptResponse(
         membershipId,
         TimeRules.toDisplayOffset(updated.invitationAcceptedAt()),
@@ -191,7 +197,27 @@ public class MembershipApplicationService {
     }
     historyRepository.insert(
         id, null, OfficeMembershipStatus.PENDING, Actor.APPLICANT, null, null, now);
+    publishApprovalNeeded(id, officeId, userId, role);
     return MembershipMapper.toResult(repository.find(id).orElseThrow());
+  }
+
+  private void publishApprovalNeeded(
+      long membershipId, Long officeId, Long userId, OfficeMembershipRole role) {
+    String applicantName =
+        jdbcClient
+            .sql("SELECT name FROM app_user WHERE id = :id")
+            .param("id", userId)
+            .query(String.class)
+            .single();
+    notificationPublisher.publishToOwners(
+        officeId,
+        new Notice(
+            officeId,
+            null,
+            "MEMBERSHIP_APPROVAL_NEEDED",
+            MembershipNotices.approvalNeeded(applicantName, role),
+            "MEMBERSHIP",
+            membershipId));
   }
 
   private void requireVerifiedOffice(Long officeId) {

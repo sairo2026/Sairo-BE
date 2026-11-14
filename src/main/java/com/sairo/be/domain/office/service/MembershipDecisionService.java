@@ -18,6 +18,8 @@ import com.sairo.be.global.port.ContractAssignments;
 import com.sairo.be.global.port.MailSender;
 import com.sairo.be.global.port.MailSender.MailMessage;
 import com.sairo.be.global.port.MemberWorkHandover.WorkKind;
+import com.sairo.be.global.port.NotificationPublisher;
+import com.sairo.be.global.port.NotificationPublisher.Notice;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.AdvisoryLock;
 import com.sairo.be.global.support.AfterCommit;
@@ -43,6 +45,7 @@ public class MembershipDecisionService {
   private final JdbcClient jdbcClient;
   private final AdvisoryLock advisoryLock;
   private final MailSender mailSender;
+  private final NotificationPublisher notificationPublisher;
   private final ContractAssignments contractAssignments;
   private final MemberWorkHandoverService workHandoverService;
   private final Clock clock;
@@ -56,6 +59,7 @@ public class MembershipDecisionService {
       JdbcClient jdbcClient,
       AdvisoryLock advisoryLock,
       MailSender mailSender,
+      NotificationPublisher notificationPublisher,
       Clock clock,
       ContractAssignments contractAssignments,
       MemberWorkHandoverService workHandoverService,
@@ -67,6 +71,7 @@ public class MembershipDecisionService {
     this.jdbcClient = jdbcClient;
     this.advisoryLock = advisoryLock;
     this.mailSender = mailSender;
+    this.notificationPublisher = notificationPublisher;
     this.clock = clock;
     this.contractAssignments = contractAssignments;
     this.workHandoverService = workHandoverService;
@@ -162,6 +167,7 @@ public class MembershipDecisionService {
     historyRepository.insert(
         id, null, OfficeMembershipStatus.PENDING, Actor.OWNER, owner.membershipId(), null, now);
     sendInvitationMail(request.email().strip(), owner.officeId());
+    publishInvitation(id, owner.officeId(), targetUserId, role);
     return MembershipMapper.toInvitation(repository.find(id).orElseThrow());
   }
 
@@ -255,6 +261,25 @@ public class MembershipDecisionService {
         .param("id", membershipId)
         .query(Long.class)
         .single();
+  }
+
+  private void publishInvitation(
+      long membershipId, Long officeId, Long userId, OfficeMembershipRole role) {
+    String officeName =
+        jdbcClient
+            .sql("SELECT name FROM office WHERE id = :id")
+            .param("id", officeId)
+            .query(String.class)
+            .single();
+    notificationPublisher.publishToMembership(
+        membershipId,
+        new Notice(
+            officeId,
+            userId,
+            "INVITATION",
+            MembershipNotices.invitation(officeName, role),
+            "MEMBERSHIP",
+            membershipId));
   }
 
   private void sendInvitationMail(String email, Long officeId) {
