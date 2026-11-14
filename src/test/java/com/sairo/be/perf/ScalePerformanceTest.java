@@ -502,7 +502,7 @@ class ScalePerformanceTest {
   }
 
   private static String enc(String value) {
-    return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8);
+    return value;
   }
 
   @Test

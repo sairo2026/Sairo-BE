@@ -26,6 +26,6 @@ import org.springframework.test.context.TestPropertySource;
       "sairo.migration.import-executor=sync",
       "sairo.support.scan-dispatch=manual",
       "spring.datasource.hikari.maximum-pool-size=12",
-      "spring.datasource.hikari.connection-init-sql=SET statement_timeout = 300000"
+      "spring.datasource.hikari.connection-init-sql=SET statement_timeout = 20000"
     })
 public @interface PerfTest {}
