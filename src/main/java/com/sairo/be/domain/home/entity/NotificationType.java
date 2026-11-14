@@ -33,6 +33,7 @@ public enum NotificationType {
   private static final Set<NotificationType> EMAIL_DELIVERED =
       EnumSet.of(
           OFFICE_REVIEW,
+          MEMBERSHIP_APPROVAL_NEEDED,
           TRIAL_ENDING,
           PLAN_CHANGED,
           PAYMENT,
