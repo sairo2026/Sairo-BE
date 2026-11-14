@@ -18,6 +18,7 @@ import com.sairo.be.global.security.StepUpState;
 import com.sairo.be.global.security.TicketType;
 import com.sairo.be.global.security.VerifiedTicket;
 import com.sairo.be.global.support.PhoneNumbers;
+import com.sairo.be.global.support.PhoneVerificationRequirement;
 import com.sairo.be.global.support.TimeRules;
 import jakarta.servlet.http.HttpSession;
 import java.time.Clock;
@@ -37,6 +38,8 @@ public class ContactChangeService {
   private final AppUserRepository appUserRepository;
   private final EmailVerificationService emailVerificationService;
   private final SignedTicketService ticketService;
+  private final SignupPhoneResolver phoneResolver;
+  private final PhoneVerificationRequirement phoneRequirement;
   private final StepUpState stepUpState;
   private final AuthMailComposer mailComposer;
   private final Clock clock;
@@ -45,12 +48,16 @@ public class ContactChangeService {
       AppUserRepository appUserRepository,
       EmailVerificationService emailVerificationService,
       SignedTicketService ticketService,
+      SignupPhoneResolver phoneResolver,
+      PhoneVerificationRequirement phoneRequirement,
       StepUpState stepUpState,
       AuthMailComposer mailComposer,
       Clock clock) {
     this.appUserRepository = appUserRepository;
     this.emailVerificationService = emailVerificationService;
     this.ticketService = ticketService;
+    this.phoneResolver = phoneResolver;
+    this.phoneRequirement = phoneRequirement;
     this.stepUpState = stepUpState;
     this.mailComposer = mailComposer;
     this.clock = clock;
@@ -110,6 +117,7 @@ public class ContactChangeService {
 
   private ChangeResult doChangeEmail(
       Long userId, String email, String ticketToken, HttpSession session) {
+    requireTicketToken(ticketToken);
     AppUser user = requireEmailChangeable(userId, session);
     VerifiedTicket ticket =
         ticketService.verify(ticketToken, TicketType.EMAIL, EmailVerificationPurpose.CHANGE.name());
@@ -145,31 +153,47 @@ public class ContactChangeService {
                             new FieldErrorItem(
                                 "phone", FieldErrorCode.INVALID_FORMAT, "휴대폰 번호 형식이 올바르지 않습니다."))));
     AppUser user = activeUser(userId);
-    VerifiedTicket ticket =
-        ticketService.verify(ticketToken, TicketType.PHONE, PhoneVerificationPurpose.CHANGE.name());
-    if (!userId.equals(ticket.userId()) || !phone.equals(ticket.subject())) {
-      throw new BusinessException(ErrorCode.TOKEN_INVALID);
-    }
-    boolean takenByOther =
-        appUserRepository
-            .findFirstByPhoneAndPhoneVerifiedAtIsNotNullAndAccountStatus(
-                phone, AccountStatus.ACTIVE)
-            .filter(other -> !other.getId().equals(userId))
-            .isPresent();
-    if (takenByOther) {
-      throw new BusinessException(ErrorCode.PHONE_ALREADY_REGISTERED);
+    boolean verifying = phoneRequirement.isRequired();
+    VerifiedTicket ticket = null;
+    if (verifying) {
+      requireTicketToken(ticketToken);
+      ticket =
+          ticketService.verify(
+              ticketToken, TicketType.PHONE, PhoneVerificationPurpose.CHANGE.name());
+      if (!userId.equals(ticket.userId()) || !phone.equals(ticket.subject())) {
+        throw new BusinessException(ErrorCode.TOKEN_INVALID);
+      }
+      boolean takenByOther =
+          appUserRepository
+              .findFirstByPhoneAndPhoneVerifiedAtIsNotNullAndAccountStatus(
+                  phone, AccountStatus.ACTIVE)
+              .filter(other -> !other.getId().equals(userId))
+              .isPresent();
+      if (takenByOther) {
+        throw new BusinessException(ErrorCode.PHONE_ALREADY_REGISTERED);
+      }
     }
     Instant now = clock.instant();
     try {
-      user.changePhone(phone, now);
+      user.changePhone(phone, verifying ? now : null);
       appUserRepository.flush();
     } catch (DataIntegrityViolationException e) {
       throw new BusinessException(ErrorCode.PHONE_ALREADY_REGISTERED);
     }
-    ticketService.consume(ticket);
+    if (ticket != null) {
+      ticketService.consume(ticket);
+    }
     return new ChangeResult(
         new ContactChangeResponse("phone", phone, TimeRules.toDisplay(now).toOffsetDateTime()),
         null);
+  }
+
+  private static void requireTicketToken(String ticketToken) {
+    if (ticketToken == null || ticketToken.isBlank()) {
+      throw BusinessException.withFieldErrors(
+          ErrorCode.INVALID_REQUEST,
+          List.of(new FieldErrorItem("verifiedTicket", FieldErrorCode.REQUIRED, "인증 티켓이 필요합니다.")));
+    }
   }
 
   private AppUser requireEmailChangeable(Long userId, HttpSession session) {
