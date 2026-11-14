@@ -22,4 +22,13 @@ public class AttachmentScanScheduler {
   public void recoverPending() {
     scanService.scanPending();
   }
+
+  @Scheduled(fixedDelayString = "PT30S")
+  @SchedulerLock(
+      name = "attachment-reject-purge",
+      lockAtMostFor = "PT10M",
+      lockAtLeastFor = "PT10S")
+  public void purgeRejectedObjects() {
+    scanService.purgeRejectedObjects();
+  }
 }

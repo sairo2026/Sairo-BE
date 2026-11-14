@@ -85,7 +85,8 @@ public enum ErrorCode {
   TERMS_VERSION_CHANGED(
       HttpStatus.CONFLICT, "현재 시행 중인 약관·구독 구매·정기결제·카드 등록 안내 동의 버전과 일치하지 않음(가입 요청의 표시 버전 포함)"),
   TERMS_WITHDRAWAL_NOT_ALLOWED(HttpStatus.CONFLICT, "필수 약관·법정 고지성 항목 철회 시도"),
-  ATTACHMENT_NOT_READY(HttpStatus.CONFLICT, "검사 중(PENDING)이거나 거부된(REJECTED) 티켓 첨부 다운로드 시도"),
+  ATTACHMENT_NOT_READY(HttpStatus.CONFLICT, "검사 중(PENDING)인 티켓 첨부 다운로드 시도"),
+  ATTACHMENT_REJECTED(HttpStatus.CONFLICT, "보안 검사에서 차단된(REJECTED) 티켓 첨부 다운로드 시도"),
   CONSENT_TERMS_MISMATCH(HttpStatus.CONFLICT, "구독 구매 동의 요청의 인원·금액·기간이 서버 재계산값과 다름"),
   VERIFICATION_INCOMPLETE(HttpStatus.CONFLICT, "네 저장소 중 결과가 누락된 파기 검증"),
   INTEGRATION_PREREQUISITE_INCOMPLETE(
