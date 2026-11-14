@@ -65,8 +65,26 @@ dependencies {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'perf'
+    }
     maxHeapSize = '1g'
+}
+
+tasks.register('perfTest', Test) {
+    description = 'Runs the large-scale performance measurements against an external PostgreSQL and Redis.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'perf'
+    }
+    maxHeapSize = '1g'
+    outputs.upToDateWhen { false }
+    testLogging {
+        events 'failed'
+        exceptionFormat = 'full'
+    }
 }
 
 // The test classpath has multiple helper applications; E2E uses the ordinary
