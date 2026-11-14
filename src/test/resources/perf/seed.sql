@@ -43,9 +43,9 @@ SELECT s.office_id, x.g % 25 = 0, '가상고객 ' || (x.base % 20000), s.first_m
     '000-' || lpad((x.base / 10000)::text, 4, '0') || '-' || lpad((x.base % 10000)::text, 4, '0'),
     'PERF', 'PERF', current_date + 1825,
     CASE WHEN x.g % 50 = 7 THEN now() - interval '5 days' END,
-    now() - ((x.g * 7919) % 730) * interval '1 day' - ((x.g * 104729) % 86400) * interval '1 second',
-    LEAST(now(), now() - ((x.g * 7919) % 730) * interval '1 day'
-        - ((x.g * 104729) % 86400) * interval '1 second' + ((x.g * 31) % 100) * interval '1 day')
+    now() - ((x.g::bigint * 7919) % 730) * interval '1 day' - ((x.g::bigint * 104729) % 86400) * interval '1 second',
+    LEAST(now(), now() - ((x.g::bigint * 7919) % 730) * interval '1 day'
+        - ((x.g::bigint * 104729) % 86400) * interval '1 second' + ((x.g * 31) % 100) * interval '1 day')
 FROM perf_seed_office s
 CROSS JOIN LATERAL (SELECT g, CASE WHEN g % 200 = 0 THEN g - 1 ELSE g END AS base
                     FROM generate_series(1, s.n_cust) g) x
@@ -78,9 +78,9 @@ SELECT s.office_id,
         WHEN 2 THEN 'TENANT_OCCUPIED' ELSE 'UNKNOWN' END,
     s.first_member_id + (x.g % 4),
     CASE WHEN x.g % 20 = 19 THEN 'DRAFT' ELSE 'ACTIVE' END,
-    now() - ((x.g * 7919) % 730) * interval '1 day' - ((x.g * 104729) % 86400) * interval '1 second',
-    LEAST(now(), now() - ((x.g * 7919) % 730) * interval '1 day'
-        - ((x.g * 104729) % 86400) * interval '1 second' + ((x.g * 31) % 100) * interval '1 day'),
+    now() - ((x.g::bigint * 7919) % 730) * interval '1 day' - ((x.g::bigint * 104729) % 86400) * interval '1 second',
+    LEAST(now(), now() - ((x.g::bigint * 7919) % 730) * interval '1 day'
+        - ((x.g::bigint * 104729) % 86400) * interval '1 second' + ((x.g * 31) % 100) * interval '1 day'),
     CASE WHEN x.g % 33 = 0 THEN now() - interval '10 days' END
 FROM perf_seed_office s CROSS JOIN LATERAL generate_series(1, s.n_props) AS x(g)
 ORDER BY s.office_id, x.g;
@@ -155,14 +155,14 @@ WHERE g % 3 = 0;
 
 INSERT INTO customer_consultation (customer_id, occurred_at, author_membership_id, content,
     consultation_type)
-SELECT s.first_customer_id + g - 1, now() - ((g * 7919) % 700) * interval '1 day',
+SELECT s.first_customer_id + g - 1, now() - ((g::bigint * 7919) % 700) * interval '1 day',
     s.first_member_id + (g % 4), '가상 최초 문의 내용', 'FIRST_INQUIRY'
 FROM perf_seed_office s CROSS JOIN LATERAL generate_series(1, s.n_cust) g
 WHERE g % 5 < 3;
 
 INSERT INTO customer_consultation (customer_id, occurred_at, author_membership_id, content,
     consultation_type)
-SELECT s.first_customer_id + g - 1, now() - ((g * 104729) % 600) * interval '1 day',
+SELECT s.first_customer_id + g - 1, now() - ((g::bigint * 104729) % 600) * interval '1 day',
     s.first_member_id + (g % 4), '가상 후속 상담 내용', 'FOLLOWUP'
 FROM perf_seed_office s CROSS JOIN LATERAL generate_series(1, s.n_cust) g
 WHERE g % 10 < 3;

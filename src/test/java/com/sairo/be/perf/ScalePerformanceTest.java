@@ -97,6 +97,10 @@ class ScalePerformanceTest {
   }
 
   private void guard(String phase, ThrowingRunnable body) {
+    if (!phase.equals("seed") && fixture == null) {
+      PerfReport.line("구간 `" + phase + "`은 시드 실패로 건너뜀");
+      return;
+    }
     try {
       body.run();
     } catch (Throwable e) {
@@ -145,10 +149,17 @@ class ScalePerformanceTest {
                     .replace("@@APPROVER_LINKS@@", env("PERF_APPROVER_LINKS", "60"))
                     .replace("@@REQUESTS_PER_LINK@@", env("PERF_REQUESTS_PER_LINK", "30"));
             try (var connection = dataSource.getConnection()) {
-              ScriptUtils.executeSqlScript(
-                  connection,
-                  new EncodedResource(
-                      new ByteArrayResource(sql.getBytes(StandardCharsets.UTF_8)), "UTF-8"));
+              connection.setAutoCommit(false);
+              try {
+                ScriptUtils.executeSqlScript(
+                    connection,
+                    new EncodedResource(
+                        new ByteArrayResource(sql.getBytes(StandardCharsets.UTF_8)), "UTF-8"));
+                connection.commit();
+              } catch (RuntimeException e) {
+                connection.rollback();
+                throw e;
+              }
             }
           }
           long seedMillis = (System.nanoTime() - start) / 1_000_000;
