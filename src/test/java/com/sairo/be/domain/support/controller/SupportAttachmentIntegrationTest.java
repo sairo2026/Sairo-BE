@@ -10,18 +10,75 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.sairo.be.domain.support.entity.ScanStatus;
+import com.sairo.be.domain.support.repository.SupportInquiryAttachmentRepository;
+import com.sairo.be.domain.support.service.AttachmentScanService;
 import com.sairo.be.global.error.ErrorCode;
+import com.sairo.be.global.port.AttachmentScanner;
+import com.sairo.be.global.port.ObjectStorage;
 import com.sairo.be.global.port.stub.StubAttachmentScanner;
 import com.sairo.be.support.AuthFlowSupport;
 import com.sairo.be.support.DeskIntegrationTestBase;
 import com.sairo.be.support.IntegrationTest;
 import jakarta.servlet.http.Cookie;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.JsonNode;
 
 @IntegrationTest
 class SupportAttachmentIntegrationTest extends DeskIntegrationTestBase {
+
+  @Autowired private SupportInquiryAttachmentRepository attachmentRepository;
+  @Autowired private AttachmentScanner scanner;
+  @Autowired private PlatformTransactionManager transactionManager;
+  @Autowired private Clock clock;
+
+  private static final class DeleteFailingStorage implements ObjectStorage {
+    private final ObjectStorage delegate;
+
+    DeleteFailingStorage(ObjectStorage delegate) {
+      this.delegate = delegate;
+    }
+
+    @Override
+    public void put(String key, byte[] content, String contentType) {
+      delegate.put(key, content, contentType);
+    }
+
+    @Override
+    public Optional<byte[]> find(String key) {
+      return delegate.find(key);
+    }
+
+    @Override
+    public URI issueDownloadUrl(String key, Duration timeToLive) {
+      return delegate.issueDownloadUrl(key, timeToLive);
+    }
+
+    @Override
+    public void delete(String key) {
+      throw new IllegalStateException("저장소 장애");
+    }
+  }
+
+  private String objectKeyOf(long attachmentId) {
+    return jdbcTemplate.queryForObject(
+        "SELECT object_key FROM support_inquiry_attachment WHERE id = ?",
+        String.class,
+        attachmentId);
+  }
+
+  private boolean objectDeleted(long attachmentId) {
+    return jdbcTemplate.queryForObject(
+        "SELECT object_deleted_at IS NOT NULL FROM support_inquiry_attachment WHERE id = ?",
+        Boolean.class,
+        attachmentId);
+  }
 
   private long uploadAndGetId(Cookie cookie, long inquiryId, String name, byte[] content)
       throws Exception {
@@ -254,10 +311,60 @@ class SupportAttachmentIntegrationTest extends DeskIntegrationTestBase {
         getAs(
             "/api/support-inquiries/" + inquiryId + "/attachments/" + attachmentId,
             member.cookie()),
-        ErrorCode.ATTACHMENT_NOT_READY);
+        ErrorCode.ATTACHMENT_REJECTED);
     getAs("/api/support-inquiries/" + inquiryId, member.cookie())
         .andExpect(jsonPath("$.attachments[0].fileName").value("의심.pdf"))
         .andExpect(jsonPath("$.attachments[0].scanStatus").value("REJECTED"));
+  }
+
+  @Test
+  void 거부로_판정하면_저장소_객체를_삭제하고_행과_판정은_남긴다() throws Exception {
+    Member member = newMember("a@example.com");
+    long inquiryId = createInquiry(member.cookie(), "BUG", "문의");
+    long attachmentId =
+        uploadAndGetId(
+            member.cookie(), inquiryId, "의심.pdf", pdf(StubAttachmentScanner.REJECT_MARKER));
+    String key = objectKeyOf(attachmentId);
+    assertThat(objectStorage.find(key)).isPresent();
+
+    assertThat(scanService.scan(attachmentId)).isEqualTo(ScanStatus.REJECTED);
+
+    assertThat(objectStorage.find(key)).isEmpty();
+    assertThat(objectDeleted(attachmentId)).isTrue();
+    assertThat(scanStatusOf(attachmentId)).isEqualTo("REJECTED");
+    assertThat(scanService.purgeRejectedObjects()).isZero();
+  }
+
+  @Test
+  void 객체_삭제가_실패해도_거부_판정은_유지하고_다음_주기에_다시_삭제한다() throws Exception {
+    Member member = newMember("a@example.com");
+    long inquiryId = createInquiry(member.cookie(), "BUG", "문의");
+    long attachmentId =
+        uploadAndGetId(
+            member.cookie(), inquiryId, "의심.pdf", pdf(StubAttachmentScanner.REJECT_MARKER));
+    String key = objectKeyOf(attachmentId);
+    AttachmentScanService failing =
+        new AttachmentScanService(
+            attachmentRepository,
+            new DeleteFailingStorage(objectStorage),
+            scanner,
+            transactionManager,
+            clock);
+
+    assertThat(failing.scan(attachmentId)).isEqualTo(ScanStatus.REJECTED);
+
+    assertThat(scanStatusOf(attachmentId)).isEqualTo("REJECTED");
+    assertThat(objectStorage.find(key)).isPresent();
+    assertThat(objectDeleted(attachmentId)).isFalse();
+    assertThat(failing.purgeRejectedObjects()).isEqualTo(1);
+    assertThat(objectDeleted(attachmentId)).isFalse();
+
+    assertThat(scanService.purgeRejectedObjects()).isEqualTo(1);
+
+    assertThat(objectStorage.find(key)).isEmpty();
+    assertThat(objectDeleted(attachmentId)).isTrue();
+    assertThat(scanStatusOf(attachmentId)).isEqualTo("REJECTED");
+    assertThat(scanService.purgeRejectedObjects()).isZero();
   }
 
   @Test

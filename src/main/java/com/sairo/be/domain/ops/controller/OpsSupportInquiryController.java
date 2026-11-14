@@ -133,7 +133,9 @@ public class OpsSupportInquiryController {
     return service.upload(principal.operatorId(), inquiryId, file, messageId);
   }
 
-  @Operation(summary = "검사 완료 첨부 다운로드", description = "검사 중이거나 거부된 첨부는 409 ATTACHMENT_NOT_READY다.")
+  @Operation(
+      summary = "검사 완료 첨부 다운로드",
+      description = "검사 중인 첨부는 409 ATTACHMENT_NOT_READY, 보안 검사에서 차단된 첨부는 409 ATTACHMENT_REJECTED다.")
   @GetMapping("/{inquiryId}/attachments/{attachmentId}")
   public ResponseEntity<byte[]> download(
       @PathVariable Long inquiryId,

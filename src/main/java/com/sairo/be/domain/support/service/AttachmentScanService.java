@@ -57,7 +57,11 @@ public class AttachmentScanService {
       log.warn("첨부 검사기를 사용할 수 없어 검사 중 상태로 둔다. attachmentId={}", attachmentId);
       return ScanStatus.PENDING;
     }
-    return transactions.execute(status -> complete(attachmentId, verdict));
+    ScanStatus result = transactions.execute(status -> complete(attachmentId, verdict));
+    if (result == ScanStatus.REJECTED) {
+      purgeRejectedObject(attachmentId);
+    }
+    return result;
   }
 
   public int scanPending() {
@@ -66,6 +70,39 @@ public class AttachmentScanService {
             clock.instant().minus(RECOVERY_DELAY), PageRequest.ofSize(RECOVERY_BATCH));
     ids.forEach(this::scan);
     return ids.size();
+  }
+
+  public int purgeRejectedObjects() {
+    List<Long> ids =
+        attachmentRepository.findRejectedIdsWithObject(PageRequest.ofSize(RECOVERY_BATCH));
+    ids.forEach(this::purgeRejectedObject);
+    return ids.size();
+  }
+
+  private void purgeRejectedObject(long attachmentId) {
+    try {
+      Optional<SupportInquiryAttachment> found = attachmentRepository.findById(attachmentId);
+      if (found.isEmpty()
+          || found.get().getScanStatus() != ScanStatus.REJECTED
+          || found.get().getObjectDeletedAt() != null) {
+        return;
+      }
+      objectStorage.delete(found.get().getObjectKey());
+      transactions.executeWithoutResult(status -> markObjectDeleted(attachmentId));
+    } catch (RuntimeException e) {
+      log.warn("거부된 첨부의 저장소 객체 삭제에 실패해 다음 주기에 다시 시도한다. attachmentId={}", attachmentId);
+    }
+  }
+
+  private void markObjectDeleted(long attachmentId) {
+    attachmentRepository
+        .findForUpdateById(attachmentId)
+        .filter(locked -> locked.getScanStatus() == ScanStatus.REJECTED)
+        .ifPresent(
+            locked -> {
+              locked.markObjectDeleted(clock.instant());
+              attachmentRepository.saveAndFlush(locked);
+            });
   }
 
   private Verdict judge(SupportInquiryAttachment attachment) {

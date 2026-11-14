@@ -365,6 +365,10 @@ class OpsSupportInquiryIntegrationTest extends OpsConsoleTestBase {
     String path = BASE + "/" + id + "/attachments/" + attachmentId;
     assertError(mockMvc.perform(get(path).cookie(supportSession)), ErrorCode.ATTACHMENT_NOT_READY);
     jdbcTemplate.update(
+        "UPDATE support_inquiry_attachment SET scan_status = 'REJECTED' WHERE id = ?",
+        attachmentId);
+    assertError(mockMvc.perform(get(path).cookie(supportSession)), ErrorCode.ATTACHMENT_REJECTED);
+    jdbcTemplate.update(
         "UPDATE support_inquiry_attachment SET scan_status = 'CLEAN' WHERE id = ?", attachmentId);
     mockMvc
         .perform(get(path).cookie(supportSession))
