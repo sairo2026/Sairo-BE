@@ -1,11 +1,6 @@
 name: Scale Performance
 
 on:
-  push:
-    branches:
-      - feat/scale-performance
-    paths:
-      - .github/workflows/scale-performance.yml
   workflow_dispatch:
     inputs:
       mode:
@@ -70,7 +65,7 @@ jobs:
           --health-retries 12
 
     env:
-      MODE: ${{ inputs.mode || 'current-only' }}
+      MODE: ${{ inputs.mode || 'baseline-and-current' }}
       SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/sairo?options=-c%20statement_timeout=20000
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ""
@@ -134,4 +129,3 @@ jobs:
             build/perf-results-baseline
             build/perf-results-current
           if-no-files-found: warn
-# run 6
