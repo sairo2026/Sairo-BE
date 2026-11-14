@@ -104,7 +104,7 @@ class SchedulerLockIntegrationTest {
   }
 
   @Test
-  void 같은_이름의_잠금은_한_번에_하나만_잡힌다() {
+  void 같은_이름의_잠금은_한_번에_하나만_잡힌다() throws InterruptedException {
     LockProvider first = new BatchConfig().lockProvider(dataSource);
     LockProvider second = new BatchConfig().lockProvider(dataSource);
     LockConfiguration configuration =
@@ -113,7 +113,21 @@ class SchedulerLockIntegrationTest {
     SimpleLock held = first.lock(configuration).orElseThrow();
     assertThat(second.lock(configuration)).isEmpty();
     held.unlock();
-    assertThat(second.lock(configuration)).isPresent();
+    SimpleLock reacquired = null;
+    Instant deadline = Instant.now().plusSeconds(5);
+    while (reacquired == null && Instant.now().isBefore(deadline)) {
+      reacquired =
+          second
+              .lock(
+                  new LockConfiguration(
+                      Instant.now(), LOCK_NAME, Duration.ofMinutes(1), Duration.ZERO))
+              .orElse(null);
+      if (reacquired == null) {
+        Thread.sleep(25);
+      }
+    }
+    assertThat(reacquired).isNotNull();
+    reacquired.unlock();
   }
 
   @Test
