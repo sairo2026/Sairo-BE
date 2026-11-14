@@ -144,7 +144,7 @@ public class AppUser {
   }
 
   public boolean isSignupCompleted() {
-    return phone != null;
+    return phone != null || phoneVerifiedAt != null;
   }
 
   public void linkEmail(String email, String passwordHash, Instant verifiedAt) {
