@@ -45,6 +45,25 @@ class EmailSignupIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
+  void 본인확인이_필수이면_번호만_보내는_가입은_티켓_누락으로_거절한다() throws Exception {
+    String emailTicket = flow.sendAndVerifyEmail(EMAIL);
+    String body =
+        "{\"verifiedEmailTicket\":"
+            + quote(emailTicket)
+            + ",\"phone\":\"010-1234-5678\",\"password\":"
+            + quote(PASSWORD)
+            + ",\"displayName\":\"홍길동\",\"agreedTerms\":"
+            + requiredTerms()
+            + "}";
+
+    assertFieldError(
+        mockMvc.perform(jsonPost("/api/auth/signup/email", body)),
+        "verifiedPhoneTicket",
+        "REQUIRED");
+    assertThat(appUserRepository.count()).isZero();
+  }
+
+  @Test
   void 이메일_가입은_계정과_세션을_만들고_접근_상태_판정을_돌려준다() throws Exception {
     String emailTicket = flow.sendAndVerifyEmail(EMAIL);
     String phoneTicket = flow.sendAndVerifyPhone(PHONE);
