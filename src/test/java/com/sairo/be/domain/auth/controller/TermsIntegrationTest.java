@@ -59,6 +59,7 @@ class TermsIntegrationTest extends AuthIntegrationTestBase {
         .perform(get("/api/terms"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.items.length()").value(3))
+        .andExpect(jsonPath("$.phoneVerificationRequired").value(true))
         .andExpect(jsonPath("$.items[?(@.termsCode=='TOS')].required").value(true))
         .andExpect(jsonPath("$.items[?(@.termsCode=='TOS')].category").value("TERMS"))
         .andExpect(

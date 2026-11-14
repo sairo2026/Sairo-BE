@@ -168,7 +168,8 @@ public enum ErrorCode {
   MFA_LOCKED(HttpStatus.TOO_MANY_REQUESTS, "2차 인증 5회 연속 실패로 15분 잠금"),
   VISIT_REQUEST_QUOTA_EXCEEDED(
       HttpStatus.TOO_MANY_REQUESTS, "구성원 또는 출입승인의 동시 신청(신청 대기와 선택됨) 한도 초과"),
-  INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "일시적인 오류가 발생했습니다.");
+  INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "일시적인 오류가 발생했습니다."),
+  SMS_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "문자 발송 수단이 구성되지 않아 휴대폰 인증번호를 보낼 수 없음");
 
   private final HttpStatus status;
   private final String message;

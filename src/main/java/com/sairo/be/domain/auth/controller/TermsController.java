@@ -12,6 +12,7 @@ import com.sairo.be.domain.auth.service.TermsAgreementService;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.access.AccessPermission;
 import com.sairo.be.global.security.access.RequiresAccess;
+import com.sairo.be.global.support.PhoneVerificationRequirement;
 import com.sairo.be.global.web.ClientRequestInfo;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,21 +36,27 @@ public class TermsController {
   private final TermsAgreementService termsAgreementService;
   private final ReconsentService reconsentService;
   private final MarketingUnsubscribeService marketingUnsubscribeService;
+  private final PhoneVerificationRequirement phoneVerificationRequirement;
 
   public TermsController(
       TermsAgreementService termsAgreementService,
       ReconsentService reconsentService,
-      MarketingUnsubscribeService marketingUnsubscribeService) {
+      MarketingUnsubscribeService marketingUnsubscribeService,
+      PhoneVerificationRequirement phoneVerificationRequirement) {
     this.termsAgreementService = termsAgreementService;
     this.reconsentService = reconsentService;
     this.marketingUnsubscribeService = marketingUnsubscribeService;
+    this.phoneVerificationRequirement = phoneVerificationRequirement;
   }
 
-  @Operation(summary = "약관 목록 조회", description = "시행 중인 약관 목록을 돌려준다. context 기본값은 SIGNUP이다.")
+  @Operation(
+      summary = "약관 목록 조회",
+      description = "시행 중인 약관 목록과 휴대폰 인증번호 본인확인 필수 여부를 돌려준다. context 기본값은 SIGNUP이다.")
   @RequiresAccess(AccessPermission.PUBLIC)
   @GetMapping("/api/terms")
   public TermsCatalogResponse terms(@RequestParam(defaultValue = "SIGNUP") String context) {
-    return AuthMapper.toCatalog(termsAgreementService.findCatalog(context));
+    return AuthMapper.toCatalog(
+        termsAgreementService.findCatalog(context), phoneVerificationRequirement.isRequired());
   }
 
   @Operation(summary = "약관 동의·철회 기록", description = "시행 버전별 약관 동의와 철회를 기록한다.")

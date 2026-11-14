@@ -11,10 +11,7 @@ import software.amazon.awssdk.services.pinpointsmsvoicev2.model.SendTextMessageR
 
 @Component
 @Profile("prod")
-@ConditionalOnProperty(
-    name = "sairo.delivery.sms.provider",
-    havingValue = "aws",
-    matchIfMissing = true)
+@ConditionalOnProperty(name = "sairo.delivery.sms.provider", havingValue = "aws")
 class AwsSmsSender implements SmsSender {
   private final PinpointSmsVoiceV2Client client;
   private final String originationIdentity;

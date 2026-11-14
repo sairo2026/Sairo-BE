@@ -52,7 +52,8 @@ public final class AuthMapper {
         reconsentRequired);
   }
 
-  public static TermsCatalogResponse toCatalog(List<TermsVersionView> views) {
+  public static TermsCatalogResponse toCatalog(
+      List<TermsVersionView> views, boolean phoneVerificationRequired) {
     return new TermsCatalogResponse(
         views.stream()
             .map(
@@ -66,7 +67,8 @@ public final class AuthMapper {
                         view.category().name(),
                         view.reconsentRequired(),
                         view.changeSummary()))
-            .toList());
+            .toList(),
+        phoneVerificationRequired);
   }
 
   public static TermsReconsentResponse toReconsent(List<PendingReconsent> pending) {
