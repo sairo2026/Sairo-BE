@@ -1,6 +1,9 @@
 package com.sairo.be.domain.auth.service;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.sairo.be.global.port.KakaoFlow;
+import com.sairo.be.global.port.KakaoOAuthPort;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -13,7 +16,11 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 @Profile("!migrate")
 @Component
-public class KakaoOAuthClient {
+@ConditionalOnProperty(
+    name = "sairo.integrations.kakao-oauth",
+    havingValue = "real",
+    matchIfMissing = true)
+public class KakaoOAuthClient implements KakaoOAuthPort {
 
   private static final String AUTHORIZE_URI = "https://kauth.kakao.com/oauth/authorize";
   private static final String TOKEN_URI = "https://kauth.kakao.com/oauth/token";
@@ -27,22 +34,34 @@ public class KakaoOAuthClient {
     this.properties = properties;
   }
 
+  @Override
   public String buildAuthorizeUrl(String state) {
+    return buildAuthorizeUrl(state, KakaoFlow.LOGIN);
+  }
+
+  @Override
+  public String exchangeToken(String code) {
+    return exchangeToken(code, KakaoFlow.LOGIN);
+  }
+
+  @Override
+  public String buildAuthorizeUrl(String state, KakaoFlow flow) {
     return UriComponentsBuilder.fromUriString(AUTHORIZE_URI)
         .queryParam("client_id", properties.restApiKey())
-        .queryParam("redirect_uri", properties.redirectUri())
+        .queryParam("redirect_uri", properties.redirectUriFor(flow))
         .queryParam("response_type", "code")
         .queryParam("state", state)
         .build()
         .toUriString();
   }
 
-  public String exchangeToken(String code) {
+  @Override
+  public String exchangeToken(String code, KakaoFlow flow) {
     MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
     form.add("grant_type", "authorization_code");
     form.add("client_id", properties.restApiKey());
     form.add("client_secret", properties.clientSecret());
-    form.add("redirect_uri", properties.redirectUri());
+    form.add("redirect_uri", properties.redirectUriFor(flow));
     form.add("code", code);
 
     TokenResponse response =
@@ -60,6 +79,7 @@ public class KakaoOAuthClient {
     return response.accessToken();
   }
 
+  @Override
   public Long fetchUserId(String accessToken) {
     UserInfoResponse response =
         restClient

@@ -13,57 +13,29 @@
 
 ## 2. 패키지 구조와 의존 방향
 
-최상위는 기술 계층이 아니라 기능 도메인으로 나눈다. 여섯 업무 도메인(`auth`, `office`, `property`, `contract`, `coordination`, `task`)을 `domain` 패키지 아래에 모으고, 도메인에 속하지 않는 전역 설정·오류 처리·공통 유틸은 `global`에 둔다. 각 도메인 내부의 엔티티 계층 이름은 `entity`로 고정한다. 여섯 도메인 모두 구조를 동일하게 맞춘다.
+최상위는 기술 계층이 아니라 기능 도메인으로 나눈다. 완전출시 업무 도메인 14개(`auth`, `office`, `property`, `customer`, `visit`, `contract`, `task`, `home`, `settlement`, `billing`, `migration`, `support`, `ops`, `legal`)를 `domain` 패키지 아래에 모으고, 도메인에 속하지 않는 전역 설정·오류 처리·보안 기반·외부 연동 포트·공통 유틸은 `global`에 둔다. 각 도메인 내부의 엔티티 계층 이름은 `entity`로 고정한다. 새 도메인을 추가하려면 이 문서와 `ArchitectureConventionTest`의 모듈 목록을 함께 고친다.
+
+| 도메인 | 책임 |
+|---|---|
+| `auth` | 이메일·카카오 가입과 로그인, 세션, 재인증, 약관 동의, 계정 설정 |
+| `office` | 사무소 등록과 인증 신청, 소속, 초대, 역할, 고용명부, 대표 이전 |
+| `property` | 매물, 카테고리, 커스텀 필드, 거래 제안, 사진, 보관과 복원 |
+| `customer` | 고객, 소유자·점유자, 관심 매물, 희망 조건, 상담, 병합 |
+| `visit` | 임장 조율, 출입승인, 승인자 조건과 계정, 방문 신청, 선택·재검증·확정, 평가, 고객 응답 링크 |
+| `contract` | 계약 3트랙, 서류, 보수, 대금, 정정, 후속 업무 |
+| `task` | 업무와 알림함 |
+| `home` | 홈 요약 |
+| `settlement` | 월말결산 |
+| `billing` | 요금, 구독, 결제, 청구, 환불, 인증 중단, 반환·보관 |
+| `migration` | 데이터 이전, 유료 이전 지원, 내보내기 |
+| `support` | 서비스 이용 문의, 지원 티켓, 기업 도입 문의 |
+| `ops` | 사측 운영 콘솔, 운영자 계정, 심사, 원문 접근 승인, 감사 로그, 정책·이벤트·시스템 |
+| `legal` | 약관 카탈로그, 개인정보 권리 요청, 보관·파기, 법률 관련 배치 |
 
 ```text
 com.sairo.be
 ├─ domain
-│  ├─ auth
-│  │  ├─ controller
-│  │  ├─ service
-│  │  ├─ entity
-│  │  ├─ repository
-│  │  ├─ dto
-│  │  │  ├─ request
-│  │  │  └─ response
-│  │  └─ mapper
-│  ├─ office
-│  │  ├─ controller
-│  │  ├─ service
-│  │  ├─ entity
-│  │  ├─ repository
-│  │  ├─ dto
-│  │  │  ├─ request
-│  │  │  └─ response
-│  │  └─ mapper
-│  ├─ property
-│  │  ├─ controller
-│  │  ├─ service
-│  │  ├─ entity
-│  │  ├─ repository
-│  │  ├─ dto
-│  │  │  ├─ request
-│  │  │  └─ response
-│  │  └─ mapper
-│  ├─ contract
-│  │  ├─ controller
-│  │  ├─ service
-│  │  ├─ entity
-│  │  ├─ repository
-│  │  ├─ dto
-│  │  │  ├─ request
-│  │  │  └─ response
-│  │  └─ mapper
-│  ├─ coordination
-│  │  ├─ controller
-│  │  ├─ service
-│  │  ├─ entity
-│  │  ├─ repository
-│  │  ├─ dto
-│  │  │  ├─ request
-│  │  │  └─ response
-│  │  └─ mapper
-│  └─ task
+│  └─ <도메인>              — 위 14개 각각 같은 구조
 │     ├─ controller
 │     ├─ service
 │     ├─ entity
@@ -73,14 +45,25 @@ com.sairo.be
 │     │  └─ response
 │     └─ mapper
 └─ global
-   ├─ config          — SecurityConfig, WebConfig 등 애플리케이션 전역 설정
-   ├─ error           — ErrorCode, BusinessException, GlobalExceptionHandler (§7)
-   └─ support         — 여러 도메인이 함께 쓰는 BaseTimeEntity, 공통 유틸
+   ├─ config          — SecurityConfig, WebConfig, ClockConfig 등 애플리케이션 전역 설정
+   ├─ error           — ErrorCode, BusinessException, ErrorResponse, GlobalExceptionHandler (§7)
+   ├─ port            — 카카오, 결제대행, 메일, 문자, 파일 저장소 인터페이스
+   │  └─ stub         — 로컬·테스트용 구현
+   ├─ security        — 세션 종류와 만료, 인증 주체
+   │  └─ access       — 권한 값 선언과 접근 판정 7단계
+   ├─ support         — 입력 규칙, 시각 규칙, 목록 응답, 토큰 생성기
+   └─ web             — 추적 ID 필터 같은 웹 공통 구성
 ```
 
-`dto`는 `request`/`response` 하위 패키지로 나누고 파일명은 `XxxRequest`, `XxxResponse`로 짓는다. 이 구조는 `domain` 아래 6개 도메인 전부에 예외 없이 동일하게 적용한다 — 도메인마다 다른 하위 구조를 쓰지 않는다.
+필요한 계층만 만들고 비어 있는 패키지는 만들지 않는다. `global`은 `domain`에 의존하지 않는다.
+
+`dto`는 `request`/`response` 하위 패키지로 나누고 파일명은 `XxxRequest`, `XxxResponse`로 짓는다. 이 구조는 `domain` 아래 14개 도메인 전부에 예외 없이 동일하게 적용하고 도메인마다 다른 하위 구조를 쓰지 않는다.
 
 의존 방향은 `controller → service → entity/repository`다. Controller가 Repository·Entity를 직접 참조하거나 Service가 Controller DTO에 의존하면 안 된다. `domain` 아래 서로 다른 도메인 간 호출은 상대 도메인의 내부 구현이 아니라 공개 Service 또는 명시적인 포트를 통한다. 순환 의존은 허용하지 않는다.
+
+외부 연동(카카오, 결제대행, 메일, 문자, 파일 저장소)은 `global/port`의 인터페이스로만 쓴다. 도메인은 구현체를 직접 참조하지 않고 로컬·테스트용 스텁은 `prod`와 `migrate` 프로필에서 활성화하지 않는다. 시각은 `Clock`을, 토큰과 인증번호는 `TokenGenerator`를 주입받아 쓴다.
+
+`/api/**`의 모든 컨트롤러 핸들러는 `@RequiresAccess`로 권한 값을 선언한다. 선언이 없으면 요청을 403으로 거절한다. 사무소 범위는 인증된 구성원의 승인 소속에서 결정하고 요청의 `officeId`는 신뢰하지 않는다.
 
 ## 3. 클래스별 책임
 
@@ -142,10 +125,10 @@ com.sairo.be
 ## 7. 예외와 오류 응답
 
 - 모든 업무 예외를 404로 반환하지 않는다. HTTP 의미에 따라 400·401·403·404·409·422·429·500 등을 구분한다.
-- `ErrorCode` enum이 안정적인 오류 코드, HTTP 상태, 외부 공개 메시지를 소유한다.
+- `ErrorCode` enum이 안정적인 오류 코드, HTTP 상태, 외부 공개 메시지를 소유한다. 코드 이름은 API 명세서의 오류 코드 이름을 그대로 쓴다.
 - `BusinessException`은 `ErrorCode`와 필요한 안전한 context만 가진다. 예외 메시지로 분기하지 않는다.
 - `@RestControllerAdvice` 한 곳에서 `BusinessException`, 검증 실패, Spring 표준 예외, 예상하지 못한 예외를 매핑한다.
-- 오류 본문은 RFC 9457 `ProblemDetail`을 기반으로 `code`, `message`, `traceId`, `fieldErrors`를 일관되게 제공한다.
+- 오류 본문은 `ErrorResponse` 형식으로 `code`, `message`, `traceId`를 담고 상황에 따라 `fieldErrors[]`(`field`, `code`, `message`), `retryAfterSeconds`, `actionUrl`, `currentVersion` 같은 필드를 더한다. `fieldErrors[]`는 400에만 쓴다. 목록 응답은 `PageResponse`(`items`, `page`, `size`, `totalElements`)를 쓰고 `size`는 25, 50, 100만 허용한다.
 - 존재하지 않는 자원은 404, 현재 상태와 충돌은 409, 형식·필드 검증 실패는 400, 인증 없음은 401, 권한 없음은 403이다.
 - 예상하지 못한 예외는 내부 상세·SQL·스택을 응답에 노출하지 않고 서버 로그에 traceId와 함께 남긴다.
 
@@ -153,10 +136,12 @@ com.sairo.be
 
 ```java
 public enum ErrorCode {
-  OFFICE_NOT_FOUND(HttpStatus.NOT_FOUND, "OFFICE-404-001", "사무소를 찾을 수 없습니다."),
-  MEMBERSHIP_ALREADY_PENDING(HttpStatus.CONFLICT, "OFFICE-409-001", "처리 중인 참여 요청이 있습니다.");
+  RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
+  VERSION_CONFLICT(HttpStatus.CONFLICT, "다른 곳에서 먼저 수정되었습니다. 새로 고친 뒤 다시 시도해 주세요.");
 }
 ```
+
+추가 필드가 필요한 오류는 `BusinessException`의 정적 팩터리(`rateLimited`, `versionConflict` 등)로 만든다.
 
 ## 8. 메서드와 명명
 
@@ -181,10 +166,14 @@ public enum ErrorCode {
 - Controller 테스트는 상태 코드, 오류 코드, validation, 인증·인가를 확인한다.
 - 버그 수정에는 실패를 재현하는 회귀 테스트를 먼저 추가한다.
 - 테스트 이름은 `조건_행위_결과`가 드러나게 작성한다.
+- 통합 테스트는 `@IntegrationTest`를 쓰고 PostgreSQL 17과 Redis는 Testcontainers로 띄운다. 테스트 데이터는 빌더와 `TestData`, 세션 로그인은 `SessionTestSupport`, 오류 응답 검증은 `ErrorResponseAssertions`를 쓴다.
+- 공유 스프링 컨텍스트에서 `SecurityMockMvcRequestPostProcessors.csrf()`를 쓰지 않는다. 필터의 저장소를 바꿔 이후 테스트를 깨뜨린다.
+- 새 엔드포인트마다 인증 없음 401, 권한 없음 403, 다른 사무소 404, 오류 응답 형식을 검증한다.
 
 ## 11. 데이터베이스와 트랜잭션
 
-- 적용된 Flyway 파일은 수정하지 않고 다음 버전의 전진 마이그레이션을 추가한다.
+- 적용된 Flyway 파일은 수정하지 않고 다음 버전의 전진 마이그레이션을 추가한다. V1부터 V13까지는 적용된 이력이므로 새 변경은 V14 이상으로 추가하며 정본 ERD, DDL, 문서와 함께 맞춘다.
+- 세션과 로그인 보조 상태(카카오 state, 재인증 상태, 인증번호)는 DB 표가 아니라 Redis에 만료 시간과 함께 둔다. 일회성 소비는 원자적 명령으로 처리한다.
 - 스키마 제약으로 지킬 수 있는 불변식은 애플리케이션 검증과 함께 DB에도 둔다.
 - 외부 API·파일 저장소 호출을 긴 DB 트랜잭션 안에 두지 않는다. 필요하면 outbox와 재시도를 사용한다.
 - N+1을 숨기기 위해 무조건 EAGER를 사용하지 않는다. 유스케이스별 fetch join·EntityGraph·projection을 선택한다.
@@ -201,7 +190,7 @@ public enum ErrorCode {
 
 PR에서는 다음을 확인한다.
 
-- Controller가 Repository·Entity를 직접 참조하지 않는가?
+- Controller가 Repository·Entity를 직접 참조하지 않고 모든 핸들러가 `@RequiresAccess`를 선언했는가?
 - Service에 DTO 조립·매핑 코드가 쌓이지 않았는가?
 - Entity 변경이 의미 있는 메서드로 제한되는가?
 - 오류 코드와 HTTP 상태가 실제 실패 의미에 맞는가?
@@ -217,7 +206,7 @@ PR에서는 다음을 확인한다.
 | 단일 생성자를 통한 생성자 주입 | §4 | Spring Framework 공식 문서 |
 | 정적 팩터리·제한적 Builder를 이용한 객체 생성 | §5 | Effective Java — Joshua Bloch, iluwatar/java-design-patterns |
 | Entity와 DTO 사이의 변환을 전용 Mapper로 분리 | §3 Mapper | eugenp/tutorials — Baeldung의 Entity-to-DTO 매핑 예제 |
-| RFC 9457 오류 본문과 HTTP 상태 표현 | §7 | Spring Framework `ProblemDetail` |
+| 오류 본문과 HTTP 상태 표현 | §7 | 완전출시 API 명세서의 공통 계약 |
 | 포맷 규칙: 들여쓰기·임포트 정리·줄바꿈 | 전체 | Google Java Style Guide |
 | 계층 의존 방향·순환 의존 금지 | §2, §12 | ArchUnit |
 | 반복 매핑이 실제로 클 때의 대안 | §3 Mapper | MapStruct |

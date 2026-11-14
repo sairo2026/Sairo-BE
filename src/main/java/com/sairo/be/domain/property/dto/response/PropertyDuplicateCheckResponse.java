@@ -1,9 +1,14 @@
 package com.sairo.be.domain.property.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-public record PropertyDuplicateCheckResponse(List<DuplicateProperty> duplicateProperties) {
+public record PropertyDuplicateCheckResponse(List<Match> matches) {
 
-  public record DuplicateProperty(
-      Long propertyId, String address, String addressDetail, String propertyName) {}
+  public record Match(
+      Long propertyId,
+      @Schema(nullable = true) String address,
+      @Schema(nullable = true) String addressDetail,
+      String categoryName,
+      String registrationStage) {}
 }

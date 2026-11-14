@@ -4,16 +4,60 @@ spring:
     username: ${DB_APP_USERNAME}
     password: ${DB_APP_PASSWORD}
 
+  session:
+    data:
+      redis:
+        configure-action: none
+
   # Flyway runs separately via the "migrate" profile (see application-migrate.yml).
   flyway:
     enabled: false
 
 kakao:
   redirect-uri: ${KAKAO_REDIRECT_URI_PROD}
+  step-up-redirect-uri: ${KAKAO_STEP_UP_REDIRECT_URI}
+  link-redirect-uri: ${KAKAO_LINK_REDIRECT_URI}
+  operator-redirect-uri: ${KAKAO_OPERATOR_REDIRECT_URI}
+  operator-invitation-redirect-uri: ${KAKAO_OPERATOR_INVITATION_REDIRECT_URI}
 
 sairo:
+  batch:
+    enabled: ${SAIRO_BATCH_ENABLED:true}
+  delivery:
+    mail:
+      provider: ${SAIRO_MAIL_PROVIDER:ses}
+      from: ${SAIRO_MAIL_FROM}
+      resend:
+        api-key: ${RESEND_API_KEY:}
+        base-url: ${RESEND_API_BASE_URL:https://api.resend.com}
+    sms:
+      provider: ${SAIRO_SMS_PROVIDER:aws}
+      origination-identity: ${SAIRO_SMS_ORIGINATION_IDENTITY:}
+      solapi:
+        api-key: ${SOLAPI_API_KEY:}
+        api-secret: ${SOLAPI_API_SECRET:}
+        sender-number: ${SOLAPI_SENDER_NUMBER:}
+        base-url: ${SOLAPI_API_BASE_URL:https://api.solapi.com}
+    storage:
+      bucket: ${SAIRO_STORAGE_BUCKET}
+    scanner:
+      host: ${SAIRO_SCANNER_HOST:scanner}
+      port: ${SAIRO_SCANNER_PORT:3310}
+  bootstrap:
+    operator:
+      enabled: ${SAIRO_BOOTSTRAP_OPERATOR_ENABLED:false}
+  session:
+    approver-cookie-name: __Host-APPROVER_SESSION
   public-link:
     hmac-secret: ${PUBLIC_LINK_HMAC_SECRET}
+  security:
+    ticket-secret: ${AUTH_TICKET_SECRET}
+    rate-limit-hmac-secret: ${AUTH_RATE_LIMIT_HMAC_SECRET}
+    kakao-key-hmac-secret: ${AUTH_KAKAO_KEY_HMAC_SECRET}
+    unsubscribe-secret: ${AUTH_UNSUBSCRIBE_SECRET}
+    kakao-key-encryption-secret: ${AUTH_KAKAO_KEY_ENCRYPTION_SECRET}
+  billing:
+    key-encryption-secret: ${BILLING_KEY_ENCRYPTION_SECRET}
 
 app:
   frontend-base-url: ${FRONTEND_BASE_URL:https://app.sairo.agency}

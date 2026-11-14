@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class V13ConstraintTest extends AbstractPostgresSchemaTest {
 
   private static final String APPROVAL_COLUMNS =
-      "(property_id, approver_type, approver_name, approver_phone, valid_from, valid_until,"
+      "(property_id, approver_type, approver_name, approver_phone_encrypted, valid_from, valid_until,"
           + " source, retention_until, anonymized_at, revoked_at, revocation_reason,"
           + " revocation_recorded_at, revoked_by_user_id)";
 
@@ -181,13 +181,18 @@ class V13ConstraintTest extends AbstractPostgresSchemaTest {
         "ex_trial_event_general_window",
         conn -> {
           skipForeignKeys(conn);
-          insertTrialEvent(conn, "GENERAL", "SCHEDULED", "now()", "now() + interval '10 days'");
           insertTrialEvent(
               conn,
               "GENERAL",
               "SCHEDULED",
-              "now() + interval '5 days'",
-              "now() + interval '15 days'");
+              "now() + interval '5000 days'",
+              "now() + interval '5010 days'");
+          insertTrialEvent(
+              conn,
+              "GENERAL",
+              "SCHEDULED",
+              "now() + interval '5005 days'",
+              "now() + interval '5015 days'");
         });
   }
 
@@ -196,16 +201,26 @@ class V13ConstraintTest extends AbstractPostgresSchemaTest {
     withRollback(
         conn -> {
           skipForeignKeys(conn);
-          insertTrialEvent(conn, "GENERAL", "SCHEDULED", "now()", "now() + interval '10 days'");
+          long before = countRows(conn, "trial_event");
           insertTrialEvent(
               conn,
               "GENERAL",
               "SCHEDULED",
-              "now() + interval '10 days'",
-              "now() + interval '20 days'");
+              "now() + interval '5000 days'",
+              "now() + interval '5010 days'");
           insertTrialEvent(
-              conn, "GENERAL", "DRAFT", "now() + interval '1 day'", "now() + interval '5 days'");
-          assertThat(countRows(conn, "trial_event")).isEqualTo(3);
+              conn,
+              "GENERAL",
+              "SCHEDULED",
+              "now() + interval '5010 days'",
+              "now() + interval '5020 days'");
+          insertTrialEvent(
+              conn,
+              "GENERAL",
+              "DRAFT",
+              "now() + interval '5001 days'",
+              "now() + interval '5005 days'");
+          assertThat(countRows(conn, "trial_event") - before).isEqualTo(3);
         });
   }
 

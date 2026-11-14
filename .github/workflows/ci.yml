@@ -13,7 +13,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -21,6 +21,9 @@ jobs:
 
       - name: Run security watch unit tests
         run: python3 deploy/scripts/tests/test_security_watch.py -v
+
+      - name: Run deploy script tests
+        run: python3 deploy/scripts/tests/test_deploy_script.py -v
 
       - name: Set up JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0

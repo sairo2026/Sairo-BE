@@ -6,26 +6,85 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 60MB
 
   session:
-    timeout: 14d
-    jdbc:
-      initialize-schema: never
+    timeout: 12h
+    data:
+      redis:
+        namespace: sairo:session
+        repository-type: indexed
+        flush-mode: immediate
 
 kakao:
   rest-api-key: ${KAKAO_REST_API_KEY:}
   client-secret: ${KAKAO_CLIENT_SECRET:}
+  admin-key: ${KAKAO_ADMIN_KEY:}
+  app-id: ${KAKAO_APP_ID:}
+  step-up-redirect-uri: ${KAKAO_STEP_UP_REDIRECT_URI:}
+  link-redirect-uri: ${KAKAO_LINK_REDIRECT_URI:}
+  operator-redirect-uri: ${KAKAO_OPERATOR_REDIRECT_URI:}
+  operator-invitation-redirect-uri: ${KAKAO_OPERATOR_INVITATION_REDIRECT_URI:}
 
 sairo:
+  session:
+    approver-cookie-name: APPROVER_SESSION
+  visit:
+    review:
+      review-window-days: 14
+      max-revisions: 2
+      dispute-window-days: 30
+      dispute-target-business-days: 7
+      dispute-due-hour: 18
+      preferred-broker-limit: 5
+      approver-list-window-days: 90
   public-link:
     hmac-secret: ${PUBLIC_LINK_HMAC_SECRET:sairo-local-dev-hmac-secret-do-not-use-in-prod}
-  auth:
-    auto-approve-staff: ${AUTH_AUTO_APPROVE_STAFF:false}
-
-server:
-  servlet:
-    session:
-      timeout: 14d
+  security:
+    ticket-secret: ${AUTH_TICKET_SECRET:sairo-local-dev-ticket-secret-do-not-use-in-prod}
+    rate-limit-hmac-secret: ${AUTH_RATE_LIMIT_HMAC_SECRET:sairo-local-dev-rate-limit-secret-do-not-use-in-prod}
+    kakao-key-hmac-secret: ${AUTH_KAKAO_KEY_HMAC_SECRET:sairo-local-dev-kakao-key-secret-do-not-use-in-prod}
+    kakao-key-hmac-version: 1
+    unsubscribe-secret: ${AUTH_UNSUBSCRIBE_SECRET:sairo-local-dev-unsubscribe-secret-do-not-use-in-prod}
+    kakao-key-encryption-secret: ${AUTH_KAKAO_KEY_ENCRYPTION_SECRET:sairo-local-dev-kakao-key-encryption-do-not-use-in-prod}
+  toss:
+    secret-key: ${TOSS_SECRET_KEY:}
+    webhook-secret: ${TOSS_WEBHOOK_SECRET:}
+    base-url: ${TOSS_API_BASE_URL:https://api.tosspayments.com}
+  billing:
+    vat-rate-bp: 1000
+    customer-key-ttl: PT15M
+    charging-started: false
+    key-encryption-secret: ${BILLING_KEY_ENCRYPTION_SECRET:sairo-local-dev-billing-key-encryption-do-not-use-in-prod}
+  bootstrap:
+    operator:
+      enabled: false
+      email: ${SAIRO_BOOTSTRAP_OPERATOR_EMAIL:}
+      name: ${SAIRO_BOOTSTRAP_OPERATOR_NAME:최초 운영자}
+      invitation-file: ${SAIRO_BOOTSTRAP_OPERATOR_INVITATION_FILE:/var/sairo/bootstrap/invitation.txt}
+  company:
+    business-name: ${COMPANY_BUSINESS_NAME:사이로(SAIRO)}
+    representative-name: ${COMPANY_REPRESENTATIVE_NAME:김태환}
+    business-number: ${COMPANY_BUSINESS_NUMBER:704-16-02872}
+    address: ${COMPANY_ADDRESS:경기도 고양시 덕양구 백양로 51, 902호 A-5(화정동, 네이버타운)}
+    contact-phone: ${COMPANY_CONTACT_PHONE:}
+    ecommerce-notice: ${COMPANY_ECOMMERCE_NOTICE:}
+    support-email: ${COMPANY_SUPPORT_EMAIL:}
+    privacy-contact: ${COMPANY_PRIVACY_CONTACT:}
+    privacy-request-path: ${COMPANY_PRIVACY_REQUEST_PATH:}
 
 management:
   endpoint:
@@ -36,3 +95,5 @@ management:
     web:
       exposure:
         include: health
+springdoc:
+  remove-broken-reference-definitions: false

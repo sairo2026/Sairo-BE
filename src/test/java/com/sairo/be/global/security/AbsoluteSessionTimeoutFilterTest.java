@@ -13,6 +13,7 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -27,6 +28,23 @@ class AbsoluteSessionTimeoutFilterTest {
   private static final Instant NOW = Instant.parse("2026-09-07T00:00:00Z");
   private final AbsoluteSessionTimeoutFilter filter =
       new AbsoluteSessionTimeoutFilter(Clock.fixed(NOW, ZoneOffset.UTC));
+
+  @ParameterizedTest
+  @CsvSource({
+    "OPERATOR, 8, false",
+    "OPERATOR, 7, true",
+    "APPROVER, 12, false",
+    "APPROVER, 11, true",
+    "GRANT, 1, false"
+  })
+  void 세션_종류별_절대_만료시간을_적용한다(SessionKind kind, long elapsedHours, boolean alive) throws Exception {
+    MockHttpSession session = authenticatedSession(NOW.minus(Duration.ofHours(elapsedHours)));
+    session.setAttribute(AbsoluteSessionTimeoutFilter.KIND_ATTRIBUTE, kind);
+
+    filterSession(session);
+
+    assertThat(session.isInvalid()).isEqualTo(!alive);
+  }
 
   @AfterEach
   void clearContext() {
@@ -46,8 +64,8 @@ class AbsoluteSessionTimeoutFilterTest {
   }
 
   @Test
-  void 발급후_90일_직전에는_인증세션을_유지한다() throws Exception {
-    MockHttpSession session = authenticatedSession(NOW.minus(Duration.ofDays(90)).plusNanos(1));
+  void 발급후_7일_직전에는_인증세션을_유지한다() throws Exception {
+    MockHttpSession session = authenticatedSession(NOW.minus(Duration.ofDays(7)).plusNanos(1));
 
     filterSession(session);
 
@@ -57,9 +75,9 @@ class AbsoluteSessionTimeoutFilterTest {
 
   @ParameterizedTest
   @ValueSource(longs = {0, 1})
-  void 발급후_90일_도달시_세션과_인증을_폐기한다(long elapsedNanos) throws Exception {
+  void 발급후_7일_도달시_세션과_인증을_폐기한다(long elapsedNanos) throws Exception {
     MockHttpSession session =
-        authenticatedSession(NOW.minus(Duration.ofDays(90)).minusNanos(elapsedNanos));
+        authenticatedSession(NOW.minus(Duration.ofDays(7)).minusNanos(elapsedNanos));
 
     filterSession(session);
 
@@ -117,7 +135,8 @@ class AbsoluteSessionTimeoutFilterTest {
       session.setAttribute(AbsoluteSessionTimeoutFilter.ISSUED_AT_ATTRIBUTE, issuedAt);
     }
     SecurityContextHolder.getContext()
-        .setAuthentication(new StaffAuthentication(new StaffPrincipal(1L, 2L, 3L, "박직원")));
+        .setAuthentication(
+            new StaffAuthentication(new StaffPrincipal(1L, 2L, 3L, "박직원", StaffRole.AGENT)));
     return session;
   }
 

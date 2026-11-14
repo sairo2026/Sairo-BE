@@ -1,9 +1,11 @@
 package com.sairo.be.domain.office.entity;
 
 public enum OfficeMembershipStatus {
-  PENDING,
   APPROVED,
+  PENDING,
   REJECTED,
   REVOKED,
-  CANCELLED
+  CANCELLED,
+  SUSPENDED,
+  EXPIRED
 }

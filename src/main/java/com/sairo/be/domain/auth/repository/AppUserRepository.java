@@ -1,18 +1,24 @@
 package com.sairo.be.domain.auth.repository;
 
+import com.sairo.be.domain.auth.entity.AccountStatus;
 import com.sairo.be.domain.auth.entity.AppUser;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
-  @Query(
-      value =
-          "SELECT * FROM app_user WHERE kakao_provider_key = :providerKey AND account_status = 'ACTIVE'",
-      nativeQuery = true)
-  Optional<AppUser> findActiveByKakaoProviderKey(@Param("providerKey") String kakaoProviderKey);
+  Optional<AppUser> findByKakaoProviderKeyAndAccountStatus(
+      String kakaoProviderKey, AccountStatus accountStatus);
 
   Optional<AppUser> findByKakaoProviderKey(String kakaoProviderKey);
+
+  Optional<AppUser> findByEmail(String email);
+
+  boolean existsByEmail(String email);
+
+  boolean existsByPhoneAndPhoneVerifiedAtIsNotNullAndAccountStatus(
+      String phone, AccountStatus accountStatus);
+
+  Optional<AppUser> findFirstByPhoneAndPhoneVerifiedAtIsNotNullAndAccountStatus(
+      String phone, AccountStatus accountStatus);
 }

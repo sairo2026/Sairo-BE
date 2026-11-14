@@ -8,117 +8,120 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.sairo.be.TestcontainersConfiguration;
+import com.sairo.be.support.IntegrationTest;
+import com.sairo.be.support.SessionTestSupport;
 import jakarta.servlet.http.Cookie;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.session.Session;
-import org.springframework.session.jdbc.JdbcIndexedSessionRepository;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.session.SessionRepository;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RestController;
 
-@Import({TestcontainersConfiguration.class, SessionSecurityIntegrationTest.SessionProbe.class})
-@SpringBootTest
-@AutoConfigureMockMvc
-@Disabled("완전출시 스키마 V12 적용으로 MVP 도메인 코드와 DB 구조가 맞지 않는 상태이며 완전출시 백엔드 구현 시 재작성한다")
+@IntegrationTest
 class SessionSecurityIntegrationTest {
 
+  private static final StaffPrincipal PRINCIPAL =
+      new StaffPrincipal(9101L, 9201L, 9001L, "박직원", StaffRole.AGENT);
+
   @Autowired private MockMvc mockMvc;
-  @Autowired private JdbcIndexedSessionRepository sessions;
-  @Autowired private JdbcTemplate jdbcTemplate;
+  @Autowired private SessionRepository<?> sessionRepository;
+  @Autowired private StringRedisTemplate redisTemplate;
 
-  @Test
-  void JDBC_인증세션은_14일_미활동_만료로_설정된다() {
-    var session = sessions.createSession();
+  private SessionTestSupport sessions;
 
-    assertThat(((Session) session).getMaxInactiveInterval()).isEqualTo(Duration.ofDays(14));
+  @BeforeEach
+  void setUp() {
+    sessions = new SessionTestSupport(sessionRepository);
   }
 
   @Test
-  void 미활동_14일_전에는_세션을_복원하고_요청시_접속시각을_갱신한다() throws Exception {
-    Instant lastAccess = Instant.now().minus(Duration.ofDays(14)).plusSeconds(60);
-    String sessionId = createSession(Instant.now().minus(Duration.ofDays(20)), lastAccess, 9001L);
+  void 새_세션의_기본_미활동_만료는_12시간이다() {
+    var session = sessionRepository.createSession();
+
+    assertThat(session.getMaxInactiveInterval()).isEqualTo(Duration.ofHours(12));
+  }
+
+  @Test
+  void 미활동_12시간_전에는_세션을_복원하고_요청시_접속시각을_갱신한다() throws Exception {
+    Instant lastAccess = Instant.now().minus(Duration.ofHours(12)).plusSeconds(60);
+    String sessionId =
+        sessions.createMemberSession(
+            PRINCIPAL, Instant.now().minus(Duration.ofDays(3)), lastAccess);
 
     mockMvc
-        .perform(get("/api/session-probe").cookie(cookie(sessionId)))
+        .perform(get("/api/probe/staff").cookie(sessions.cookie(sessionId)))
         .andExpect(status().isOk())
         .andExpect(content().string("9001"));
 
-    var refreshed = sessions.findById(sessionId);
-    assertThat(((Session) refreshed).getLastAccessedTime()).isAfter(lastAccess);
+    var refreshed = sessionRepository.findById(sessionId);
+    assertThat(refreshed.getLastAccessedTime()).isAfter(lastAccess);
   }
 
   @Test
-  void 미활동_14일에_도달하면_401을_반환하고_JDBC_세션을_폐기한다() throws Exception {
+  void 미활동_12시간에_도달하면_401을_반환하고_세션을_폐기한다() throws Exception {
     String sessionId =
-        createSession(
-            Instant.now().minus(Duration.ofDays(20)),
-            Instant.now().minus(Duration.ofDays(14)),
-            9001L);
+        sessions.createMemberSession(
+            PRINCIPAL,
+            Instant.now().minus(Duration.ofDays(3)),
+            Instant.now().minus(Duration.ofHours(12)));
 
     mockMvc
-        .perform(get("/api/session-probe").cookie(cookie(sessionId)))
+        .perform(get("/api/probe/staff").cookie(sessions.cookie(sessionId)))
         .andExpect(status().isUnauthorized());
 
-    assertSessionDeleted(sessionId);
+    assertThat(sessions.exists(sessionId)).isFalse();
   }
 
   @Test
-  void 최근_활동했어도_발급후_90일이면_401을_반환하고_JDBC_세션을_폐기한다() throws Exception {
+  void 최근_활동했어도_발급후_7일이면_401을_반환하고_세션을_폐기한다() throws Exception {
     String sessionId =
-        createSession(Instant.now().minus(Duration.ofDays(90)), Instant.now(), 9001L);
+        sessions.createMemberSession(
+            PRINCIPAL, Instant.now().minus(Duration.ofDays(7)), Instant.now());
 
     mockMvc
-        .perform(get("/api/session-probe").cookie(cookie(sessionId)))
+        .perform(get("/api/probe/staff").cookie(sessions.cookie(sessionId)))
         .andExpect(status().isUnauthorized());
 
-    assertSessionDeleted(sessionId);
+    assertThat(sessions.exists(sessionId)).isFalse();
   }
 
   @Test
-  void 발급시각이_없는_JDBC_인증세션은_401을_반환하고_폐기한다() throws Exception {
-    String sessionId = createSession(null, Instant.now(), 9001L);
+  void 발급시각이_없는_인증세션은_401을_반환하고_폐기한다() throws Exception {
+    String sessionId = sessions.createMemberSession(PRINCIPAL, null, Instant.now());
 
     mockMvc
-        .perform(get("/api/session-probe").cookie(cookie(sessionId)))
+        .perform(get("/api/probe/staff").cookie(sessions.cookie(sessionId)))
         .andExpect(status().isUnauthorized());
 
-    assertSessionDeleted(sessionId);
+    assertThat(sessions.exists(sessionId)).isFalse();
   }
 
   @Test
-  void 사무소_입력값이_달라도_각_JDBC_세션의_인증주체를_유지한다() throws Exception {
-    String firstSessionId = createSession(Instant.now(), Instant.now(), 9001L);
-    String secondSessionId = createSession(Instant.now(), Instant.now(), 9002L);
+  void 사무소_입력값이_달라도_각_세션의_인증주체를_유지한다() throws Exception {
+    String firstSessionId = sessions.createMemberSession(PRINCIPAL, Instant.now(), Instant.now());
+    String secondSessionId =
+        sessions.createMemberSession(
+            new StaffPrincipal(9102L, 9202L, 9002L, "김직원", StaffRole.OWNER),
+            Instant.now(),
+            Instant.now());
 
     mockMvc
         .perform(
-            get("/api/session-probe")
+            get("/api/probe/staff")
                 .param("officeId", "9002")
                 .header("officeId", "9002")
-                .cookie(cookie(firstSessionId)))
+                .cookie(sessions.cookie(firstSessionId)))
         .andExpect(status().isOk())
         .andExpect(content().string("9001"));
     mockMvc
         .perform(
-            get("/api/session-probe")
+            get("/api/probe/staff")
                 .param("officeId", "9001")
                 .header("officeId", "9001")
-                .cookie(cookie(secondSessionId)))
+                .cookie(sessions.cookie(secondSessionId)))
         .andExpect(status().isOk())
         .andExpect(content().string("9002"));
   }
@@ -126,58 +129,118 @@ class SessionSecurityIntegrationTest {
   @Test
   void 인증되지_않은_요청의_401_응답은_UTF_8로_한글_메시지를_전달한다() throws Exception {
     mockMvc
-        .perform(get("/api/session-probe"))
+        .perform(get("/api/probe/staff"))
         .andExpect(status().isUnauthorized())
-        .andExpect(header().string("Content-Type", "application/json;charset=UTF-8"))
+        .andExpect(
+            content()
+                .contentTypeCompatibleWith(org.springframework.http.MediaType.APPLICATION_JSON))
         .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
-        .andExpect(jsonPath("$.message").value("로그인이 필요합니다."));
+        .andExpect(jsonPath("$.message").value("로그인이 필요합니다."))
+        .andExpect(jsonPath("$.traceId").isNotEmpty());
   }
 
   @Test
   void 인증세션이_있어도_CSRF_토큰없는_변경요청은_403을_반환한다() throws Exception {
-    String sessionId = createSession(Instant.now(), Instant.now(), 9001L);
+    String sessionId = sessions.createMemberSession(PRINCIPAL, Instant.now(), Instant.now());
 
     mockMvc
-        .perform(post("/api/session-probe").cookie(cookie(sessionId)))
+        .perform(post("/api/probe/change").cookie(sessions.cookie(sessionId)))
         .andExpect(status().isForbidden());
   }
 
   @Test
   void 브라우저가_XSRF_TOKEN_쿠키값을_그대로_헤더로_보내면_변경요청이_성공한다() throws Exception {
-    String sessionId = createSession(Instant.now(), Instant.now(), 9001L);
+    String sessionId = sessions.createMemberSession(PRINCIPAL, Instant.now(), Instant.now());
 
     var firstAttempt =
-        mockMvc.perform(post("/api/session-probe").cookie(cookie(sessionId))).andReturn();
+        mockMvc
+            .perform(get("/api/probe/authenticated").cookie(sessions.cookie(sessionId)))
+            .andReturn();
     String csrfToken = extractCookieValue(firstAttempt.getResponse(), "XSRF-TOKEN");
     assertThat(csrfToken).isNotNull();
 
     mockMvc
         .perform(
-            post("/api/session-probe")
-                .cookie(cookie(sessionId), new Cookie("XSRF-TOKEN", csrfToken))
+            post("/api/probe/change")
+                .cookie(sessions.cookie(sessionId), new Cookie("XSRF-TOKEN", csrfToken))
                 .header("X-XSRF-TOKEN", csrfToken))
         .andExpect(status().isOk());
   }
 
-  private String createSession(Instant issuedAt, Instant lastAccess, Long officeId) {
-    var session = sessions.createSession();
-    var context = SecurityContextHolder.createEmptyContext();
-    context.setAuthentication(
-        new StaffAuthentication(new StaffPrincipal(9101L, 9201L, officeId, "박직원")));
-    ((Session) session)
-        .setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
-    if (issuedAt != null) {
-      ((Session) session).setAttribute(AbsoluteSessionTimeoutFilter.ISSUED_AT_ATTRIBUTE, issuedAt);
-    }
-    ((Session) session).setLastAccessedTime(lastAccess);
-    sessions.save(session);
-    return ((Session) session).getId();
+  @Test
+  void 운영자_세션은_미활동_30분과_절대_8시간으로_만료된다() throws Exception {
+    String idleExpired =
+        sessions.createSession(
+            PRINCIPAL,
+            SessionKind.OPERATOR,
+            Instant.now().minus(Duration.ofHours(1)),
+            Instant.now().minus(Duration.ofMinutes(30)));
+    String absoluteExpired =
+        sessions.createSession(
+            PRINCIPAL,
+            SessionKind.OPERATOR,
+            Instant.now().minus(Duration.ofHours(8)),
+            Instant.now());
+    String alive =
+        sessions.createSession(
+            PRINCIPAL,
+            SessionKind.OPERATOR,
+            Instant.now().minus(Duration.ofHours(7)),
+            Instant.now().minus(Duration.ofMinutes(29)));
+
+    mockMvc
+        .perform(get("/api/probe/authenticated").cookie(sessions.cookie(idleExpired)))
+        .andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(get("/api/probe/authenticated").cookie(sessions.cookie(absoluteExpired)))
+        .andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(get("/api/probe/authenticated").cookie(sessions.cookie(alive)))
+        .andExpect(status().isOk());
   }
 
-  private Cookie cookie(String sessionId) {
-    return new Cookie(
-        "__Host-sairo_session",
-        Base64.getEncoder().encodeToString(sessionId.getBytes(StandardCharsets.UTF_8)));
+  @Test
+  void 승인자_세션은_미활동_60분과_절대_12시간으로_만료된다() throws Exception {
+    String idleExpired =
+        sessions.createSession(
+            PRINCIPAL,
+            SessionKind.APPROVER,
+            Instant.now().minus(Duration.ofHours(2)),
+            Instant.now().minus(Duration.ofMinutes(60)));
+    String absoluteExpired =
+        sessions.createSession(
+            PRINCIPAL,
+            SessionKind.APPROVER,
+            Instant.now().minus(Duration.ofHours(12)),
+            Instant.now());
+    String alive =
+        sessions.createSession(
+            PRINCIPAL,
+            SessionKind.APPROVER,
+            Instant.now().minus(Duration.ofHours(11)),
+            Instant.now().minus(Duration.ofMinutes(59)));
+
+    mockMvc
+        .perform(get("/api/probe/authenticated").cookie(sessions.cookie(idleExpired)))
+        .andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(get("/api/probe/authenticated").cookie(sessions.cookie(absoluteExpired)))
+        .andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(get("/api/probe/authenticated").cookie(sessions.cookie(alive)))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void 세션은_인증주체_이름으로_색인되어_사용자별로_일괄_폐기할_수_있다() {
+    String sessionId = sessions.createMemberSession(PRINCIPAL, Instant.now(), Instant.now());
+
+    var indexed =
+        ((org.springframework.session.FindByIndexNameSessionRepository<?>) sessionRepository)
+            .findByPrincipalName("9101");
+
+    assertThat(indexed).containsKey(sessionId);
+    assertThat(redisTemplate.keys("sairo:session:*")).isNotEmpty();
   }
 
   private String extractCookieValue(
@@ -191,24 +254,5 @@ class SessionSecurityIntegrationTest {
       }
     }
     return null;
-  }
-
-  private void assertSessionDeleted(String sessionId) {
-    assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM spring_session WHERE session_id = ?", Long.class, sessionId))
-        .isZero();
-  }
-
-  @RestController
-  static class SessionProbe {
-
-    @GetMapping("/api/session-probe")
-    Long officeId(@AuthenticationPrincipal StaffPrincipal principal) {
-      return principal.officeId();
-    }
-
-    @PostMapping("/api/session-probe")
-    void change() {}
   }
 }

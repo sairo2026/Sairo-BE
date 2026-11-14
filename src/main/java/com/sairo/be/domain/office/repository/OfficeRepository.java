@@ -6,5 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface OfficeRepository extends JpaRepository<Office, Long> {
 
-  Optional<Office> findByBusinessRegistrationNumber(String businessRegistrationNumber);
+  Optional<Office> findByRegistrationAuthorityAndRealEstateLicenseNumber(
+      String registrationAuthority, String realEstateLicenseNumber);
+
+  boolean existsByBusinessRegistrationNumber(String businessRegistrationNumber);
 }

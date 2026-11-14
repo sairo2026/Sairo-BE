@@ -21,6 +21,7 @@ public class OfficeMembershipQueryService {
         .findByUserIdAndStatus(userId, OfficeMembershipStatus.APPROVED)
         .map(
             membership ->
-                new ApprovedMembership(membership.getId(), membership.getOffice().getId()));
+                new ApprovedMembership(
+                    membership.getId(), membership.getOfficeId(), membership.getRole()));
   }
 }
