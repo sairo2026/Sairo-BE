@@ -22,6 +22,9 @@ SELECT o.id, CASE WHEN o.rn = 1 THEN 'LARGE' ELSE 'MID' END,
 FROM (SELECT id, row_number() OVER (ORDER BY id) AS rn FROM office
       WHERE real_estate_license_number LIKE 'PERF-%') o;
 
+UPDATE office SET created_at = now() - interval '30 months'
+WHERE id IN (SELECT office_id FROM perf_seed_office);
+
 INSERT INTO app_user (name, kakao_provider_key)
 SELECT '시험회원 ' || s.office_id || '-' || m, 'perf-kakao-' || s.office_id || '-' || m
 FROM perf_seed_office s CROSS JOIN generate_series(1, 6) m

@@ -102,16 +102,14 @@ public class SettlementMetricRepository {
       "WITH valid AS (SELECT h.id, h.coordination_id, h.to_status, h.effective_at FROM"
           + " visit_coordination_status_history h JOIN visit_coordination vc ON vc.id ="
           + " h.coordination_id WHERE vc.office_id = :office AND NOT EXISTS (SELECT 1 FROM"
-          + " visit_coordination_status_history hx WHERE hx.supersedes_history_id = h.id)), latest"
-          + " AS (SELECT DISTINCT ON (coordination_id) coordination_id, to_status FROM valid ORDER"
-          + " BY coordination_id, effective_at DESC, id DESC), first_final AS (SELECT"
-          + " coordination_id, min(effective_at) AS ended_at FROM valid WHERE to_status IN"
-          + " ('VISIT_COMPLETED','VISIT_INCOMPLETE') GROUP BY coordination_id) SELECT"
-          + " f.coordination_id, cu.name AS customer_name, f.ended_at, l.to_status AS end_type"
-          + " FROM first_final f JOIN latest l ON l.coordination_id = f.coordination_id JOIN"
-          + " visit_coordination vc ON vc.id = f.coordination_id JOIN customer cu ON cu.id ="
-          + " vc.customer_id WHERE l.to_status IN ('VISIT_COMPLETED','VISIT_INCOMPLETE') AND"
-          + " f.ended_at >= :from AND f.ended_at < :to";
+          + " visit_coordination_status_history hx WHERE hx.supersedes_history_id = h.id)), ended"
+          + " AS (SELECT coordination_id, min(effective_at) FILTER (WHERE to_status IN"
+          + " ('VISIT_COMPLETED','VISIT_INCOMPLETE')) AS ended_at, (array_agg(to_status ORDER BY"
+          + " effective_at DESC, id DESC))[1] AS end_type FROM valid GROUP BY coordination_id)"
+          + " SELECT f.coordination_id, cu.name AS customer_name, f.ended_at, f.end_type FROM"
+          + " ended f JOIN visit_coordination vc ON vc.id = f.coordination_id JOIN customer cu ON"
+          + " cu.id = vc.customer_id WHERE f.end_type IN ('VISIT_COMPLETED','VISIT_INCOMPLETE')"
+          + " AND f.ended_at >= :from AND f.ended_at < :to";
 
   private static final String CONTRACT_HISTORY =
       "WITH ch AS (SELECT h.id, h.contract_id, h.to_status, h.effective_at FROM"

@@ -70,8 +70,8 @@ jobs:
           --health-retries 12
 
     env:
-      MODE: ${{ inputs.mode || 'baseline-only' }}
-      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/sairo
+      MODE: ${{ inputs.mode || 'baseline-and-current' }}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/sairo?options=-c%20statement_timeout=20000
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ""
       REDIS_HOST: localhost
@@ -82,7 +82,7 @@ jobs:
       PERF_MID_PROPERTIES: ${{ inputs.mid_properties || '10000' }}
       PERF_MID_CUSTOMERS: ${{ inputs.mid_customers || '10000' }}
       PERF_ITERATIONS: ${{ inputs.iterations || '30' }}
-      PERF_IMPORT_ROWS: ${{ inputs.import_rows || '3000' }}
+      PERF_IMPORT_ROWS: ${{ inputs.import_rows || '10000' }}
 
     steps:
       - name: Checkout
@@ -99,6 +99,7 @@ jobs:
         if: ${{ env.MODE != 'current-only' }}
         env:
           SPRING_FLYWAY_TARGET: ${{ inputs.baseline_flyway_target || '19' }}
+          PERF_IMPORT_ROWS: ${{ inputs.import_rows || '3000' }}
           PERF_RESULT_DIR: build/perf-results-baseline
         run: ./gradlew perfTest --no-daemon
 
@@ -133,4 +134,4 @@ jobs:
             build/perf-results-baseline
             build/perf-results-current
           if-no-files-found: warn
-# run 3
+# run 4

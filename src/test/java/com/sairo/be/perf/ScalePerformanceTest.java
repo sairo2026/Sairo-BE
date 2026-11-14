@@ -150,6 +150,9 @@ class ScalePerformanceTest {
                     .replace("@@REQUESTS_PER_LINK@@", env("PERF_REQUESTS_PER_LINK", "30"));
             try (var connection = dataSource.getConnection()) {
               connection.setAutoCommit(false);
+              try (var statement = connection.createStatement()) {
+                statement.execute("SET LOCAL statement_timeout = 0");
+              }
               try {
                 ScriptUtils.executeSqlScript(
                     connection,
@@ -167,7 +170,9 @@ class ScalePerformanceTest {
           try (var connection = dataSource.getConnection();
               var statement = connection.createStatement()) {
             connection.setAutoCommit(true);
+            statement.execute("SET statement_timeout = 0");
             statement.execute("VACUUM ANALYZE");
+            statement.execute("RESET statement_timeout");
           }
           PerfReport.line(
               seeded ? "- 시드는 이미 적용되어 있어 건너뜀" : "- 시드 생성 시간: " + seedMillis / 1000 + "초");
