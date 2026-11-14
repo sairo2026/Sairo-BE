@@ -5,7 +5,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-/** Keeps the API available before Toss credentials are issued, while failing every payment closed. */
+/**
+ * Keeps the API available before Toss credentials are issued, while failing every payment closed.
+ */
 @Profile("prod")
 @ConditionalOnExpression("'${sairo.toss.secret-key:}'.trim() == ''")
 @Component
