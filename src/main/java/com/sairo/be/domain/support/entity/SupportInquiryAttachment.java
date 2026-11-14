@@ -57,6 +57,9 @@ public class SupportInquiryAttachment {
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
 
+  @Column(name = "object_deleted_at")
+  private Instant objectDeletedAt;
+
   public static SupportInquiryAttachment uploadedByRequester(
       Long inquiryId,
       Long messageId,
@@ -110,6 +113,15 @@ public class SupportInquiryAttachment {
   public void markRejected() {
     requirePending();
     scanStatus = ScanStatus.REJECTED;
+  }
+
+  public void markObjectDeleted(Instant now) {
+    if (scanStatus != ScanStatus.REJECTED) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    if (objectDeletedAt == null) {
+      objectDeletedAt = now.truncatedTo(ChronoUnit.MICROS);
+    }
   }
 
   private void requirePending() {

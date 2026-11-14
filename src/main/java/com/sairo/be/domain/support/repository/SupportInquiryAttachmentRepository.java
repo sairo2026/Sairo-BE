@@ -51,4 +51,10 @@ public interface SupportInquiryAttachmentRepository
           + " com.sairo.be.domain.support.entity.ScanStatus.PENDING and a.createdAt < :before"
           + " order by a.id asc")
   List<Long> findPendingIdsCreatedBefore(@Param("before") Instant before, Pageable pageable);
+
+  @Query(
+      "select a.id from SupportInquiryAttachment a where a.scanStatus ="
+          + " com.sairo.be.domain.support.entity.ScanStatus.REJECTED and a.objectDeletedAt is null"
+          + " order by a.id asc")
+  List<Long> findRejectedIdsWithObject(Pageable pageable);
 }

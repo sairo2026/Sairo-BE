@@ -113,6 +113,9 @@ public class SupportAttachmentService {
         attachmentRepository
             .findVisibleToRequesterById(inquiryId, attachmentId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    if (attachment.getScanStatus() == ScanStatus.REJECTED) {
+      throw new BusinessException(ErrorCode.ATTACHMENT_REJECTED);
+    }
     if (attachment.getScanStatus() != ScanStatus.CLEAN) {
       throw new BusinessException(ErrorCode.ATTACHMENT_NOT_READY);
     }

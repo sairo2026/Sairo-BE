@@ -123,7 +123,7 @@ class V13UpgradeTest {
                       + " JOIN information_schema.tables t ON t.table_schema = c.table_schema"
                       + " AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'"
                       + " WHERE c.table_schema = 'public' AND c.table_name <> 'flyway_schema_history'"))
-          .isEqualTo(1720);
+          .isEqualTo(1721);
       assertThat(count(conn, constraintCountSql("p"))).isEqualTo(141);
       assertThat(count(conn, constraintCountSql("f"))).isEqualTo(343);
     }
