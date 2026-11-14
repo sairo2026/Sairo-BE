@@ -24,7 +24,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 @Profile("prod")
 @ConditionalOnExpression(
-    "'${sairo.delivery.sms.provider:aws}' == 'solapi'"
+    "'${sairo.delivery.sms.provider:none}' == 'solapi'"
         + " and !'${sairo.delivery.sms.solapi.api-key:}'.isBlank()"
         + " and !'${sairo.delivery.sms.solapi.api-secret:}'.isBlank()"
         + " and !'${sairo.delivery.sms.solapi.sender-number:}'.isBlank()")

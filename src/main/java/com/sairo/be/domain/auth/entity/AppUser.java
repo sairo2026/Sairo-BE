@@ -85,12 +85,23 @@ public class AppUser {
       String phone,
       Instant verifiedAt,
       Instant createdAt) {
+    return registerWithEmail(email, passwordHash, name, phone, verifiedAt, verifiedAt, createdAt);
+  }
+
+  public static AppUser registerWithEmail(
+      String email,
+      String passwordHash,
+      String name,
+      String phone,
+      Instant emailVerifiedAt,
+      Instant phoneVerifiedAt,
+      Instant createdAt) {
     AppUser user = new AppUser();
     user.email = email;
     user.passwordHash = passwordHash;
-    user.emailVerifiedAt = verifiedAt;
+    user.emailVerifiedAt = emailVerifiedAt;
     user.phone = phone;
-    user.phoneVerifiedAt = verifiedAt;
+    user.phoneVerifiedAt = phoneVerifiedAt;
     user.name = name;
     user.accountStatus = AccountStatus.ACTIVE;
     user.failedLoginCount = 0;
@@ -133,7 +144,7 @@ public class AppUser {
   }
 
   public boolean isSignupCompleted() {
-    return phoneVerifiedAt != null;
+    return phone != null || phoneVerifiedAt != null;
   }
 
   public void linkEmail(String email, String passwordHash, Instant verifiedAt) {

@@ -6,7 +6,6 @@ import com.sairo.be.domain.auth.entity.AppUser;
 import com.sairo.be.domain.auth.entity.AuthMethod;
 import com.sairo.be.domain.auth.entity.ConsentPath;
 import com.sairo.be.domain.auth.entity.EmailVerificationPurpose;
-import com.sairo.be.domain.auth.entity.PhoneVerificationPurpose;
 import com.sairo.be.domain.auth.repository.AppUserRepository;
 import com.sairo.be.domain.legal.service.TermsVersionView;
 import com.sairo.be.global.error.BusinessException;
@@ -34,6 +33,7 @@ public class EmailSignupService {
 
   private final AppUserRepository appUserRepository;
   private final SignedTicketService ticketService;
+  private final SignupPhoneResolver phoneResolver;
   private final PasswordPolicy passwordPolicy;
   private final PasswordHasher passwordHasher;
   private final TermsAgreementService termsAgreementService;
@@ -45,6 +45,7 @@ public class EmailSignupService {
   public EmailSignupService(
       AppUserRepository appUserRepository,
       SignedTicketService ticketService,
+      SignupPhoneResolver phoneResolver,
       PasswordPolicy passwordPolicy,
       PasswordHasher passwordHasher,
       TermsAgreementService termsAgreementService,
@@ -54,6 +55,7 @@ public class EmailSignupService {
       Clock clock) {
     this.appUserRepository = appUserRepository;
     this.ticketService = ticketService;
+    this.phoneResolver = phoneResolver;
     this.passwordPolicy = passwordPolicy;
     this.passwordHasher = passwordHasher;
     this.termsAgreementService = termsAgreementService;
@@ -75,19 +77,16 @@ public class EmailSignupService {
             request.verifiedEmailTicket(),
             TicketType.EMAIL,
             EmailVerificationPurpose.SIGNUP.name());
-    VerifiedTicket phoneTicket =
-        ticketService.verify(
-            request.verifiedPhoneTicket(),
-            TicketType.PHONE,
-            PhoneVerificationPurpose.SIGNUP.name());
+    SignupPhoneResolver.ResolvedPhone phone =
+        phoneResolver.resolve(request.phone(), request.verifiedPhoneTicket());
     String email = emailTicket.subject();
-    String phone = phoneTicket.subject();
 
     if (appUserRepository.existsByEmail(email)) {
       throw new BusinessException(ErrorCode.EMAIL_ALREADY_REGISTERED);
     }
-    if (appUserRepository.existsByPhoneAndPhoneVerifiedAtIsNotNullAndAccountStatus(
-        phone, AccountStatus.ACTIVE)) {
+    if (phone.verified()
+        && appUserRepository.existsByPhoneAndPhoneVerifiedAtIsNotNullAndAccountStatus(
+            phone.value(), AccountStatus.ACTIVE)) {
       throw new BusinessException(ErrorCode.PHONE_ALREADY_REGISTERED);
     }
     List<TermsVersionView> accepted =
@@ -99,12 +98,18 @@ public class EmailSignupService {
       user =
           appUserRepository.saveAndFlush(
               AppUser.registerWithEmail(
-                  email, passwordHasher.hash(request.password()), displayName, phone, now, now));
+                  email,
+                  passwordHasher.hash(request.password()),
+                  displayName,
+                  phone.value(),
+                  now,
+                  phone.verified() ? now : null,
+                  now));
     } catch (DataIntegrityViolationException e) {
       throw duplicateOf(e);
     }
     ticketService.consume(emailTicket);
-    ticketService.consume(phoneTicket);
+    phoneResolver.consume(phone);
     termsAgreementService.recordSignupAgreements(
         user.getId(), accepted, ConsentPath.SIGNUP_EMAIL, now, true);
     loginHistoryService.record(user.getId(), AuthMethod.EMAIL, client);

@@ -31,7 +31,7 @@ sairo:
         api-key: ${RESEND_API_KEY:}
         base-url: ${RESEND_API_BASE_URL:https://api.resend.com}
     sms:
-      provider: ${SAIRO_SMS_PROVIDER:aws}
+      provider: ${SAIRO_SMS_PROVIDER:none}
       origination-identity: ${SAIRO_SMS_ORIGINATION_IDENTITY:}
       solapi:
         api-key: ${SOLAPI_API_KEY:}
