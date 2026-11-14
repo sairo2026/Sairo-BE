@@ -134,6 +134,16 @@ RESEND_API_KEY=$(jq -r '.resendApiKey // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_API_KEY=$(jq -r '.solapiApiKey // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_API_SECRET=$(jq -r '.solapiApiSecret // ""' <<<"${APP_SECRETS_JSON}")
 SOLAPI_SENDER_NUMBER=$(jq -r '.solapiSenderNumber // ""' <<<"${APP_SECRETS_JSON}")
+TOSS_SECRET_KEY=$(jq -r '.tossSecretKey // "" | tostring' <<<"${APP_SECRETS_JSON}")
+TOSS_WEBHOOK_SECRET=$(jq -r '.tossWebhookSecret // "" | tostring' <<<"${APP_SECRETS_JSON}")
+if [[ -n "${TOSS_SECRET_KEY}" && ! "${TOSS_SECRET_KEY}" =~ ^(test|live)_sk_[A-Za-z0-9_-]+$ ]]; then
+  echo "[deploy] tossSecretKey must start with test_sk_ or live_sk_ followed by letters, digits, underscore or hyphen" >&2
+  exit 1
+fi
+if [[ "${TOSS_WEBHOOK_SECRET}" == *$'\n'* || "${TOSS_WEBHOOK_SECRET}" == *$'\r'* ]]; then
+  echo "[deploy] tossWebhookSecret must be a single line" >&2
+  exit 1
+fi
 SECRET_HEALTH_WAIT_SECONDS=$(jq -r '.healthWaitSeconds // "" | tostring' <<<"${APP_SECRETS_JSON}")
 SAIRO_BATCH_ENABLED=$(jq -r 'if .batchEnabled == null then "" else (.batchEnabled | tostring) end' <<<"${APP_SECRETS_JSON}")
 if [[ -n "${SAIRO_BATCH_ENABLED}" && "${SAIRO_BATCH_ENABLED}" != "true" && "${SAIRO_BATCH_ENABLED}" != "false" ]]; then
@@ -195,6 +205,8 @@ umask 077
   echo "SOLAPI_API_KEY=${SOLAPI_API_KEY}"
   echo "SOLAPI_API_SECRET=${SOLAPI_API_SECRET}"
   echo "SOLAPI_SENDER_NUMBER=${SOLAPI_SENDER_NUMBER}"
+  echo "TOSS_SECRET_KEY=${TOSS_SECRET_KEY}"
+  echo "TOSS_WEBHOOK_SECRET=${TOSS_WEBHOOK_SECRET}"
   echo "SAIRO_MAIL_FROM=${SAIRO_MAIL_FROM}"
   echo "SAIRO_STORAGE_BUCKET=${SAIRO_STORAGE_BUCKET}"
   if [[ -n "${SAIRO_BATCH_ENABLED}" ]]; then
@@ -226,7 +238,8 @@ unset APP_SECRET_JSON MIGRATOR_SECRET_JSON APP_SECRETS_JSON DB_APP_PASSWORD DB_M
   KAKAO_REST_API_KEY KAKAO_CLIENT_SECRET KAKAO_ADMIN_KEY KAKAO_APP_ID PUBLIC_LINK_HMAC_SECRET \
   AUTH_TICKET_SECRET AUTH_RATE_LIMIT_HMAC_SECRET AUTH_KAKAO_KEY_HMAC_SECRET \
   AUTH_UNSUBSCRIBE_SECRET AUTH_KAKAO_KEY_ENCRYPTION_SECRET BILLING_KEY_ENCRYPTION_SECRET \
-  RESEND_API_KEY SOLAPI_API_KEY SOLAPI_API_SECRET SOLAPI_SENDER_NUMBER COMPANY_ENV_LINES
+  RESEND_API_KEY SOLAPI_API_KEY SOLAPI_API_SECRET SOLAPI_SENDER_NUMBER \
+  TOSS_SECRET_KEY TOSS_WEBHOOK_SECRET COMPANY_ENV_LINES
 
 HEALTH_WAIT_SECONDS="${HEALTH_WAIT_SECONDS:-${SECRET_HEALTH_WAIT_SECONDS:-180}}"
 HEALTH_INTERVAL_SECONDS=3

@@ -220,6 +220,68 @@ class DeployScriptTests(unittest.TestCase):
                 self.assertIn("health wait must be an integer", result.stderr)
                 self.assertNotIn("up -d api", self.docker_log())
 
+    def read_env_lines(self):
+        return (self.deploy_dir / "env" / "app.env").read_text(encoding="utf-8").splitlines()
+
+    def test_toss_fields_are_delivered_to_app_env(self):
+        self.set_healthy(NEW_TAG)
+        self.write_secret(
+            "sairo_be_app-secrets",
+            {**APP_SECRETS, "tossSecretKey": "test_sk_fakeKey123", "tossWebhookSecret": "fake-hook"},
+        )
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = self.read_env_lines()
+        self.assertIn("TOSS_SECRET_KEY=test_sk_fakeKey123", lines)
+        self.assertIn("TOSS_WEBHOOK_SECRET=fake-hook", lines)
+        self.assertNotIn("test_sk_fakeKey123", result.stdout + result.stderr)
+
+    def test_missing_toss_fields_become_empty_values(self):
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = self.read_env_lines()
+        self.assertIn("TOSS_SECRET_KEY=", lines)
+        self.assertIn("TOSS_WEBHOOK_SECRET=", lines)
+
+    def test_live_prefixed_toss_key_is_accepted(self):
+        self.set_healthy(NEW_TAG)
+        self.write_secret(
+            "sairo_be_app-secrets", {**APP_SECRETS, "tossSecretKey": "live_sk_fakeKey123"}
+        )
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_toss_key_with_wrong_prefix_is_rejected_without_echoing_the_value(self):
+        for value in ("test_gsk_fakeKey123", "fakeKey123", "test_sk_", "test_sk_fake!Key"):
+            with self.subTest(value=value):
+                self.write_secret(
+                    "sairo_be_app-secrets", {**APP_SECRETS, "tossSecretKey": value}
+                )
+
+                result = self.run_deploy()
+
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("tossSecretKey must start with", result.stderr)
+                self.assertNotIn("fake", result.stdout + result.stderr)
+                self.assertNotIn("up -d api", self.docker_log())
+
+    def test_multiline_toss_webhook_secret_is_rejected(self):
+        self.write_secret(
+            "sairo_be_app-secrets", {**APP_SECRETS, "tossWebhookSecret": "a\nb"}
+        )
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("tossWebhookSecret must be a single line", result.stderr)
+
     def test_migration_failure_leaves_api_untouched(self):
         (self.stub / "migrate-exit").write_text("1", encoding="utf-8")
 
