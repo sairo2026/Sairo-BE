@@ -332,6 +332,55 @@ public class SettlementMetricRepository {
     return value == null ? 0L : value;
   }
 
+  /** 여러 달의 계약 체결 건수를 한 번에 센다. 각 달의 값은 {@link #aggregate}의 값과 같다. 키는 달의 시작 시각이다. */
+  public Map<java.time.Instant, Long> contractSignedCounts(
+      Long officeId, List<SettlementWindow> windows) {
+    Map<java.time.Instant, Long> counts = new java.util.HashMap<>();
+    if (windows.isEmpty()) {
+      return counts;
+    }
+    StringBuilder months = new StringBuilder();
+    for (int i = 0; i < windows.size(); i++) {
+      months
+          .append(i == 0 ? "" : ", ")
+          .append("(CAST(:f")
+          .append(i)
+          .append(" AS timestamptz), CAST(:t")
+          .append(i)
+          .append(" AS timestamptz))");
+    }
+    JdbcClient.StatementSpec spec =
+        jdbcClient
+            .sql(
+                "WITH ch AS (SELECT h.id, h.contract_id, h.to_status, h.effective_at FROM"
+                    + " contract_status_history h JOIN contract c ON c.id = h.contract_id WHERE"
+                    + " c.office_id = :office AND h.track = 'CONTRACT' AND NOT EXISTS (SELECT 1"
+                    + " FROM contract_status_history hx WHERE hx.supersedes_history_id = h.id)),"
+                    + " signed AS (SELECT contract_id, min(effective_at) AS signed_at FROM ch"
+                    + " WHERE to_status = 'SIGNED' GROUP BY contract_id), w(from_at, to_at) AS"
+                    + " (VALUES "
+                    + months
+                    + "), sw AS (SELECT s.contract_id, w.from_at, w.to_at FROM signed s JOIN w ON"
+                    + " s.signed_at >= w.from_at AND s.signed_at < w.to_at), st AS (SELECT"
+                    + " DISTINCT ON (sw.contract_id) sw.contract_id, sw.from_at, ch.to_status FROM"
+                    + " sw JOIN ch ON ch.contract_id = sw.contract_id AND ch.effective_at <"
+                    + " sw.to_at ORDER BY sw.contract_id, ch.effective_at DESC, ch.id DESC)"
+                    + " SELECT st.from_at, count(*) FROM st JOIN contract c ON c.id ="
+                    + " st.contract_id WHERE st.to_status IN ('SIGNED','ENDED') AND"
+                    + " c.duplicate_excluded_at IS NULL GROUP BY st.from_at")
+            .param("office", officeId);
+    for (int i = 0; i < windows.size(); i++) {
+      spec =
+          spec.param("f" + i, Timestamp.from(windows.get(i).from()))
+              .param("t" + i, Timestamp.from(windows.get(i).to()));
+    }
+    spec.query(
+        rs -> {
+          counts.put(rs.getTimestamp(1).toInstant(), rs.getLong(2));
+        });
+    return counts;
+  }
+
   public long countRows(SettlementMetric metric, SettlementWindow window) {
     Definition definition = DEFINITIONS.get(metric);
     Long value =

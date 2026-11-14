@@ -503,6 +503,17 @@ class ScalePerformanceTest {
             200,
             i -> as("/api/customers?keyword=" + enc("가상고객 " + (100 + i)), agentMid)));
     list.add(new Api("mid.home", L, 200, i -> as("/api/home", ownerMid)));
+    list.add(
+        new Api("mid.customer.role-owner", L, 200, i -> as("/api/customers?role=OWNER", agentMid)));
+    list.add(new Api("mid.settlement.list", A, 200, i -> as("/api/settlements", ownerMid)));
+    list.add(
+        new Api("mid.settlement.current", A, 200, i -> as("/api/settlements/" + now, ownerMid)));
+    list.add(
+        new Api(
+            "mid.settlement.prev6",
+            A,
+            200,
+            i -> as("/api/settlements/" + now.minusMonths(6), ownerMid)));
     return list;
   }
 
