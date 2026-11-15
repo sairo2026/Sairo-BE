@@ -595,6 +595,7 @@ class MembershipIntegrationTest extends AuthIntegrationTestBase {
 
   @Test
   void 역할_변경은_재인증과_버전을_요구하고_세션에_바로_반영한다() throws Exception {
+    addRosterAgent();
     var agent = staffIn(OfficeMembershipRole.AGENT);
     Cookie agentCookie = cookieOf(agent);
     long id = agent.membership().getId();
@@ -829,5 +830,263 @@ class MembershipIntegrationTest extends AuthIntegrationTestBase {
                     + " AND changed_by_type = 'SYSTEM'",
                 Long.class))
         .isEqualTo(2L);
+  }
+
+  private void addRosterAgent() {
+    jdbcTemplate.update(
+        "INSERT INTO employment_roster (office_id, person_name, legal_qualification,"
+            + " employment_start_date, confirmation_source) VALUES (?, '김중개', 'AGENT',"
+            + " current_date, 'MANUAL_ENTRY')",
+        office.getId());
+  }
+
+  private List<String> securityNotices(long userId) {
+    return jdbcTemplate.queryForList(
+        "SELECT message FROM notification WHERE recipient_user_id = ? AND notification_type ="
+            + " 'SECURITY_ALERT' ORDER BY id",
+        String.class,
+        userId);
+  }
+
+  private long invitationNoticeCount(long membershipId) {
+    return jdbcTemplate.queryForObject(
+        "SELECT count(*) FROM notification WHERE notification_type = 'INVITATION'"
+            + " AND target_type = 'MEMBERSHIP' AND target_id = ?",
+        Long.class,
+        membershipId);
+  }
+
+  private void insertInvitationNotice(AppUser user, long membershipId) {
+    jdbcTemplate.update(
+        "INSERT INTO notification (office_id, recipient_user_id, notification_type, message,"
+            + " target_type, target_id) VALUES (?, ?, 'INVITATION', '초대했습니다', 'MEMBERSHIP', ?)",
+        office.getId(),
+        user.getId(),
+        membershipId);
+  }
+
+  @Test
+  void 강등은_5배_한도를_넘으면_409이고_역할과_담당을_바꾸지_않는다() throws Exception {
+    var agent = staffIn(OfficeMembershipRole.AGENT);
+    long id = agent.membership().getId();
+    long version = versionOf(id);
+    grantStepUp(ownerCookie);
+    assertError(
+        roleRequest("/api/memberships/" + id + "/role", "DEPUTY", version, ownerCookie),
+        ErrorCode.DEPUTY_QUOTA_EXCEEDED);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT role FROM office_membership WHERE id = ?", String.class, id))
+        .isEqualTo("AGENT");
+    assertThat(versionOf(id)).isEqualTo(version);
+    assertThat(securityNotices(agent.user().getId())).isEmpty();
+  }
+
+  @Test
+  void 강등은_명부_한도_안이면_통과하고_한도를_넘기는_여섯_번째에서_막힌다() throws Exception {
+    addRosterAgent();
+    for (int i = 0; i < 5; i++) {
+      var agent = staffIn(OfficeMembershipRole.AGENT);
+      long id = agent.membership().getId();
+      grantStepUp(ownerCookie);
+      roleRequest("/api/memberships/" + id + "/role", "DEPUTY", versionOf(id), ownerCookie)
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.role").value("DEPUTY"));
+    }
+    var sixth = staffIn(OfficeMembershipRole.AGENT);
+    long id = sixth.membership().getId();
+    grantStepUp(ownerCookie);
+    assertError(
+        roleRequest("/api/memberships/" + id + "/role", "DEPUTY", versionOf(id), ownerCookie),
+        ErrorCode.DEPUTY_QUOTA_EXCEEDED);
+  }
+
+  @Test
+  void 한도를_넘은_상태에서도_보조원을_공인중개사로_올리는_변경은_통과한다() throws Exception {
+    var deputy = staffIn(OfficeMembershipRole.DEPUTY);
+    long id = deputy.membership().getId();
+    grantStepUp(ownerCookie);
+    roleRequest("/api/memberships/" + id + "/role", "AGENT", versionOf(id), ownerCookie)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.role").value("AGENT"));
+  }
+
+  @Test
+  void 정지_해제는_최초_승인_시각을_바꾸지_않고_이력에_해제_시각을_남긴다() throws Exception {
+    var agent = staffIn(OfficeMembershipRole.AGENT);
+    long id = agent.membership().getId();
+    jdbcTemplate.update(
+        "UPDATE office_membership SET approved_at = now() - interval '10 days' WHERE id = ?", id);
+    java.sql.Timestamp approvedAt =
+        jdbcTemplate.queryForObject(
+            "SELECT approved_at FROM office_membership WHERE id = ?", java.sql.Timestamp.class, id);
+    post("/api/memberships/" + id + "/suspend", "{\"reason\":\"점검\"}", ownerCookie)
+        .andExpect(status().isOk());
+    post("/api/memberships/" + id + "/reinstate", "", ownerCookie).andExpect(status().isOk());
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT approved_at FROM office_membership WHERE id = ?",
+                java.sql.Timestamp.class,
+                id))
+        .isEqualTo(approvedAt);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM office_membership_status_history WHERE membership_id = ?"
+                    + " AND from_status = 'SUSPENDED' AND to_status = 'APPROVED'",
+                Long.class,
+                id))
+        .isEqualTo(1L);
+    mockMvc
+        .perform(get("/api/memberships/" + id).cookie(ownerCookie))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.approvedAt").exists());
+  }
+
+  @Test
+  void 정지_해제_강등은_해당_구성원의_알림함에_알림을_남긴다() throws Exception {
+    addRosterAgent();
+    var agent = staffIn(OfficeMembershipRole.AGENT);
+    long id = agent.membership().getId();
+    long userId = agent.user().getId();
+    post("/api/memberships/" + id + "/suspend", "{\"reason\":\"점검\"}", ownerCookie)
+        .andExpect(status().isOk());
+    assertThat(securityNotices(userId)).hasSize(1);
+    assertThat(securityNotices(userId).get(0)).contains("접근을 정지했습니다").doesNotContain("점검");
+    post("/api/memberships/" + id + "/reinstate", "", ownerCookie).andExpect(status().isOk());
+    assertThat(securityNotices(userId)).hasSize(2);
+    assertThat(securityNotices(userId).get(1)).contains("접근 정지를 풀었습니다");
+    grantStepUp(ownerCookie);
+    roleRequest("/api/memberships/" + id + "/role", "DEPUTY", versionOf(id), ownerCookie)
+        .andExpect(status().isOk());
+    assertThat(securityNotices(userId)).hasSize(3);
+    assertThat(securityNotices(userId).get(2)).contains("중개보조원").contains("대표에게 인계되었습니다");
+    assertThat(
+            jdbcTemplate.queryForObject("SELECT count(*) FROM notification_delivery", Long.class))
+        .isZero();
+  }
+
+  @Test
+  void 사무소_이름이_사무소로_끝나면_알림_문구에서_사무소가_겹치지_않는다() throws Exception {
+    jdbcTemplate.update("UPDATE office SET name = '가나다공인중개사사무소' WHERE id = ?", office.getId());
+    var agent = staffIn(OfficeMembershipRole.AGENT);
+    post(
+            "/api/memberships/" + agent.membership().getId() + "/suspend",
+            "{\"reason\":\"점검\"}",
+            ownerCookie)
+        .andExpect(status().isOk());
+    assertThat(securityNotices(agent.user().getId()).get(0))
+        .startsWith("가나다공인중개사사무소에서")
+        .doesNotContain("사무소 사무소");
+  }
+
+  @Test
+  void 초대를_취소하면_초대_알림을_알림함에서_거둔다() throws Exception {
+    AppUser target = plainUser();
+    var result =
+        post(
+                "/api/offices/current/memberships/invite",
+                "{\"email\":\"" + target.getEmail() + "\",\"role\":\"AGENT\"}",
+                ownerCookie)
+            .andExpect(status().isCreated())
+            .andReturn();
+    long id = com.sairo.be.support.AuthFlowSupport.json(result).get("membershipId").asLong();
+    assertThat(invitationNoticeCount(id)).isEqualTo(1);
+    post("/api/memberships/" + id + "/invitation/cancel", "", ownerCookie)
+        .andExpect(status().isOk());
+    assertThat(invitationNoticeCount(id)).isZero();
+  }
+
+  @Test
+  void 초대_만료_정리와_초대받은_사람의_취소도_초대_알림을_거둔다() throws Exception {
+    AppUser expiring = plainUser();
+    long overdue = invitation(expiring, false, -1);
+    insertInvitationNotice(expiring, overdue);
+    AppUser declining = plainUser();
+    long declined = invitation(declining, false, 5);
+    insertInvitationNotice(declining, declined);
+    AppUser waiting = plainUser();
+    long live = invitation(waiting, false, 5);
+    insertInvitationNotice(waiting, live);
+    expiryService.expireOverdue();
+    assertThat(invitationNoticeCount(overdue)).isZero();
+    post("/api/memberships/" + declined + "/cancel", "", plainCookie(declining))
+        .andExpect(status().isOk());
+    assertThat(invitationNoticeCount(declined)).isZero();
+    assertThat(invitationNoticeCount(live)).isEqualTo(1);
+  }
+
+  @Test
+  void 거절_뒤_미해결인_사용자도_초대할_수_있고_거절_행은_해결됨으로_바뀐다() throws Exception {
+    AppUser target = plainUser();
+    long rejected = pendingRequest(target, "AGENT");
+    post("/api/memberships/" + rejected + "/reject", "{\"reason\":\"사유\"}", ownerCookie)
+        .andExpect(status().isOk());
+    var result =
+        post(
+                "/api/offices/current/memberships/invite",
+                "{\"email\":\"" + target.getEmail() + "\",\"role\":\"AGENT\"}",
+                ownerCookie)
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.status").value("PENDING"))
+            .andReturn();
+    long invited = com.sairo.be.support.AuthFlowSupport.json(result).get("membershipId").asLong();
+    assertThat(invited).isNotEqualTo(rejected);
+    assertThat(statusOf(rejected)).isEqualTo("REJECTED");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT resolved_at IS NOT NULL FROM office_membership WHERE id = ?",
+                Boolean.class,
+                rejected))
+        .isTrue();
+    assertError(
+        post(
+            "/api/offices/current/memberships/invite",
+            "{\"email\":\"" + target.getEmail() + "\",\"role\":\"AGENT\"}",
+            ownerCookie),
+        ErrorCode.PENDING_MEMBERSHIP_EXISTS);
+  }
+
+  @Test
+  void 회수된_소속이_있는_사용자는_같은_사무소에서_다시_초대할_수_없다() throws Exception {
+    AppUser target = plainUser();
+    jdbcTemplate.update(
+        "INSERT INTO office_membership (office_id, user_id, role, status, request_source,"
+            + " approved_at, revoked_at, revoked_by_type, revocation_reason, qualification_number,"
+            + " employment_report_confirmed, training_confirmed) VALUES (?, ?, 'AGENT', 'REVOKED',"
+            + " 'REQUEST', now(), now(), 'OWNER', '사유', '서울-1', true, true)",
+        office.getId(),
+        target.getId());
+    assertError(
+        post(
+            "/api/offices/current/memberships/invite",
+            "{\"email\":\"" + target.getEmail() + "\",\"role\":\"AGENT\"}",
+            ownerCookie),
+        ErrorCode.PENDING_MEMBERSHIP_EXISTS);
+  }
+
+  @Test
+  void 검증_오류_메시지는_요청_언어와_관계없이_한국어다() throws Exception {
+    for (String language : new String[] {"en-US", "ko-KR"}) {
+      mockMvc
+          .perform(
+              jsonPost(
+                      "/api/offices/current/memberships/invite",
+                      "{\"role\":\"AGENT\",\"email\":\"\"}",
+                      ownerCookie)
+                  .header("Accept-Language", language))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.fieldErrors[0].field").value("email"))
+          .andExpect(jsonPath("$.fieldErrors[0].code").value("REQUIRED"))
+          .andExpect(jsonPath("$.fieldErrors[0].message").value("필수 입력입니다."));
+    }
+    mockMvc
+        .perform(
+            jsonPost(
+                "/api/offices/current/memberships/invite",
+                "{\"email\":\"not-an-email\",\"role\":\"AGENT\"}",
+                ownerCookie))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.fieldErrors[0].field").value("email"))
+        .andExpect(jsonPath("$.fieldErrors[0].message").value("이메일 형식이 올바르지 않습니다."));
   }
 }

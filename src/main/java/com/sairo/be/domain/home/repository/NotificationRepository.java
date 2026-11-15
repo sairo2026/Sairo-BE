@@ -138,6 +138,26 @@ public class NotificationRepository {
         .optional();
   }
 
+  public int deleteByTarget(String type, String targetType, Long targetId) {
+    jdbcClient
+        .sql(
+            "DELETE FROM notification_delivery WHERE notification_id IN (SELECT id FROM"
+                + " notification WHERE notification_type = :type AND target_type = :targetType"
+                + " AND target_id = :targetId)")
+        .param("type", type)
+        .param("targetType", targetType)
+        .param("targetId", targetId)
+        .update();
+    return jdbcClient
+        .sql(
+            "DELETE FROM notification WHERE notification_type = :type AND target_type ="
+                + " :targetType AND target_id = :targetId")
+        .param("type", type)
+        .param("targetType", targetType)
+        .param("targetId", targetId)
+        .update();
+  }
+
   private static String unread(boolean unreadOnly) {
     return unreadOnly ? " AND n.read_at IS NULL" : "";
   }

@@ -4,6 +4,8 @@ import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.error.FieldErrorItem;
+import com.sairo.be.global.support.BusinessNumbers;
+import com.sairo.be.global.support.PhoneNumbers;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -22,9 +24,17 @@ final class OfficeInputRules {
     return digits;
   }
 
+  static String businessNumberWithChecksum(String field, String raw) {
+    String digits = businessNumber(field, raw);
+    if (!BusinessNumbers.hasValidChecksum(digits)) {
+      throw invalid(field, FieldErrorCode.INVALID_VALUE, "존재하지 않는 사업자등록번호입니다. 번호를 다시 확인해 주세요.");
+    }
+    return digits;
+  }
+
   static String phone(String field, String raw) {
     String value = raw == null ? "" : raw.strip();
-    if (!PHONE.matcher(value).matches()) {
+    if (!PhoneNumbers.isContactNumber(value)) {
       throw invalid(field, FieldErrorCode.INVALID_FORMAT, "연락처 형식이 올바르지 않습니다.");
     }
     return value;

@@ -516,4 +516,51 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
     withdrawalService.releaseForWithdrawal(agent.user().getId(), Instant.now());
     assertThat(transferStatus(id)).isEqualTo("REJECTED");
   }
+
+  @Test
+  void 대표_이전이_완료돼도_구독과_기존_동의는_그대로이고_새_대표가_구독과_구매_동의_미리보기를_이어받는다() throws Exception {
+    var fixtures = new com.sairo.be.support.fixture.BillingFixtures(jdbcTemplate);
+    fixtures.standardPrice("2026-12-STD", Instant.now().minus(java.time.Duration.ofDays(60)));
+    fixtures.purchaseTerms(com.sairo.be.support.fixture.BillingFixtures.PURCHASE_TERMS_VERSION);
+    long subscriptionId =
+        fixtures
+            .subscription(office.getId())
+            .status("ACTIVE")
+            .period(
+                Instant.now().minus(java.time.Duration.ofDays(5)),
+                Instant.now().plus(java.time.Duration.ofDays(25)))
+            .insert();
+    fixtures.consent(
+        subscriptionId, owner.user().getId(), office.getId(), 39_900, 3_627, 39_900);
+    java.util.Map<String, Object> before =
+        jdbcTemplate.queryForMap("SELECT * FROM subscription WHERE id = ?", subscriptionId);
+    var agent = staffIn(OfficeMembershipRole.AGENT);
+    long id = transferTo(agent);
+    Cookie agentCookie = cookieOf(agent);
+    post("/api/owner-transfers/" + id + "/accept", "", agentCookie);
+    Cookie operator = operatorSession(createOperator("9001003", "김운영", OperatorRole.OPS));
+    post("/api/ops/owner-transfers/" + id + "/approve", "", operator).andExpect(status().isOk());
+
+    java.util.Map<String, Object> after =
+        jdbcTemplate.queryForMap("SELECT * FROM subscription WHERE id = ?", subscriptionId);
+    assertThat(after.get("status")).isEqualTo(before.get("status"));
+    assertThat(after.get("current_period_start")).isEqualTo(before.get("current_period_start"));
+    assertThat(after.get("current_period_end")).isEqualTo(before.get("current_period_end"));
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM subscription_purchase_consent WHERE subscription_id = ?",
+                Long.class,
+                subscriptionId))
+        .isEqualTo(1L);
+    mockMvc
+        .perform(get("/api/subscriptions/current").cookie(agentCookie))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("ACTIVE"));
+    mockMvc
+        .perform(get("/api/subscriptions/purchase-consent/preview").cookie(agentCookie))
+        .andExpect(status().isOk());
+    assertError(
+        mockMvc.perform(get("/api/subscriptions/current").cookie(ownerCookie)),
+        ErrorCode.FORBIDDEN);
+  }
 }
