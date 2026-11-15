@@ -126,7 +126,9 @@ public class ImportRowNormalizer {
       return PhoneNumbers.normalize(raw)
           .orElseGet(
               () -> {
-                warnings.add(warning("INVALID_PHONE_FORMAT", field, "전화번호 형식이 올바르지 않습니다."));
+                if (!PhoneNumbers.isContactNumber(raw)) {
+                  warnings.add(error("INVALID_PHONE_FORMAT", field, "전화번호 형식이 올바르지 않습니다."));
+                }
                 return raw;
               });
     }

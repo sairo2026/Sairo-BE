@@ -30,13 +30,19 @@ public class VisitRequestNoticeController {
     this.noticeService = noticeService;
   }
 
-  @Operation(summary = "방문 신청 알림 목록", description = "로그인한 직원이 수신자인 앱 내 알림만 최신순으로 돌려준다.")
+  @Operation(
+      summary = "방문 신청 알림 목록",
+      description =
+          "로그인한 직원이 수신자인 앱 내 알림만 최신순으로 돌려준다. page와 size를 모두 생략하면 최근 200건을 한 번에 돌려주고,"
+              + " 하나라도 보내면 알림함 목록과 같은 규칙(size는 25·50·100)으로 나눠 돌려준다.")
   @GetMapping
   @RequiresAccess(AccessPermission.STAFF)
   public VisitRequestNoticeListResponse list(
       @RequestParam(required = false, defaultValue = "false") boolean unread,
+      @RequestParam(required = false) Integer page,
+      @RequestParam(required = false) Integer size,
       @AuthenticationPrincipal StaffPrincipal principal) {
-    return noticeService.list(principal, unread);
+    return noticeService.list(principal, unread, page, size);
   }
 
   @Operation(summary = "방문 신청 알림 확인 처리", description = "이미 확인한 알림도 같은 결과로 처리한다.")

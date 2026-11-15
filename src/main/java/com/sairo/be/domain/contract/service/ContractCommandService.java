@@ -81,6 +81,7 @@ public class ContractCommandService {
     if (!parsed.values().managingMembershipId().equals(row.values().managingMembershipId())) {
       support.requireManager(principal.officeId(), parsed.values().managingMembershipId());
     }
+    ContractInput.requirePartyPhones(parsed, parties.current(contractId));
     if (parsed.sellers() != null) {
       parties.deleteSide(contractId, PartySide.SELLER_LANDLORD);
       support.insertParties(

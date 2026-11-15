@@ -19,10 +19,12 @@ import com.sairo.be.global.port.NotificationPublisher;
 import com.sairo.be.global.port.NotificationPublisher.Notice;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.IdempotentRequests;
+import com.sairo.be.global.support.PhoneNumbers;
 import com.sairo.be.global.support.TimeRules;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.context.annotation.Profile;
@@ -175,14 +177,20 @@ public class CustomerCommandService {
             : null;
     LocalDate retention =
         has(body, "retentionUntil") ? CustomerInput.requiredDate(body, "retentionUntil") : null;
-    String phone = has(body, "phone") ? phone(body, "phone") : null;
-    String secondary = has(body, "secondaryPhone") ? phone(body, "secondaryPhone") : null;
+    String phone = has(body, "phone") ? phoneText(body, "phone") : null;
+    String secondary = has(body, "secondaryPhone") ? phoneText(body, "secondaryPhone") : null;
     String email = has(body, "email") ? email(body) : null;
     String memo = has(body, "memo") ? CustomerInput.optionalText(body, "memo", 10_000, true) : null;
     Customer customer = guard.lock(principal.officeId(), customerId);
     guard.requireNotMerged(customerId);
     guard.requireNotArchived(customer);
     guard.requireVersion(customer, expectedVersion);
+    if (!Objects.equals(phone, customer.getPhone())) {
+      requireContactFormat("phone", phone);
+    }
+    if (!Objects.equals(secondary, customer.getSecondaryPhone())) {
+      requireContactFormat("secondaryPhone", secondary);
+    }
     if (name != null) {
       customer.changeName(name);
     }
@@ -272,11 +280,23 @@ public class CustomerCommandService {
   }
 
   private static String phone(JsonNode body, String key) {
+    String value = phoneText(body, key);
+    requireContactFormat(key, value);
+    return value;
+  }
+
+  private static String phoneText(JsonNode body, String key) {
     String value = CustomerInput.optionalText(body, key, PHONE_MAX, true);
     if (value == null) {
       return null;
     }
-    return com.sairo.be.global.support.PhoneNumbers.normalize(value).orElse(value);
+    return PhoneNumbers.normalize(value).orElse(value);
+  }
+
+  private static void requireContactFormat(String field, String value) {
+    if (value != null && !PhoneNumbers.isContactNumber(value)) {
+      throw CustomerInput.invalid(field, FieldErrorCode.INVALID_FORMAT, "연락처 형식이 올바르지 않습니다.");
+    }
   }
 
   private static String email(JsonNode body) {

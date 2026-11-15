@@ -27,11 +27,12 @@ public class ConsentWithdrawals {
     this.consentRepository = consentRepository;
   }
 
-  public void record(Subscription subscription, Instant now) {
-    consentChecker
+  /** 유효한 동의가 있어 철회 행을 남겼으면 true를 돌려준다. */
+  public boolean record(Subscription subscription, Instant now) {
+    return consentChecker
         .latest(subscription.getId())
         .filter(SubscriptionPurchaseConsent::isAgreed)
-        .ifPresent(
+        .map(
             latest -> {
               String version =
                   consentChecker
@@ -62,6 +63,8 @@ public class ConsentWithdrawals {
                       latest.getNextChargeAt(),
                       false,
                       now));
-            });
+              return true;
+            })
+        .orElse(false);
   }
 }

@@ -131,7 +131,11 @@ public final class VisitRequestMapper {
   }
 
   public static VisitRequestNoticeListResponse toNotices(
-      List<VisitRequestNotice> notices, Map<Long, Long> coordinationByRequest) {
+      List<VisitRequestNotice> notices,
+      Map<Long, Long> coordinationByRequest,
+      int page,
+      int size,
+      long totalElements) {
     return new VisitRequestNoticeListResponse(
         notices.stream()
             .map(
@@ -144,6 +148,9 @@ public final class VisitRequestMapper {
                         notice.getChannel(),
                         TimeRules.toDisplayOffset(notice.getCreatedAt()),
                         TimeRules.toDisplayOffset(notice.getReadAt())))
-            .toList());
+            .toList(),
+        page,
+        size,
+        totalElements);
   }
 }

@@ -14,6 +14,10 @@ public interface VisitRequestNoticeRepository extends JpaRepository<VisitRequest
   List<VisitRequestNotice> findByRecipientMembershipIdAndReadAtIsNullOrderByCreatedAtDescIdDesc(
       Long recipientMembershipId, Pageable pageable);
 
+  long countByRecipientMembershipId(Long recipientMembershipId);
+
+  long countByRecipientMembershipIdAndReadAtIsNull(Long recipientMembershipId);
+
   Optional<VisitRequestNotice> findByIdAndRecipientMembershipId(
       Long id, Long recipientMembershipId);
 }

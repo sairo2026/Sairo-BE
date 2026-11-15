@@ -107,6 +107,7 @@ public class CancellationService {
     }
     active.get().revoke(now);
     cancellationRepository.save(active.get());
+    noticeDispatcher.cancellationRevoked(principal.officeId());
     subscription.markEventRecorded(now);
     return new SubscriptionCancelWithdrawResponse(true, toDisplayOffset(now));
   }
