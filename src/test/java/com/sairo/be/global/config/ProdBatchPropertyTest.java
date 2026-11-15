@@ -14,6 +14,7 @@ import org.springframework.core.io.ClassPathResource;
 class ProdBatchPropertyTest {
 
   private static final String PROPERTY = "sairo.batch.enabled";
+  private static final String CRON_PROPERTY = "sairo.batch.lease-period-scan.cron";
 
   private static StandardEnvironment prodEnvironment(Map<String, Object> overrides)
       throws IOException {
@@ -39,5 +40,24 @@ class ProdBatchPropertyTest {
   void 환경변수로_예약_배치를_끌_수_있다() throws IOException {
     assertThat(prodEnvironment(Map.of("SAIRO_BATCH_ENABLED", "false")).getProperty(PROPERTY))
         .isEqualTo("false");
+  }
+
+  @Test
+  void 만기_스캔_주기는_기본으로_매일_자정이다() throws IOException {
+    assertThat(prodEnvironment(Map.of()).getProperty(CRON_PROPERTY)).isEqualTo("0 0 0 * * *");
+  }
+
+  @Test
+  void 환경변수로_만기_스캔_주기를_바꿀_수_있다() throws IOException {
+    assertThat(
+            prodEnvironment(Map.of("SAIRO_LEASE_PERIOD_SCAN_CRON", "0 */10 * * * *"))
+                .getProperty(CRON_PROPERTY))
+        .isEqualTo("0 */10 * * * *");
+  }
+
+  @Test
+  void 메일_로고_주소는_기본으로_서비스_주소의_정적_파일이다() throws IOException {
+    assertThat(prodEnvironment(Map.of()).getProperty("sairo.delivery.mail.logo-url"))
+        .isEqualTo("https://app.sairo.agency/email/sairo-logo.png");
   }
 }

@@ -150,6 +150,11 @@ if [[ -n "${SAIRO_BATCH_ENABLED}" && "${SAIRO_BATCH_ENABLED}" != "true" && "${SA
   echo "[deploy] batchEnabled must be true or false" >&2
   exit 1
 fi
+SAIRO_LEASE_PERIOD_SCAN_CRON=$(jq -r '.leasePeriodScanCron // "" | tostring' <<<"${APP_SECRETS_JSON}")
+if [[ -n "${SAIRO_LEASE_PERIOD_SCAN_CRON}" && ! "${SAIRO_LEASE_PERIOD_SCAN_CRON}" =~ ^[0-9*/,?-]+(\ [0-9*/,?-]+){5}$ ]]; then
+  echo "[deploy] leasePeriodScanCron must be a six-field cron expression using digits and the characters * / , ? -" >&2
+  exit 1
+fi
 SAIRO_BOOTSTRAP_OPERATOR_ENABLED=$(jq -r 'if .bootstrapOperatorEnabled == null then "" else (.bootstrapOperatorEnabled | tostring) end' <<<"${APP_SECRETS_JSON}")
 SAIRO_BOOTSTRAP_OPERATOR_EMAIL=$(jq -r '.bootstrapOperatorEmail // ""' <<<"${APP_SECRETS_JSON}")
 if [[ -n "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" && "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" != "true" && "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" != "false" ]]; then
@@ -211,6 +216,9 @@ umask 077
   echo "SAIRO_STORAGE_BUCKET=${SAIRO_STORAGE_BUCKET}"
   if [[ -n "${SAIRO_BATCH_ENABLED}" ]]; then
     echo "SAIRO_BATCH_ENABLED=${SAIRO_BATCH_ENABLED}"
+  fi
+  if [[ -n "${SAIRO_LEASE_PERIOD_SCAN_CRON}" ]]; then
+    echo "SAIRO_LEASE_PERIOD_SCAN_CRON=${SAIRO_LEASE_PERIOD_SCAN_CRON}"
   fi
   if [[ -n "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" ]]; then
     echo "SAIRO_BOOTSTRAP_OPERATOR_ENABLED=${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}"

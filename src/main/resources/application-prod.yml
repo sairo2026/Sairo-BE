@@ -23,11 +23,14 @@ kakao:
 sairo:
   batch:
     enabled: ${SAIRO_BATCH_ENABLED:true}
+    lease-period-scan:
+      cron: ${SAIRO_LEASE_PERIOD_SCAN_CRON:0 0 0 * * *}
   delivery:
     mail:
       provider: ${SAIRO_MAIL_PROVIDER:ses}
       from: ${SAIRO_MAIL_FROM}
       from-name: ${SAIRO_MAIL_FROM_NAME:사이로(SAIRO)}
+      logo-url: ${SAIRO_MAIL_LOGO_URL:https://app.sairo.agency/email/sairo-logo.png}
       resend:
         api-key: ${RESEND_API_KEY:}
         base-url: ${RESEND_API_BASE_URL:https://api.resend.com}

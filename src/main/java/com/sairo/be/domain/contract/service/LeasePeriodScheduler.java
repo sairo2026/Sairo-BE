@@ -25,7 +25,7 @@ public class LeasePeriodScheduler {
     this.expiryNoticeService = expiryNoticeService;
   }
 
-  @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Seoul")
+  @Scheduled(cron = "${sairo.batch.lease-period-scan.cron:0 0 0 * * *}", zone = "Asia/Seoul")
   @SchedulerLock(name = "lease-period-scan", lockAtMostFor = "PT1H", lockAtLeastFor = "PT5M")
   public void run() {
     followupService.createDue();
