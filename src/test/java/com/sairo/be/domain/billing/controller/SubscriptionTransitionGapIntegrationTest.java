@@ -129,7 +129,7 @@ class SubscriptionTransitionGapIntegrationTest extends PaymentTestBase {
   @Test
   void 인증_중단_재개와_중단_만료_종료는_대표_알림함에_알림을_남기지_않는다() {
     Ready resumed = active();
-    Instant suspendedAt = Instant.now();
+    Instant suspendedAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
     suspensionService.suspend(resumed.owner().office().getId(), suspendedAt);
     suspensionService.resume(resumed.owner().office().getId(), suspendedAt.plusSeconds(60));
     assertThat(subscription(resumed.subscriptionId()).get("status")).isEqualTo("PRE_PAYMENT");

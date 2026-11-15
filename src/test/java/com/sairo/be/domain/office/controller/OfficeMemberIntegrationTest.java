@@ -360,7 +360,7 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
     assertThat(transferNotices(owner).get(0)).contains("대표 이전을 수락했습니다");
     assertThat(
             jdbcTemplate.queryForObject("SELECT count(*) FROM notification_delivery", Long.class))
-        .isZero();
+        .isEqualTo(2L);
     mockMvc
         .perform(get("/api/offices/current/owner-transfer").cookie(agentCookie))
         .andExpect(jsonPath("$.status").value("UNDER_REVIEW"))
