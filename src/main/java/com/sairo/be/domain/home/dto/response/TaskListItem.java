@@ -21,6 +21,7 @@ public record TaskListItem(
     @Schema(allowableValues = {"TODO", "DONE", "CANCELLED"}) String status,
     @Schema(allowableValues = {"MANUAL", "VISIT", "CONTRACT_BALANCE", "CONTRACT_MATURITY"})
         String sourceType,
+    @Schema(nullable = true, description = "sourceType이 MANUAL이 아닐 때 원천 데이터 번호") Long sourceId,
     Long officeId,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt,

@@ -130,6 +130,7 @@ class AuthContextIntegrationTest extends AuthIntegrationTestBase {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.accessCondition").value("PRE_VERIFICATION"))
         .andExpect(jsonPath("$.officeId").doesNotExist())
+        .andExpect(jsonPath("$.officeName").doesNotExist())
         .andExpect(jsonPath("$.reconsentRequired").value(false));
   }
 
@@ -202,6 +203,7 @@ class AuthContextIntegrationTest extends AuthIntegrationTestBase {
     context()
         .andExpect(jsonPath("$.accessCondition").value("ACTIVE"))
         .andExpect(jsonPath("$.role").value("AGENT"))
+        .andExpect(jsonPath("$.officeName").value("테스트사무소"))
         .andExpect(jsonPath("$.graceUntil").doesNotExist());
   }
 

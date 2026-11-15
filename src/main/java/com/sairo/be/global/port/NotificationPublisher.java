@@ -15,6 +15,9 @@ public interface NotificationPublisher {
   /** 사무소의 승인된 대표 모두에게 같은 알림을 남긴다. */
   List<Long> publishToOwners(Long officeId, Notice notice);
 
+  /** 이동 대상이 같은 종류의 알림을 알림함에서 지운다. 더는 유효하지 않은 안내를 거두는 데 쓰고 지운 알림 수를 돌려준다. */
+  int retract(String type, String targetType, Long targetId);
+
   record Notice(
       Long officeId,
       Long recipientUserId,

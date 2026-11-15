@@ -57,6 +57,7 @@ public final class VisitRequestMapper {
                         request.isCrossOffice(),
                         request.getAccessGrantId(),
                         request.getCandidatePropertyId(),
+                        request.getRequestKind().name(),
                         request.getStatus().name(),
                         TimeRules.toDisplayOffset(request.getRequestedStartAt()),
                         TimeRules.toDisplayOffset(request.getRequestedEndAt()),

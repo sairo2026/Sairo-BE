@@ -304,7 +304,10 @@ public class ApproverSelectionExecutor {
               request.getId(),
               RequestStatus.REVALIDATION_FAILED.name(),
               new ApproverSelectionResponse.Revalidation(
-                  "FAILED", failure.code(), failure.detail(), TimeRules.toDisplayOffset(now)),
+                  "FAILED",
+                  failure.code(),
+                  ApproverFailureDetail.of(failure.detail()),
+                  TimeRules.toDisplayOffset(now)),
               List.of()));
     }
     VisitApproverCondition condition = active.get();
@@ -367,7 +370,7 @@ public class ApproverSelectionExecutor {
         new ApproverSelectionResponse.Revalidation(
             outcome.result(),
             outcome.failureCode(),
-            outcome.failureDetail(),
+            ApproverFailureDetail.of(outcome.failureDetail()),
             TimeRules.toDisplayOffset(outcome.checkedAt())),
         "PASSED".equals(outcome.result())
             ? selectionRepository.timeClosedBySelection(outcome.selectionId())

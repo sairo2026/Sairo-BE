@@ -34,7 +34,9 @@ public class HomeSummaryRepository {
       LocalDate dueDate,
       String status,
       Long assigneeId,
-      String assigneeName) {}
+      String assigneeName,
+      String sourceType,
+      Long sourceId) {}
 
   public record DayCount(LocalDate date, long count) {}
 
@@ -123,7 +125,8 @@ public class HomeSummaryRepository {
       Long officeId, Long assignee, LocalDate until, boolean excludeContract, int limit) {
     return jdbcClient
         .sql(
-            "SELECT t.id, t.title, t.due_date, t.status, t.assignee_membership_id, u.name AS"
+            "SELECT t.id, t.title, t.due_date, t.status, t.source_type, t.source_id,"
+                + " t.assignee_membership_id, u.name AS"
                 + " assignee_name, (u.account_status = 'WITHDRAWN') AS withdrawn,"
                 + " m.withdrawn_alias_no FROM task t JOIN office_membership m ON m.id ="
                 + " t.assignee_membership_id JOIN app_user u ON u.id = m.user_id WHERE"
@@ -141,7 +144,9 @@ public class HomeSummaryRepository {
                     rs.getObject("due_date", LocalDate.class),
                     rs.getString("status"),
                     rs.getLong("assignee_membership_id"),
-                    TaskRepository.displayName(rs)))
+                    TaskRepository.displayName(rs),
+                    rs.getString("source_type"),
+                    rs.getObject("source_id", Long.class)))
         .list();
   }
 

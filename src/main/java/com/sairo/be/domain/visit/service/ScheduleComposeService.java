@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
@@ -120,29 +121,46 @@ public class ScheduleComposeService {
         ScheduleSlotCalculator.ceil(
             max(now, TimeRules.startOfDisplayDay(coordination.getPeriodStartDate())));
     Instant periodEnd = TimeRules.endOfDisplayDayExclusive(coordination.getPeriodEndDate());
+    Map<Long, PropertyAccessApproval> approvals = new HashMap<>();
+    Map<Long, VisitApproverCondition> conditions = new HashMap<>();
+    List<Long> blocked = new ArrayList<>();
+    for (Entry entry : ordered) {
+      VisitCandidateProperty candidate = byId.get(entry.candidateId());
+      Optional<PropertyAccessApproval> approval =
+          approvalRepository.findUsablePrimaries(candidate.getPropertyId(), now).stream()
+              .findFirst();
+      Optional<VisitApproverCondition> condition =
+          approval.flatMap(
+              found ->
+                  conditionRepository
+                      .findFirstByApprovalIdAndStatus(found.getId(), ConditionStatus.ACTIVE)
+                      .filter(active -> now.isBefore(active.getAppliesUntil())));
+      if (condition.isEmpty()) {
+        blocked.add(candidate.getId());
+      } else {
+        approvals.put(candidate.getId(), approval.get());
+        conditions.put(candidate.getId(), condition.get());
+      }
+    }
+    if (!blocked.isEmpty()) {
+      throw timeOutOfRange(blocked);
+    }
     List<VisitScheduleUpdateResponse.Item> items = new ArrayList<>();
     int index = 1;
     for (Entry entry : ordered) {
       VisitCandidateProperty candidate = byId.get(entry.candidateId());
-      PropertyAccessApproval approval =
-          approvalRepository.findUsablePrimaries(candidate.getPropertyId(), now).stream()
-              .findFirst()
-              .orElseThrow(() -> new BusinessException(ErrorCode.TIME_OUT_OF_RANGE));
-      VisitApproverCondition condition =
-          conditionRepository
-              .findFirstByApprovalIdAndStatus(approval.getId(), ConditionStatus.ACTIVE)
-              .filter(found -> now.isBefore(found.getAppliesUntil()))
-              .orElseThrow(() -> new BusinessException(ErrorCode.TIME_OUT_OF_RANGE));
+      PropertyAccessApproval approval = approvals.get(candidate.getId());
+      VisitApproverCondition condition = conditions.get(candidate.getId());
       Context context =
           contextFactory.build(
               coordination, candidate, approval, condition, principal.membershipId());
       Instant start =
           calculator
               .earliestStart(context, entry.visitMinutes(), cursor, now)
-              .orElseThrow(() -> new BusinessException(ErrorCode.TIME_OUT_OF_RANGE));
+              .orElseThrow(() -> timeOutOfRange(List.of(candidate.getId())));
       Instant end = start.plus(entry.visitMinutes(), ChronoUnit.MINUTES);
       if (end.isAfter(periodEnd)) {
-        throw new BusinessException(ErrorCode.TIME_OUT_OF_RANGE);
+        throw timeOutOfRange(List.of(candidate.getId()));
       }
       items.add(
           new VisitScheduleUpdateResponse.Item(
@@ -171,6 +189,11 @@ public class ScheduleComposeService {
         TimeRules.toDisplayOffset(saved.getCreatedAt()),
         TimeRules.toDisplayOffset(saved.getUpdatedAt()),
         saved.getVersion());
+  }
+
+  private static BusinessException timeOutOfRange(List<Long> candidatePropertyIds) {
+    return BusinessException.withDetails(
+        ErrorCode.TIME_OUT_OF_RANGE, Map.of("candidatePropertyIds", candidatePropertyIds));
   }
 
   private static Instant max(Instant first, Instant second) {

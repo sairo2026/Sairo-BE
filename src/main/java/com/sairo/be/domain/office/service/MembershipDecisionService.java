@@ -148,6 +148,9 @@ public class MembershipDecisionService {
       throw new BusinessException(ErrorCode.PENDING_MEMBERSHIP_EXISTS);
     }
     Instant now = clock.instant();
+    repository
+        .unresolvedRejection(owner.officeId(), targetUserId)
+        .ifPresent(rejected -> repository.resolve(rejected, now));
     long id;
     try {
       id =
@@ -185,6 +188,7 @@ public class MembershipDecisionService {
         owner.membershipId(),
         null,
         now);
+    notificationPublisher.retract("INVITATION", "MEMBERSHIP", membershipId);
     return MembershipMapper.toResult(repository.find(membershipId).orElseThrow());
   }
 

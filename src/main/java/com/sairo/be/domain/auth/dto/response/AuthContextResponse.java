@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 public record AuthContextResponse(
     @Schema(description = "접근 상태 판정 결과") String accessCondition,
     @Schema(description = "승인된 소속의 사무소 ID") Long officeId,
+    @Schema(description = "승인된 소속의 사무소 이름", nullable = true) String officeName,
     @Schema(description = "승인된 소속의 역할") String role,
     @Schema(description = "진행 중인 사무소 인증 신청 ID") Long pendingRegistrationId,
     @Schema(description = "진행 중인 사무소 참여 요청 ID") Long pendingMembershipId,

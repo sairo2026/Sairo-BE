@@ -10,6 +10,7 @@ import com.sairo.be.domain.contract.entity.ContractValues;
 import com.sairo.be.domain.contract.entity.PartyRow;
 import com.sairo.be.domain.contract.entity.PartySide;
 import com.sairo.be.domain.contract.entity.StatusHistoryRow;
+import com.sairo.be.domain.contract.repository.ContractFollowupRepository;
 import com.sairo.be.domain.contract.repository.ContractHistoryRepository;
 import com.sairo.be.domain.contract.repository.ContractHistoryRepository.RevisionRow;
 import com.sairo.be.domain.contract.repository.ContractPartyRepository;
@@ -44,6 +45,7 @@ public class ContractQueryService {
   private final ContractReadRepository reads;
   private final ContractPartyRepository parties;
   private final ContractHistoryRepository histories;
+  private final ContractFollowupRepository followups;
   private final Clock clock;
 
   public ContractQueryService(
@@ -51,11 +53,13 @@ public class ContractQueryService {
       ContractReadRepository reads,
       ContractPartyRepository parties,
       ContractHistoryRepository histories,
+      ContractFollowupRepository followups,
       Clock clock) {
     this.contracts = contracts;
     this.reads = reads;
     this.parties = parties;
     this.histories = histories;
+    this.followups = followups;
     this.clock = clock;
   }
 
@@ -195,6 +199,7 @@ public class ContractQueryService {
         ContractSupport.partyResponses(current, PartySide.SELLER_LANDLORD),
         ContractSupport.partyResponses(current, PartySide.BUYER_TENANT),
         documents,
+        followups.list(contractId).stream().filter(row -> !row.submitted()).count(),
         c.officeId(),
         TimeRules.toDisplayOffset(c.createdAt()),
         TimeRules.toDisplayOffset(c.updatedAt()),

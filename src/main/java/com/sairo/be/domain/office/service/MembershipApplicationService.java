@@ -112,6 +112,9 @@ public class MembershipApplicationService {
         null,
         null,
         now);
+    if (row.requestSource() == OfficeRequestSource.INVITE) {
+      notificationPublisher.retract("INVITATION", "MEMBERSHIP", membershipId);
+    }
     return MembershipMapper.toResult(repository.find(membershipId).orElseThrow());
   }
 
