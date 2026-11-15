@@ -106,7 +106,7 @@ class V13UpgradeTest {
 
     try (Connection conn = connect()) {
       TreeSet<String> tables = publicTables(conn);
-      assertThat(tables).hasSize(141);
+      assertThat(tables).hasSize(142);
       assertThat(tables)
           .contains(
               "visit_request",
@@ -123,9 +123,9 @@ class V13UpgradeTest {
                       + " JOIN information_schema.tables t ON t.table_schema = c.table_schema"
                       + " AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'"
                       + " WHERE c.table_schema = 'public' AND c.table_name <> 'flyway_schema_history'"))
-          .isEqualTo(1721);
-      assertThat(count(conn, constraintCountSql("p"))).isEqualTo(141);
-      assertThat(count(conn, constraintCountSql("f"))).isEqualTo(343);
+          .isEqualTo(1733);
+      assertThat(count(conn, constraintCountSql("p"))).isEqualTo(142);
+      assertThat(count(conn, constraintCountSql("f"))).isEqualTo(345);
     }
   }
 
@@ -289,7 +289,7 @@ class V13UpgradeTest {
     flyway("latest").migrate();
 
     try (Connection conn = connect()) {
-      assertThat(publicTables(conn)).hasSize(141);
+      assertThat(publicTables(conn)).hasSize(142);
 
       assertThat(count(conn, "SELECT count(*) FROM terms_agreement")).isEqualTo(1);
       assertThat(text(conn, "SELECT consent_path FROM terms_agreement")).isEqualTo("UNKNOWN");
