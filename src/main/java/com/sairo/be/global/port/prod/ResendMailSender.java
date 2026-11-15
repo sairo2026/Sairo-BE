@@ -32,10 +32,11 @@ class ResendMailSender implements MailSender {
   ResendMailSender(
       @Value("${sairo.delivery.mail.resend.base-url:https://api.resend.com}") String baseUrl,
       @Value("${sairo.delivery.mail.resend.api-key}") String apiKey,
-      @Value("${sairo.delivery.mail.from}") String from) {
+      @Value("${sairo.delivery.mail.from}") String from,
+      @Value("${sairo.delivery.mail.from-name:사이로(SAIRO)}") String fromName) {
     this.endpoint = URI.create(baseUrl.replaceAll("/+$", "") + "/emails");
     this.apiKey = apiKey;
-    this.from = from;
+    this.from = MailFromFormatter.display(from, fromName);
   }
 
   @Override

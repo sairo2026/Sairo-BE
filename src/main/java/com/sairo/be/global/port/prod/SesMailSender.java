@@ -23,9 +23,12 @@ class SesMailSender implements MailSender {
   private final SesV2Client client;
   private final String from;
 
-  SesMailSender(SesV2Client client, @Value("${sairo.delivery.mail.from}") String from) {
+  SesMailSender(
+      SesV2Client client,
+      @Value("${sairo.delivery.mail.from}") String from,
+      @Value("${sairo.delivery.mail.from-name:사이로(SAIRO)}") String fromName) {
     this.client = client;
-    this.from = from;
+    this.from = MailFromFormatter.asciiDisplay(from, fromName);
   }
 
   @Override

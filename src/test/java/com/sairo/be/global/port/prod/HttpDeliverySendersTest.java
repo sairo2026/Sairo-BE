@@ -52,13 +52,13 @@ class HttpDeliverySendersTest {
 
   @Test
   void resendPostsMailWithBearerKey() throws Exception {
-    new ResendMailSender(baseUrl(), "test-key", "from@example.test")
+    new ResendMailSender(baseUrl(), "test-key", "from@example.test", "사이로(SAIRO)")
         .send(new MailMessage("to@example.test", "제목", "본문"));
 
     assertEquals("/emails", path.get());
     assertEquals("Bearer test-key", authorization.get());
     JsonNode json = JsonMapper.builder().build().readTree(body.get());
-    assertEquals("from@example.test", json.get("from").asString());
+    assertEquals("\"사이로(SAIRO)\" <from@example.test>", json.get("from").asString());
     assertEquals("to@example.test", json.get("to").get(0).asString());
     assertEquals("제목", json.get("subject").asString());
     assertEquals("본문", json.get("text").asString());
@@ -67,7 +67,7 @@ class HttpDeliverySendersTest {
   @Test
   void resendRejectionFails() {
     status = 422;
-    ResendMailSender sender = new ResendMailSender(baseUrl(), "test-key", "from@example.test");
+    ResendMailSender sender = new ResendMailSender(baseUrl(), "test-key", "from@example.test", "");
     assertThrows(
         IllegalStateException.class,
         () -> sender.send(new MailMessage("to@example.test", "제목", "본문")));
