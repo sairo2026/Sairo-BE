@@ -61,6 +61,7 @@ sairo:
     unsubscribe-secret: ${AUTH_UNSUBSCRIBE_SECRET}
     kakao-key-encryption-secret: ${AUTH_KAKAO_KEY_ENCRYPTION_SECRET}
   billing:
+    charging-started: ${SAIRO_BILLING_CHARGING_STARTED:false}
     key-encryption-secret: ${BILLING_KEY_ENCRYPTION_SECRET}
 
 app:
