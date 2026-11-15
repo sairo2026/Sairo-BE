@@ -73,6 +73,7 @@ class ReturnGrantVisitIntegrationTest extends VisitOutcomeTestBase {
 
   private ResultActions resultAs(
       Cookie cookie, long grantId, long itemId, String body, Object version) throws Exception {
+    startVisit(itemId);
     return mockMvc.perform(
         jsonPatchAs(
             base(grantId) + "/visit-schedule-items/" + itemId + "/result", body, cookie, version));

@@ -1,6 +1,7 @@
 package com.sairo.be.domain.visit.controller;
 
 import static com.sairo.be.support.ErrorResponseAssertions.assertError;
+import static com.sairo.be.support.ErrorResponseAssertions.assertFieldError;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -11,6 +12,7 @@ import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.support.AuthFlowSupport;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.VisitOutcomeTestBase;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -43,6 +45,66 @@ class VisitOutcomeIntegrationTest extends VisitOutcomeTestBase {
                     + " supersedes_history_id IS NULL",
                 item))
         .isEqualTo(1L);
+  }
+
+  @Test
+  void 아직_시작하지_않은_방문에는_완료와_불참을_기록할_수_없고_취소는_할_수_있다() throws Exception {
+    SelectionFixture s = confirmed();
+    long item = scheduledItem(s.coordinationId());
+    long version = coordinationVersion(s.coordinationId());
+
+    scheduleVisit(item, Duration.ofDays(3), 30);
+    assertFieldError(
+        patchResultAsScheduled(s.cookie(), item, completedBody(1), version),
+        "result",
+        "OUT_OF_RANGE");
+    assertFieldError(
+        patchResultAsScheduled(s.cookie(), item, "{\"result\":\"NO_SHOW\"}", version),
+        "result",
+        "OUT_OF_RANGE");
+
+    scheduleVisit(item, Duration.ofMinutes(1), 30);
+    assertFieldError(
+        patchResultAsScheduled(s.cookie(), item, completedBody(1), version),
+        "result",
+        "OUT_OF_RANGE");
+
+    assertThat(itemResult(item)).isEqualTo("SCHEDULED");
+    assertThat(coordinationStatus(s.coordinationId())).isEqualTo("CONFIRMED");
+    assertThat(coordinationVersion(s.coordinationId())).isEqualTo(version);
+    assertThat(
+            count(
+                "SELECT count(*) FROM visit_schedule_item_result_history WHERE schedule_item_id = ?",
+                item))
+        .isZero();
+
+    patchResultAsScheduled(
+            s.cookie(), item, "{\"result\":\"CANCELLED\",\"cancelReasonCode\":\"OTHER\"}", version)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.result").value("CANCELLED"))
+        .andExpect(jsonPath("$.coordinationStatus").value("VISIT_INCOMPLETE"));
+  }
+
+  @Test
+  void 시작한_방문은_진행_중이어도_완료를_기록하고_지난_방문은_불참도_기록한다() throws Exception {
+    SelectionFixture s = confirmed();
+    long item = scheduledItem(s.coordinationId());
+
+    scheduleVisit(item, Duration.ofMinutes(-1), 30);
+    patchResultAsScheduled(
+            s.cookie(), item, completedBody(0), coordinationVersion(s.coordinationId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.result").value("COMPLETED"))
+        .andExpect(jsonPath("$.coordinationStatus").value("VISIT_COMPLETED"));
+
+    SelectionFixture t = confirmed();
+    long past = scheduledItem(t.coordinationId());
+    startVisit(past);
+    patchResultAsScheduled(
+            t.cookie(), past, "{\"result\":\"NO_SHOW\"}", coordinationVersion(t.coordinationId()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.result").value("NO_SHOW"))
+        .andExpect(jsonPath("$.coordinationStatus").value("VISIT_INCOMPLETE"));
   }
 
   @Test

@@ -17,6 +17,7 @@ import com.sairo.be.global.support.TimeRules;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -93,6 +94,9 @@ public class PublicCustomerLinkSubmitService {
     if (isRetry(idempotencyKey, link, submission.slots())) {
       return response(coordination, link);
     }
+    if (submission.slots().isEmpty() && !hasSubmittedSlots(link)) {
+      throw CustomerInput.invalid("timeSlots", FieldErrorCode.REQUIRED, "가능한 시간을 한 개 이상 보내야 합니다.");
+    }
     int version = link.recordResponse(now);
     for (Slot slot : submission.slots()) {
       slotRepository.save(
@@ -136,6 +140,14 @@ public class PublicCustomerLinkSubmitService {
     return current.equals(slots);
   }
 
+  private boolean hasSubmittedSlots(VisitCustomerLink link) {
+    return link.getResponseVersion() > 0
+        && !slotRepository
+            .findByCustomerLinkIdAndResponseVersionOrderByStartsAtAscIdAsc(
+                link.getId(), link.getResponseVersion())
+            .isEmpty();
+  }
+
   private void requireWithinWindow(VisitCoordination coordination, Set<Slot> slots) {
     Instant windowStart = TimeRules.startOfDisplayDay(coordination.getPeriodStartDate());
     Instant windowEnd = TimeRules.endOfDisplayDayExclusive(coordination.getPeriodEndDate());
@@ -177,9 +189,18 @@ public class PublicCustomerLinkSubmitService {
         throw CustomerInput.invalid(
             "timeSlots", FieldErrorCode.INVALID_VALUE, "종료 시각은 시작 시각보다 늦어야 합니다.");
       }
+      requireFiveMinuteGrid(startsAt);
+      requireFiveMinuteGrid(endsAt);
       slots.add(new Slot(startsAt, endsAt));
     }
     return new Submission(slots, acknowledged);
+  }
+
+  private static void requireFiveMinuteGrid(Instant value) {
+    ZonedDateTime kst = TimeRules.toDisplay(value);
+    if (kst.getSecond() != 0 || kst.getNano() != 0 || kst.getMinute() % 5 != 0) {
+      throw CustomerInput.invalid("timeSlots", FieldErrorCode.INVALID_VALUE, "5분 단위여야 합니다.");
+    }
   }
 
   private static Instant instant(JsonNode element, String key) {

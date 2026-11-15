@@ -32,6 +32,7 @@ import com.sairo.be.global.support.AdvisoryLock;
 import com.sairo.be.global.support.RequestRateLimiter;
 import jakarta.persistence.EntityManager;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -342,6 +343,10 @@ public class VisitRequestSubmitService {
     if (duration < 1 || duration > Integer.MAX_VALUE) {
       throw CustomerInput.invalid(
           "expectedDurationMinutes", FieldErrorCode.OUT_OF_RANGE, "1 이상이어야 합니다.");
+    }
+    if (duration > Duration.between(start, end).toMinutes()) {
+      throw CustomerInput.invalid(
+          "expectedDurationMinutes", FieldErrorCode.OUT_OF_RANGE, "희망 시간대보다 길 수 없습니다.");
     }
     if (party != null && (party < 1 || party > Integer.MAX_VALUE)) {
       throw CustomerInput.invalid("partySize", FieldErrorCode.OUT_OF_RANGE, "1 이상이어야 합니다.");
