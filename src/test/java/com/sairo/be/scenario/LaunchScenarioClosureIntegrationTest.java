@@ -183,6 +183,7 @@ class LaunchScenarioClosureIntegrationTest extends VisitOutcomeTestBase {
 
     // 5. 반환권한으로 남은 방문을 정리한다: 지난 방문 결과 사후 기록, 출입승인 철회 접수, 조율 취소.
     long item = scheduledItem(completedCoordination);
+    startVisit(item);
     mockMvc
         .perform(
             jsonPatchAs(

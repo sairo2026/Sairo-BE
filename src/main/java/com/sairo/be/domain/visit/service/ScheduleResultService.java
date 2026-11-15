@@ -123,6 +123,12 @@ public class ScheduleResultService {
     if (correction && input.correctionReason() == null) {
       throw CustomerInput.invalid("correctionReason", FieldErrorCode.REQUIRED, "정정할 때는 사유가 필요합니다.");
     }
+    if (!"CANCELLED".equals(input.result())
+        && item.startAt() != null
+        && item.startAt().isAfter(now)) {
+      throw CustomerInput.invalid(
+          "result", FieldErrorCode.OUT_OF_RANGE, "아직 시작하지 않은 방문에는 완료나 불참을 기록할 수 없습니다.");
+    }
     List<AffectedScheduleItem> affected = new ArrayList<>();
     if ("CANCELLED".equals(input.result())) {
       outcomeService.cancelItem(

@@ -255,6 +255,111 @@ class PublicCustomerVisitLinkIntegrationTest extends VisitIntegrationTestBase {
   }
 
   @Test
+  void 시간_단위가_5분이_아니면_400이고_5분_단위와_30분_칩_값은_저장한다() throws Exception {
+    Fixture f = fixture();
+    LocalDate d = f.start();
+
+    assertFieldError(
+        mockMvc.perform(
+            jsonPostAs(
+                submitUrl(f.token()),
+                body(NOTICE_VERSION, minuteSlot(d, "10:07:00", "11:00:00")),
+                null)),
+        "timeSlots",
+        "INVALID_VALUE");
+    assertFieldError(
+        mockMvc.perform(
+            jsonPostAs(
+                submitUrl(f.token()),
+                body(NOTICE_VERSION, minuteSlot(d, "10:00:00", "10:58:00")),
+                null)),
+        "timeSlots",
+        "INVALID_VALUE");
+    assertFieldError(
+        mockMvc.perform(
+            jsonPostAs(
+                submitUrl(f.token()),
+                body(NOTICE_VERSION, minuteSlot(d, "10:00:30", "11:00:00")),
+                null)),
+        "timeSlots",
+        "INVALID_VALUE");
+    assertFieldError(
+        mockMvc.perform(
+            jsonPostAs(
+                submitUrl(f.token()),
+                body(NOTICE_VERSION, minuteSlot(d, "10:00:00", "11:00:00.500")),
+                null)),
+        "timeSlots",
+        "INVALID_VALUE");
+    assertFieldError(
+        mockMvc.perform(
+            jsonPostAs(
+                submitUrl(f.token()),
+                body(
+                    NOTICE_VERSION,
+                    minuteSlot(d, "09:30:00", "10:00:00"),
+                    minuteSlot(d, "10:03:00", "10:30:00")),
+                null)),
+        "timeSlots",
+        "INVALID_VALUE");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT response_version FROM visit_customer_link WHERE coordination_id = ?",
+                Integer.class,
+                f.coordinationId()))
+        .isZero();
+
+    mockMvc
+        .perform(
+            jsonPostAs(
+                submitUrl(f.token()),
+                body(
+                    NOTICE_VERSION,
+                    minuteSlot(d, "10:00:00", "10:30:00"),
+                    minuteSlot(d, "14:05:00", "14:35:00"),
+                    minuteSlot(d, "15:00:00", "15:05:00")),
+                null))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.responseVersion").value(1));
+  }
+
+  @Test
+  void 처음_제출의_빈_배열은_400이고_제출한_뒤의_빈_배열은_취소로_받는다() throws Exception {
+    Fixture f = fixture();
+
+    assertFieldError(
+        mockMvc.perform(jsonPostAs(submitUrl(f.token()), body(NOTICE_VERSION), null)),
+        "timeSlots",
+        "REQUIRED");
+    assertThat(coordinationStatus(f.coordinationId())).isEqualTo("TIME_COLLECTING");
+
+    mockMvc
+        .perform(
+            jsonPostAs(submitUrl(f.token()), body(NOTICE_VERSION, slot(f.start(), 10, 12)), null))
+        .andExpect(status().isOk());
+    mockMvc
+        .perform(jsonPostAs(submitUrl(f.token()), body(NOTICE_VERSION), null))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.responseVersion").value(2));
+    assertFieldError(
+        mockMvc.perform(jsonPostAs(submitUrl(f.token()), body(NOTICE_VERSION), null)),
+        "timeSlots",
+        "REQUIRED");
+  }
+
+  private static String minuteSlot(LocalDate date, String from, String to) {
+    return "{\"startsAt\":\""
+        + date
+        + "T"
+        + from
+        + "+09:00\",\"endsAt\":\""
+        + date
+        + "T"
+        + to
+        + "+09:00\"}";
+  }
+
+  @Test
   void 최종_확정_필요에서_고객이_수정하면_조율_가능으로_되돌아간다() throws Exception {
     Fixture f = fixture();
     setCoordinationStatus(f.coordinationId(), "FINAL_CONFIRMATION_REQUIRED");
