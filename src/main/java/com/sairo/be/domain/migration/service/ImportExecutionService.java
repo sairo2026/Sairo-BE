@@ -73,10 +73,11 @@ public class ImportExecutionService {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
     guard.requireVersionIfPresent(batch, expectedVersion);
-    long succeeded =
-        rowResultRepository.countByBatchIdAndResult(batchId, ImportRowOutcome.SUCCEEDED);
+    long finished =
+        rowResultRepository.countByBatchIdAndResult(batchId, ImportRowOutcome.SUCCEEDED)
+            + rowResultRepository.countByBatchIdAndResult(batchId, ImportRowOutcome.SKIPPED);
     long total = batch.getRowCount() == null ? 0 : batch.getRowCount();
-    if (total - succeeded <= 0) {
+    if (total - finished <= 0) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
     batch.startExecution();

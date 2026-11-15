@@ -41,6 +41,13 @@ public class ImportRowResult {
   @Column(name = "failure_reason", columnDefinition = "text")
   private String failureReason;
 
+  @Enumerated(EnumType.STRING)
+  @Column(name = "skip_reason", length = 30)
+  private ImportSkipReason skipReason;
+
+  @Column(name = "matched_entity_id")
+  private Long matchedEntityId;
+
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
 
@@ -67,14 +74,41 @@ public class ImportRowResult {
     return row;
   }
 
+  public static ImportRowResult skipped(
+      Long batchId,
+      Long officeId,
+      int rowNumber,
+      ImportSkipReason skipReason,
+      Long matchedEntityId) {
+    ImportRowResult row = new ImportRowResult();
+    row.batchId = batchId;
+    row.officeId = officeId;
+    row.sourceRowNumber = rowNumber;
+    row.result = ImportRowOutcome.SKIPPED;
+    row.skipReason = skipReason;
+    row.matchedEntityId = matchedEntityId;
+    return row;
+  }
+
   public void markSucceeded() {
     this.result = ImportRowOutcome.SUCCEEDED;
     this.failureReason = null;
+    this.skipReason = null;
+    this.matchedEntityId = null;
   }
 
   public void markFailed(String failureReason) {
     this.result = ImportRowOutcome.FAILED;
     this.failureReason = failureReason;
+    this.skipReason = null;
+    this.matchedEntityId = null;
+  }
+
+  public void markSkipped(ImportSkipReason skipReason, Long matchedEntityId) {
+    this.result = ImportRowOutcome.SKIPPED;
+    this.failureReason = null;
+    this.skipReason = skipReason;
+    this.matchedEntityId = matchedEntityId;
   }
 
   @PrePersist

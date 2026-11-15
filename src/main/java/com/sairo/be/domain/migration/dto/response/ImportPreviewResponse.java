@@ -19,7 +19,13 @@ public record ImportPreviewResponse(
       Map<String, Object> normalizedValues,
       List<UnitConversion> unitConversions,
       List<RelationMatch> relationMatches,
-      List<Warning> warnings) {}
+      List<Warning> warnings,
+      @Schema(
+              description =
+                  "NEW, ALREADY_IMPORTED, DUPLICATE_IN_FILE, DUPLICATE_EXISTING 중 하나다."
+                      + " NEW가 아니면 실행할 때 새로 만들지 않고 제외한다.")
+          String duplicateJudgement,
+      @Schema(nullable = true) Long matchedTargetId) {}
 
   public record UnitConversion(
       String field, String sourceValue, Object targetValue, String ruleCode) {}
@@ -38,12 +44,18 @@ public record ImportPreviewResponse(
       String sourceSystem,
       String sourceType,
       String sourceId,
-      long existingTargetId) {}
+      long existingTargetId,
+      @Schema(description = "ALREADY_IMPORTED 또는 DUPLICATE_EXISTING") String reason,
+      boolean existingArchived) {}
 
   public record Summary(
       int rowCount,
       int errorRowCount,
       int warningCount,
-      int duplicateCount,
-      int relationMatchCount) {}
+      @Schema(description = "새로 만들지 않고 제외할 줄 수다. 아래 세 가지 제외 건수의 합이다.") int duplicateCount,
+      int relationMatchCount,
+      @Schema(description = "오류 없이 새로 만들 줄 수다.") int newCount,
+      int alreadyImportedCount,
+      int duplicateInFileCount,
+      int duplicateExistingCount) {}
 }

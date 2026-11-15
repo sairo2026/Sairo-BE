@@ -3,7 +3,9 @@ package com.sairo.be.domain.customer.repository;
 import com.sairo.be.global.support.ImportedRecordBlocker;
 import com.sairo.be.global.support.ImportedRecordState;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -14,6 +16,17 @@ public class CustomerImportRepository {
 
   public record MatchRow(
       long customerId, String normalizedName, String phoneDigits, String secondaryPhoneDigits) {}
+
+  public record ExistingMatchRow(
+      long customerId,
+      String normalizedName,
+      String phoneDigits,
+      String secondaryPhoneDigits,
+      boolean archived) {}
+
+  private record NamedRow(long id, String name, String phone, String secondary, boolean archived) {}
+
+  private record MergeRoot(long startId, long rootId, boolean archived) {}
 
   private final JdbcClient jdbcClient;
 
@@ -40,6 +53,65 @@ public class CustomerImportRepository {
             (rs, rowNum) ->
                 new MatchRow(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4)))
         .list();
+  }
+
+  public List<ExistingMatchRow> findExistingMatches(
+      long officeId, Collection<String> normalizedNames) {
+    if (normalizedNames.isEmpty()) {
+      return List.of();
+    }
+    List<NamedRow> rows =
+        jdbcClient
+            .sql(
+                "SELECT c.id, lower(regexp_replace(c.name, '\\s+', '', 'g')),"
+                    + " regexp_replace(coalesce(c.phone, ''), '\\D', '', 'g'),"
+                    + " regexp_replace(coalesce(c.secondary_phone, ''), '\\D', '', 'g'),"
+                    + " c.deleted_at IS NOT NULL FROM customer c WHERE c.office_id = :officeId"
+                    + " AND lower(regexp_replace(c.name, '\\s+', '', 'g')) IN (:names)"
+                    + " ORDER BY c.id")
+            .param("officeId", officeId)
+            .param("names", normalizedNames)
+            .query(
+                (rs, rowNum) ->
+                    new NamedRow(
+                        rs.getLong(1),
+                        rs.getString(2),
+                        rs.getString(3),
+                        rs.getString(4),
+                        rs.getBoolean(5)))
+            .list();
+    if (rows.isEmpty()) {
+      return List.of();
+    }
+    Map<Long, MergeRoot> rootOf = new HashMap<>();
+    for (MergeRoot root :
+        jdbcClient
+            .sql(
+                "WITH RECURSIVE up(start_id, current_id) AS (SELECT l.merged_customer_id,"
+                    + " l.primary_customer_id FROM customer_merge_log l WHERE"
+                    + " l.merged_customer_id IN (:ids) UNION ALL SELECT up.start_id,"
+                    + " l.primary_customer_id FROM up JOIN customer_merge_log l ON"
+                    + " l.merged_customer_id = up.current_id) SELECT up.start_id,"
+                    + " up.current_id, r.deleted_at IS NOT NULL FROM up JOIN customer r ON r.id ="
+                    + " up.current_id WHERE NOT EXISTS (SELECT 1 FROM customer_merge_log p WHERE"
+                    + " p.merged_customer_id = up.current_id)")
+            .param("ids", rows.stream().map(NamedRow::id).toList())
+            .query((rs, rowNum) -> new MergeRoot(rs.getLong(1), rs.getLong(2), rs.getBoolean(3)))
+            .list()) {
+      rootOf.put(root.startId(), root);
+    }
+    return rows.stream()
+        .map(
+            row -> {
+              MergeRoot root = rootOf.get(row.id());
+              return new ExistingMatchRow(
+                  root == null ? row.id() : root.rootId(),
+                  row.name(),
+                  row.phone(),
+                  row.secondary(),
+                  root == null ? row.archived() : root.archived());
+            })
+        .toList();
   }
 
   public ImportedRecordState inspect(long officeId, long customerId) {

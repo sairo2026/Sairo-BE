@@ -27,6 +27,7 @@ sairo:
     mail:
       provider: ${SAIRO_MAIL_PROVIDER:ses}
       from: ${SAIRO_MAIL_FROM}
+      from-name: ${SAIRO_MAIL_FROM_NAME:사이로(SAIRO)}
       resend:
         api-key: ${RESEND_API_KEY:}
         base-url: ${RESEND_API_BASE_URL:https://api.resend.com}

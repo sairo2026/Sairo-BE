@@ -10,10 +10,8 @@ import com.sairo.be.domain.migration.dto.response.ImportPreviewResponse.UnitConv
 import com.sairo.be.domain.migration.dto.response.ImportPreviewResponse.Warning;
 import com.sairo.be.domain.migration.entity.ImportBatch;
 import com.sairo.be.domain.migration.entity.ImportBatchStatus;
-import com.sairo.be.domain.migration.entity.ImportRecordLink;
 import com.sairo.be.domain.migration.entity.ImportTargetType;
 import com.sairo.be.domain.migration.repository.ImportBatchJdbcRepository;
-import com.sairo.be.domain.migration.repository.ImportRecordLinkRepository;
 import com.sairo.be.domain.migration.service.NormalizedRow.RowWarning;
 import com.sairo.be.domain.migration.service.NormalizedRow.Severity;
 import com.sairo.be.domain.migration.service.parser.ParsedRow;
@@ -43,7 +41,7 @@ public class ImportPreviewService {
   private final ImportGuard guard;
   private final ImportFileReader fileReader;
   private final ImportRowNormalizer normalizer;
-  private final ImportRecordLinkRepository linkRepository;
+  private final ImportDuplicateClassifier classifier;
   private final ImportBatchJdbcRepository jdbcRepository;
   private final CustomerImportService customerImportService;
   private final PropertyImportService propertyImportService;
@@ -52,14 +50,14 @@ public class ImportPreviewService {
       ImportGuard guard,
       ImportFileReader fileReader,
       ImportRowNormalizer normalizer,
-      ImportRecordLinkRepository linkRepository,
+      ImportDuplicateClassifier classifier,
       ImportBatchJdbcRepository jdbcRepository,
       CustomerImportService customerImportService,
       PropertyImportService propertyImportService) {
     this.guard = guard;
     this.fileReader = fileReader;
     this.normalizer = normalizer;
-    this.linkRepository = linkRepository;
+    this.classifier = classifier;
     this.jdbcRepository = jdbcRepository;
     this.customerImportService = customerImportService;
     this.propertyImportService = propertyImportService;
@@ -69,8 +67,13 @@ public class ImportPreviewService {
       ParsedRow row,
       NormalizedRow normalized,
       List<RowWarning> warnings,
-      Long existingTargetId,
-      List<RelationMatch> matches) {}
+      ImportDuplicateClassifier.Judgement judgement,
+      List<RelationMatch> matches) {
+
+    Long existingTargetId() {
+      return judgement.matchedEntityId();
+    }
+  }
 
   public ImportPreviewResponse preview(
       StaffPrincipal principal, Long batchId, Integer page, Integer size) {
@@ -100,7 +103,9 @@ public class ImportPreviewService {
                 sourceSystem,
                 sourceType,
                 item.normalized().sourceId(),
-                item.existingTargetId()));
+                item.existingTargetId(),
+                item.judgement().reason().name(),
+                item.judgement().matchedArchived()));
       }
     }
     jdbcRepository.markPreviewed(batchId);
@@ -117,14 +122,35 @@ public class ImportPreviewService {
     ImportTargetType type = batch.getTargetType();
     String sourceSystem = data.mapping().getSourceSystem();
     Map<String, String> columnByField = data.columnByField();
-    List<Computed> computed = new ArrayList<>();
+    List<NormalizedRow> normalizedRows = new ArrayList<>();
     for (ParsedRow row : data.sheet().rows()) {
-      NormalizedRow normalized = normalizer.normalize(type, data.rawByField(row), columnByField);
-      computed.add(
-          new Computed(
-              row, normalized, new ArrayList<>(normalized.warnings()), null, new ArrayList<>()));
+      normalizedRows.add(normalizer.normalize(type, data.rawByField(row), columnByField));
     }
-    List<Computed> resolved = markDuplicates(officeId, type, sourceSystem, columnByField, computed);
+    ImportDuplicateClassifier.Session session =
+        classifier.open(officeId, type, sourceSystem, normalizedRows);
+    String sourceIdField = ImportTargetFields.sourceIdField(type);
+    Set<String> seenIds = new HashSet<>();
+    List<Computed> resolved = new ArrayList<>(normalizedRows.size());
+    List<ParsedRow> rows = data.sheet().rows();
+    for (int index = 0; index < rows.size(); index++) {
+      NormalizedRow normalized = normalizedRows.get(index);
+      List<RowWarning> warnings = new ArrayList<>(normalized.warnings());
+      String id = normalized.sourceId();
+      if (id != null && !seenIds.add(id)) {
+        warnings.add(
+            new RowWarning(
+                "DUPLICATE_SOURCE_ID_IN_FILE",
+                sourceIdField,
+                "같은 원본 ID가 앞선 줄에 있어 앞선 줄과 같은 레코드로 연결합니다.",
+                Severity.WARNING));
+      }
+      ImportDuplicateClassifier.Judgement judgement = session.judge(normalized);
+      if (!judgement.skipped() && !normalized.hasError()) {
+        session.markCreated(normalized);
+      }
+      resolved.add(
+          new Computed(rows.get(index), normalized, warnings, judgement, new ArrayList<>()));
+    }
     attachRelations(officeId, type, columnByField, resolved);
     return resolved;
   }
@@ -132,23 +158,42 @@ public class ImportPreviewService {
   private static Summary summaryOf(List<Computed> resolved) {
     int errorRows = 0;
     int warningRows = 0;
-    int duplicateRows = 0;
+    int newRows = 0;
+    int alreadyImported = 0;
+    int inFile = 0;
+    int existing = 0;
     int relationRows = 0;
     for (Computed item : resolved) {
-      if (item.warnings().stream().anyMatch(w -> w.severity() == Severity.ERROR)) {
+      boolean error = item.warnings().stream().anyMatch(w -> w.severity() == Severity.ERROR);
+      if (error) {
         errorRows++;
       }
       if (item.warnings().stream().anyMatch(w -> w.severity() == Severity.WARNING)) {
         warningRows++;
       }
-      if (item.existingTargetId() != null) {
-        duplicateRows++;
+      if (item.judgement().skipped()) {
+        switch (item.judgement().reason()) {
+          case ALREADY_IMPORTED -> alreadyImported++;
+          case DUPLICATE_IN_FILE -> inFile++;
+          case DUPLICATE_EXISTING -> existing++;
+        }
+      } else if (!error) {
+        newRows++;
       }
       if (!item.matches().isEmpty()) {
         relationRows++;
       }
     }
-    return new Summary(resolved.size(), errorRows, warningRows, duplicateRows, relationRows);
+    return new Summary(
+        resolved.size(),
+        errorRows,
+        warningRows,
+        alreadyImported + inFile + existing,
+        relationRows,
+        newRows,
+        alreadyImported,
+        inFile,
+        existing);
   }
 
   private PreviewRow toRow(ImportLoadedData data, Computed item) {
@@ -172,7 +217,9 @@ public class ImportPreviewService {
         item.matches(),
         item.warnings().stream()
             .map(w -> new Warning(w.code(), w.field(), w.message(), w.severity().name()))
-            .toList());
+            .toList(),
+        item.judgement().skipped() ? item.judgement().reason().name() : "NEW",
+        item.judgement().matchedEntityId());
   }
 
   private static Object jsonValue(Object value) {
@@ -180,53 +227,6 @@ public class ImportPreviewService {
       return value;
     }
     return value.toString();
-  }
-
-  private List<Computed> markDuplicates(
-      Long officeId,
-      ImportTargetType type,
-      String sourceSystem,
-      Map<String, String> columnByField,
-      List<Computed> computed) {
-    Set<String> ids = new LinkedHashSet<>();
-    for (Computed item : computed) {
-      if (item.normalized().sourceId() != null) {
-        ids.add(item.normalized().sourceId());
-      }
-    }
-    Map<String, Long> linked = new HashMap<>();
-    List<String> idList = new ArrayList<>(ids);
-    for (int start = 0; start < idList.size(); start += LOOKUP_CHUNK) {
-      List<String> chunk = idList.subList(start, Math.min(start + LOOKUP_CHUNK, idList.size()));
-      for (ImportRecordLink link :
-          linkRepository.findByOfficeIdAndSourceSystemAndSourceTypeAndSourceIdIn(
-              officeId, sourceSystem, type, chunk)) {
-        linked.put(link.getSourceId(), link.getTargetEntityId());
-      }
-    }
-    String sourceIdField = ImportTargetFields.sourceIdField(type);
-    Set<String> seen = new HashSet<>();
-    List<Computed> result = new ArrayList<>(computed.size());
-    for (Computed item : computed) {
-      String id = item.normalized().sourceId();
-      List<RowWarning> warnings = item.warnings();
-      if (id != null && !seen.add(id)) {
-        warnings.add(
-            new RowWarning(
-                "DUPLICATE_SOURCE_ID_IN_FILE",
-                sourceIdField,
-                "같은 원본 ID가 앞선 줄에 있어 앞선 줄과 같은 레코드로 연결합니다.",
-                Severity.WARNING));
-      }
-      result.add(
-          new Computed(
-              item.row(),
-              item.normalized(),
-              warnings,
-              id == null ? null : linked.get(id),
-              item.matches()));
-    }
-    return result;
   }
 
   private void attachRelations(

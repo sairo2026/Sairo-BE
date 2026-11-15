@@ -6,7 +6,9 @@ import com.sairo.be.domain.migration.repository.ImportRowResultRepository;
 import com.sairo.be.domain.migration.service.parser.ParsedRow;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.security.StaffPrincipal;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -25,18 +27,21 @@ public class ImportRunService {
   private final ImportFileReader fileReader;
   private final ImportRowNormalizer normalizer;
   private final ImportRunTransactions transactions;
+  private final ImportDuplicateClassifier classifier;
 
   public ImportRunService(
       ImportBatchRepository batchRepository,
       ImportRowResultRepository rowResultRepository,
       ImportFileReader fileReader,
       ImportRowNormalizer normalizer,
-      ImportRunTransactions transactions) {
+      ImportRunTransactions transactions,
+      ImportDuplicateClassifier classifier) {
     this.batchRepository = batchRepository;
     this.rowResultRepository = rowResultRepository;
     this.fileReader = fileReader;
     this.normalizer = normalizer;
     this.transactions = transactions;
+    this.classifier = classifier;
   }
 
   public void run(long batchId, StaffPrincipal principal, boolean retryOnly) {
@@ -52,15 +57,23 @@ public class ImportRunService {
               ? fileReader.loadWithLatestMapping(batch)
               : fileReader.loadWithMapping(batch, mappingVersionId);
       Set<Integer> skip =
-          retryOnly
-              ? new HashSet<>(rowResultRepository.findSucceededRowNumbers(batchId))
-              : Set.of();
+          retryOnly ? new HashSet<>(rowResultRepository.findFinishedRowNumbers(batchId)) : Set.of();
       String sourceSystem = data.mapping().getSourceSystem();
-      for (ParsedRow row : data.sheet().rows()) {
+      List<ParsedRow> rows = data.sheet().rows();
+      List<NormalizedRow> normalizedRows = new ArrayList<>(rows.size());
+      for (ParsedRow row : rows) {
+        normalizedRows.add(
+            normalizer.normalize(
+                batch.getTargetType(), data.rawByField(row), data.columnByField()));
+      }
+      ImportDuplicateClassifier.Session session =
+          classifier.open(batch.getOfficeId(), batch.getTargetType(), sourceSystem, normalizedRows);
+      for (int index = 0; index < rows.size(); index++) {
+        ParsedRow row = rows.get(index);
         if (skip.contains(row.rowNumber())) {
           continue;
         }
-        processRow(principal, data, batch, sourceSystem, row);
+        processRow(principal, batch, sourceSystem, row, normalizedRows.get(index), session);
       }
       transactions.finish(batchId);
     } catch (RuntimeException e) {
@@ -71,18 +84,27 @@ public class ImportRunService {
 
   private void processRow(
       StaffPrincipal principal,
-      ImportLoadedData data,
       ImportBatch batch,
       String sourceSystem,
-      ParsedRow row) {
-    NormalizedRow normalized =
-        normalizer.normalize(batch.getTargetType(), data.rawByField(row), data.columnByField());
+      ParsedRow row,
+      NormalizedRow normalized,
+      ImportDuplicateClassifier.Session session) {
     if (normalized.hasError()) {
       transactions.recordFailure(batch, row.rowNumber(), truncate(normalized.errorSummary()));
       return;
     }
+    ImportDuplicateClassifier.Judgement judgement = session.judge(normalized);
+    if (judgement.skipped()) {
+      transactions.recordSkipped(
+          batch, row.rowNumber(), judgement.reason(), judgement.matchedEntityId());
+      return;
+    }
     try {
-      transactions.writeRow(principal, batch, sourceSystem, normalized, row.rowNumber());
+      ImportRunTransactions.RowDisposition disposition =
+          transactions.writeRow(principal, batch, sourceSystem, normalized, row.rowNumber());
+      if (disposition == ImportRunTransactions.RowDisposition.CREATED) {
+        session.markCreated(normalized);
+      }
     } catch (BusinessException e) {
       transactions.recordFailure(batch, row.rowNumber(), truncate(describe(e)));
     } catch (RuntimeException e) {

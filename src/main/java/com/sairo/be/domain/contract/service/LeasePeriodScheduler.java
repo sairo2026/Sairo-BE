@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** 계약 매일 배치(D90-01)다. D-90 후속업무 생성 뒤 임대기간 표시값 갱신을 순서대로 한다. */
+/** 계약 매일 배치(D90-01)다. D-90 후속업무 생성, 임대기간 표시값 갱신, 임대차 만기 알림 발행을 순서대로 한다. */
 @Profile("!migrate")
 @Component
 @ConditionalOnProperty(name = "sairo.batch.enabled", havingValue = "true")
@@ -14,11 +14,15 @@ public class LeasePeriodScheduler {
 
   private final ContractFollowupService followupService;
   private final LeasePeriodService leasePeriodService;
+  private final ContractExpiryNoticeService expiryNoticeService;
 
   public LeasePeriodScheduler(
-      ContractFollowupService followupService, LeasePeriodService leasePeriodService) {
+      ContractFollowupService followupService,
+      LeasePeriodService leasePeriodService,
+      ContractExpiryNoticeService expiryNoticeService) {
     this.followupService = followupService;
     this.leasePeriodService = leasePeriodService;
+    this.expiryNoticeService = expiryNoticeService;
   }
 
   @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Seoul")
@@ -26,5 +30,6 @@ public class LeasePeriodScheduler {
   public void run() {
     followupService.createDue();
     leasePeriodService.refreshAll();
+    expiryNoticeService.publishDue();
   }
 }

@@ -25,7 +25,7 @@ public record HomeSummaryResponse(
       String propertyAddress,
       String customerName) {}
 
-  public record FollowupTask(Long taskId, String title, LocalDate dueDate) {}
+  public record FollowupTask(Long taskId, String title, LocalDate dueDate, Long contractId) {}
 
   public record OpenTask(
       Long taskId,
