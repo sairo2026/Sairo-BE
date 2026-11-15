@@ -491,11 +491,19 @@ class OpsPricingIntegrationTest extends OpsConsoleTestBase {
     assertThat(payments).isEmpty();
 
     TestData.Staff renewOwner = staff(OfficeMembershipRole.OWNER);
-    fixtures
-        .subscription(renewOwner.office().getId())
-        .status("ACTIVE")
-        .period(days(-27), days(3))
-        .insert();
+    long renewSubscription =
+        fixtures
+            .subscription(renewOwner.office().getId())
+            .status("ACTIVE")
+            .period(days(-27), days(3))
+            .insert();
+    fixtures.consent(
+        renewSubscription,
+        renewOwner.user().getId(),
+        renewOwner.office().getId(),
+        39_900,
+        3_627,
+        39_900);
     planNoticeJobs.runPaymentUpcomingNotices(now);
     planNoticeJobs.runPaymentUpcomingNotices(now);
     List<String> renewMessages =

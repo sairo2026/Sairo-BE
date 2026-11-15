@@ -305,6 +305,47 @@ class VisitRequestQueryIntegrationTest extends VisitRequestIntegrationTestBase {
   }
 
   @Test
+  void 알림_목록은_page와_size를_생략하면_예전처럼_한_번에_주고_보내면_알림함과_같은_규칙으로_나눈다() throws Exception {
+    RequestFixture f = requestFixture();
+    long requestId = submit(f);
+    long membership = f.owner().membership().getId();
+    for (int i = 0; i < 30; i++) {
+      insertNotice(
+          requestId, membership, "CONFIRMED", "now() - interval '" + (i + 1) + " minutes'");
+    }
+    String url = "/api/visit-request-notices";
+
+    mockMvc
+        .perform(authedGet(url, f.cookie()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items.length()").value(30))
+        .andExpect(jsonPath("$.page").value(0))
+        .andExpect(jsonPath("$.size").value(200))
+        .andExpect(jsonPath("$.totalElements").value(30));
+    mockMvc
+        .perform(authedGet(url + "?page=0&size=25", f.cookie()))
+        .andExpect(jsonPath("$.items.length()").value(25))
+        .andExpect(jsonPath("$.size").value(25))
+        .andExpect(jsonPath("$.totalElements").value(30));
+    mockMvc
+        .perform(authedGet(url + "?page=1&size=25", f.cookie()))
+        .andExpect(jsonPath("$.items.length()").value(5))
+        .andExpect(jsonPath("$.page").value(1));
+    mockMvc
+        .perform(authedGet(url + "?page=1", f.cookie()))
+        .andExpect(jsonPath("$.items.length()").value(5))
+        .andExpect(jsonPath("$.size").value(25));
+    mockMvc
+        .perform(authedGet(url + "?size=50&unread=true", f.cookie()))
+        .andExpect(jsonPath("$.items.length()").value(30))
+        .andExpect(jsonPath("$.totalElements").value(30));
+    assertFieldError(
+        mockMvc.perform(authedGet(url + "?size=30", f.cookie())), "size", "NOT_ALLOWED");
+    assertFieldError(
+        mockMvc.perform(authedGet(url + "?page=-1&size=25", f.cookie())), "page", "OUT_OF_RANGE");
+  }
+
+  @Test
   void 알림_읽음_처리는_멱등이고_남의_알림과_없는_알림은_404다() throws Exception {
     RequestFixture f = requestFixture();
     long requestId = submit(f);

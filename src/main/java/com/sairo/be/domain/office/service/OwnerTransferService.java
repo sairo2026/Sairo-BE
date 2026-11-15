@@ -11,6 +11,7 @@ import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.port.NotificationPublisher;
+import com.sairo.be.global.port.OwnerTransferHooks;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StepUpState;
 import com.sairo.be.global.support.AdvisoryLock;
@@ -37,6 +38,7 @@ public class OwnerTransferService {
   private final AdvisoryLock advisoryLock;
   private final JdbcClient jdbcClient;
   private final NotificationPublisher notificationPublisher;
+  private final OwnerTransferHooks transferHooks;
   private final Clock clock;
 
   public OwnerTransferService(
@@ -47,6 +49,7 @@ public class OwnerTransferService {
       AdvisoryLock advisoryLock,
       JdbcClient jdbcClient,
       NotificationPublisher notificationPublisher,
+      OwnerTransferHooks transferHooks,
       Clock clock) {
     this.transferRepository = transferRepository;
     this.membershipRepository = membershipRepository;
@@ -55,6 +58,7 @@ public class OwnerTransferService {
     this.advisoryLock = advisoryLock;
     this.jdbcClient = jdbcClient;
     this.notificationPublisher = notificationPublisher;
+    this.transferHooks = transferHooks;
     this.clock = clock;
   }
 
@@ -197,6 +201,7 @@ public class OwnerTransferService {
     membershipRepository.changeRole(from.id(), OfficeMembershipRole.AGENT, now);
     membershipRepository.changeRole(to.id(), OfficeMembershipRole.OWNER, now);
     transferRepository.markCompleted(transferId, now);
+    transferHooks.ownerTransferred(row.officeId(), now);
     sessionRefreshService.refreshAfterCommit(from.userId());
     sessionRefreshService.refreshAfterCommit(to.userId());
     return response(transferRepository.find(transferId).orElseThrow());

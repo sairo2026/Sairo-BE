@@ -3,6 +3,7 @@ package com.sairo.be.domain.contract.service;
 import com.sairo.be.domain.contract.entity.ContractValues;
 import com.sairo.be.domain.contract.entity.DealType;
 import com.sairo.be.domain.contract.entity.PartyInput;
+import com.sairo.be.domain.contract.entity.PartyRow;
 import com.sairo.be.domain.contract.entity.PartySide;
 import com.sairo.be.domain.customer.service.CustomerInput;
 import com.sairo.be.domain.customer.service.SensitiveDataDetector;
@@ -14,6 +15,8 @@ import com.sairo.be.global.support.InputRules;
 import com.sairo.be.global.support.PhoneNumbers;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
@@ -86,8 +89,8 @@ final class ContractInput {
             CustomerInput.optionalText(body, "memo", TEXT_MAX, true));
     return new Parsed(
         values,
-        parties(body, PartySide.SELLER_LANDLORD, false),
-        parties(body, PartySide.BUYER_TENANT, false));
+        parties(body, PartySide.SELLER_LANDLORD, false, true),
+        parties(body, PartySide.BUYER_TENANT, false, true));
   }
 
   /** 초안 부분 수정이다. 보낸 키만 바꾼다. */
@@ -134,8 +137,8 @@ final class ContractInput {
                 : base.memo());
     return new Parsed(
         values,
-        parties(body, PartySide.SELLER_LANDLORD, false),
-        parties(body, PartySide.BUYER_TENANT, false));
+        parties(body, PartySide.SELLER_LANDLORD, false, false),
+        parties(body, PartySide.BUYER_TENANT, false, false));
   }
 
   /** 정정 본문의 계약 값이다. 모든 키를 보내야 하며 담당자와 메모는 현재 값을 유지한다. */
@@ -161,11 +164,12 @@ final class ContractInput {
             base.memo());
     return new Parsed(
         values,
-        parties(body, PartySide.SELLER_LANDLORD, true),
-        parties(body, PartySide.BUYER_TENANT, true));
+        parties(body, PartySide.SELLER_LANDLORD, true, false),
+        parties(body, PartySide.BUYER_TENANT, true, false));
   }
 
-  private static List<PartyInput> parties(JsonNode body, PartySide side, boolean correction) {
+  private static List<PartyInput> parties(
+      JsonNode body, PartySide side, boolean correction, boolean strictPhone) {
     String field = side.field();
     if (!body.has(field)) {
       return null;
@@ -208,7 +212,7 @@ final class ContractInput {
               correction ? longValue(item, prefix, "partyId") : null,
               sequenceNo,
               name(item, prefix),
-              phone(item, prefix),
+              phone(item, prefix, strictPhone),
               longValue(item, prefix, "customerId")));
     }
     return result;
@@ -221,12 +225,47 @@ final class ContractInput {
     return text(item, prefix, "name", NAME_MAX);
   }
 
-  private static String phone(JsonNode item, String prefix) {
+  private static String phone(JsonNode item, String prefix, boolean strict) {
     if (CustomerInput.isNull(item, "phone")) {
       return null;
     }
     String value = text(item, prefix, "phone", PHONE_MAX);
-    return PhoneNumbers.normalize(value).orElse(value);
+    String normalized = PhoneNumbers.normalize(value).orElse(value);
+    if (strict) {
+      requireContactFormat(prefix + "phone", normalized);
+    }
+    return normalized;
+  }
+
+  private static void requireContactFormat(String field, String phone) {
+    if (!PhoneNumbers.isContactNumber(phone)) {
+      throw CustomerInput.invalid(field, FieldErrorCode.INVALID_FORMAT, "연락처 형식이 올바르지 않습니다.");
+    }
+  }
+
+  /** 이미 저장된 당사자 연락처와 같은 값은 형식이 어긋나도 그대로 둔다. */
+  static void requirePartyPhones(Parsed parsed, Collection<PartyRow> current) {
+    Set<String> stored = new HashSet<>();
+    for (PartyRow row : current) {
+      if (row.phone() != null) {
+        stored.add(row.phone());
+      }
+    }
+    requireSidePhones(PartySide.SELLER_LANDLORD, parsed.sellers(), stored);
+    requireSidePhones(PartySide.BUYER_TENANT, parsed.buyers(), stored);
+  }
+
+  private static void requireSidePhones(
+      PartySide side, List<PartyInput> inputs, Set<String> stored) {
+    if (inputs == null) {
+      return;
+    }
+    for (int i = 0; i < inputs.size(); i++) {
+      String phone = inputs.get(i).phone();
+      if (phone != null && !stored.contains(phone)) {
+        requireContactFormat(side.field() + "[" + i + "].phone", phone);
+      }
+    }
   }
 
   private static String text(JsonNode item, String prefix, String key, int max) {

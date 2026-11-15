@@ -373,6 +373,9 @@ public class BillingJobService {
               if (invoice.isEmpty()) {
                 subscription.startPastDue(periodStart);
                 subscriptionRepository.save(subscription);
+                if (hasBillingKey(subscription)) {
+                  noticeDispatcher.renewalNotProcessedNoConsent(subscription.getOfficeId());
+                }
                 return null;
               }
               return invoice.get().getId();
