@@ -9,6 +9,7 @@ import com.sairo.be.domain.visit.repository.VisitRequestRepository;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.security.StaffPrincipal;
+import com.sairo.be.global.support.PageQuery;
 import java.time.Clock;
 import java.util.HashMap;
 import java.util.List;
@@ -38,21 +39,30 @@ public class VisitRequestNoticeService {
   }
 
   @Transactional(readOnly = true)
-  public VisitRequestNoticeListResponse list(StaffPrincipal principal, boolean unreadOnly) {
-    PageRequest page = PageRequest.of(0, LIST_LIMIT);
+  public VisitRequestNoticeListResponse list(
+      StaffPrincipal principal, boolean unreadOnly, Integer pageNumber, Integer pageSize) {
+    boolean legacy = pageNumber == null && pageSize == null;
+    PageQuery query = legacy ? null : PageQuery.of(pageNumber, pageSize);
+    int number = legacy ? 0 : query.page();
+    int size = legacy ? LIST_LIMIT : query.size();
+    PageRequest page = PageRequest.of(number, size);
     List<VisitRequestNotice> notices =
         unreadOnly
             ? noticeRepository.findByRecipientMembershipIdAndReadAtIsNullOrderByCreatedAtDescIdDesc(
                 principal.membershipId(), page)
             : noticeRepository.findByRecipientMembershipIdOrderByCreatedAtDescIdDesc(
                 principal.membershipId(), page);
+    long total =
+        unreadOnly
+            ? noticeRepository.countByRecipientMembershipIdAndReadAtIsNull(principal.membershipId())
+            : noticeRepository.countByRecipientMembershipId(principal.membershipId());
     Map<Long, Long> coordinations = new HashMap<>();
     for (VisitRequest request :
         requestRepository.findAllById(
             notices.stream().map(VisitRequestNotice::getRequestId).distinct().toList())) {
       coordinations.put(request.getId(), request.getCoordinationId());
     }
-    return VisitRequestMapper.toNotices(notices, coordinations);
+    return VisitRequestMapper.toNotices(notices, coordinations, number, size, total);
   }
 
   @Transactional
