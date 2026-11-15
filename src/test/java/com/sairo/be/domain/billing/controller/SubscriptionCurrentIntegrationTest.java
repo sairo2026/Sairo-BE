@@ -1,10 +1,12 @@
 package com.sairo.be.domain.billing.controller;
 
 import static com.sairo.be.support.ErrorResponseAssertions.assertError;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sairo.be.domain.office.entity.OfficeMembershipRole;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.fixture.BillingFixtures;
@@ -74,6 +76,28 @@ class SubscriptionCurrentIntegrationTest extends BillingIntegrationTestBase {
         .andExpect(jsonPath("$.officeId").value(owner.office().getId()))
         .andExpect(jsonPath("$.version").value(1))
         .andExpect(jsonPath("$.subscriptionId").isNumber());
+  }
+
+  @Test
+  void 과금_인원이_2명이면_표시_요금제는_TEAM이고_저장_값은_SOLO로_남는다() throws Exception {
+    TestData.Staff owner = owner();
+    memberIn(owner, OfficeMembershipRole.AGENT);
+    fixtures
+        .subscription(owner.office().getId())
+        .status("TRIAL")
+        .trial(trialEvent(), daysFromNow(-20), daysFromNow(40))
+        .insert();
+    current(owner)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.plan").value("TEAM"))
+        .andExpect(jsonPath("$.memberCount").value(2))
+        .andExpect(jsonPath("$.nextChargeAmount").value(49_900));
+    String stored =
+        jdbcTemplate.queryForObject(
+            "SELECT plan FROM subscription WHERE office_id = ?",
+            String.class,
+            owner.office().getId());
+    assertThat(stored).isEqualTo("SOLO");
   }
 
   @Test

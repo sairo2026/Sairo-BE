@@ -160,7 +160,7 @@ public class DirectPaymentService {
             && BillingPeriods.isInReturnPeriod(subscription.getEndedAt(), now);
     return new SubscriptionStateResponse(
         subscription.getStatus().name(),
-        subscription.getPlan().name(),
+        context.displayPlan(subscription).name(),
         subscription.getStatus() == SubscriptionStatus.TRIAL
             ? toDisplayOffset(subscription.getTrialEndsAt())
             : null,

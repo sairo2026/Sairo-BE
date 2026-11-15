@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sairo.be.domain.billing.entity.SubscriptionPlan;
+import com.sairo.be.domain.billing.entity.SubscriptionStatus;
 import com.sairo.be.domain.billing.mapper.BillingMapper;
 import com.sairo.be.domain.billing.service.PriceCalculator.PriceTable;
 import java.time.Instant;
@@ -41,6 +42,24 @@ class BillingCalculationTest {
     assertThat(PriceCalculator.planFor(1)).isEqualTo(SubscriptionPlan.SOLO);
     assertThat(PriceCalculator.planFor(2)).isEqualTo(SubscriptionPlan.TEAM);
     assertThat(PriceCalculator.planFor(30)).isEqualTo(SubscriptionPlan.TEAM);
+  }
+
+  @Test
+  void 표시_요금제는_진행_중인_구독이면_과금_인원으로_계산하고_종료_정지_기업은_저장_값을_쓴다() {
+    assertThat(PriceCalculator.displayPlan(SubscriptionStatus.ACTIVE, SubscriptionPlan.SOLO, 2))
+        .isEqualTo(SubscriptionPlan.TEAM);
+    assertThat(PriceCalculator.displayPlan(SubscriptionStatus.TRIAL, SubscriptionPlan.TEAM, 1))
+        .isEqualTo(SubscriptionPlan.SOLO);
+    assertThat(
+            PriceCalculator.displayPlan(SubscriptionStatus.PRE_PAYMENT, SubscriptionPlan.SOLO, 3))
+        .isEqualTo(SubscriptionPlan.TEAM);
+    assertThat(PriceCalculator.displayPlan(SubscriptionStatus.ENDED, SubscriptionPlan.SOLO, 3))
+        .isEqualTo(SubscriptionPlan.SOLO);
+    assertThat(PriceCalculator.displayPlan(SubscriptionStatus.SUSPENDED, SubscriptionPlan.SOLO, 3))
+        .isEqualTo(SubscriptionPlan.SOLO);
+    assertThat(
+            PriceCalculator.displayPlan(SubscriptionStatus.ACTIVE, SubscriptionPlan.ENTERPRISE, 3))
+        .isEqualTo(SubscriptionPlan.ENTERPRISE);
   }
 
   @Test

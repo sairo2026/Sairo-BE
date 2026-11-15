@@ -1,6 +1,7 @@
 package com.sairo.be.domain.billing.service;
 
 import com.sairo.be.domain.billing.entity.Subscription;
+import com.sairo.be.domain.billing.entity.SubscriptionPlan;
 import com.sairo.be.domain.billing.repository.BillingQueryRepository;
 import com.sairo.be.domain.billing.repository.SubscriptionRepository;
 import com.sairo.be.global.error.BusinessException;
@@ -35,6 +36,15 @@ public class BillingContextService {
 
   public int billableMembers(Long officeId) {
     return Math.max(1, queryRepository.countBillableMembers(officeId));
+  }
+
+  public SubscriptionPlan displayPlan(Subscription subscription) {
+    return displayPlan(subscription, billableMembers(subscription.getOfficeId()));
+  }
+
+  public SubscriptionPlan displayPlan(Subscription subscription, int memberCount) {
+    return PriceCalculator.displayPlan(
+        subscription.getStatus(), subscription.getPlan(), memberCount);
   }
 
   public Instant now() {
