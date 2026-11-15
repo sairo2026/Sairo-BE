@@ -14,6 +14,7 @@ import com.sairo.be.domain.migration.entity.ImportSheetInfo;
 import com.sairo.be.domain.migration.repository.ImportSupportLinkRepository.ActiveRequest;
 import com.sairo.be.global.support.TimeRules;
 import java.util.List;
+import java.util.Objects;
 
 public final class ImportBatchMapper {
 
@@ -124,6 +125,11 @@ public final class ImportBatchMapper {
         batch.getTargetType().name(),
         batch.getStatus().name(),
         batch.getRowCount(),
+        batch.getSucceededCount(),
+        batch.getFailedCount(),
+        batch.getSucceededCount() == null
+            ? null
+            : Objects.requireNonNullElse(batch.getSkippedDuplicateCount(), 0),
         TimeRules.toDisplayOffset(batch.getCreatedAt()),
         TimeRules.toDisplayOffset(batch.getExecutedAt()),
         TimeRules.toDisplayOffset(batch.getCancellableUntil()),

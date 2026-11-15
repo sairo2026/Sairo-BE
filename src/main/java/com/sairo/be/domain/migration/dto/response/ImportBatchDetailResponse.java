@@ -24,7 +24,20 @@ public record ImportBatchDetailResponse(
     OffsetDateTime updatedAt,
     Long version) {
 
-  public record Counts(long total, long succeeded, long failed, long unprocessed) {}
+  @Schema(
+      description =
+          "total은 파일 행 수이고 succeeded, failed, skippedDuplicate, unprocessed의 합과 같다."
+              + " succeeded는 새 레코드를 만든 줄이다.")
+  public record Counts(
+      long total,
+      long succeeded,
+      long failed,
+      long skippedDuplicate,
+      long unprocessed,
+      SkippedByReason skippedByReason) {}
+
+  public record SkippedByReason(
+      long alreadyImported, long duplicateInFile, long duplicateExisting) {}
 
   public record CancelSummary(
       int cancelledCount, List<ImportCancelResponse.NotCancelled> notCancelled) {}

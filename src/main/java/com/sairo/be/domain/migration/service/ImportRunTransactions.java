@@ -5,6 +5,7 @@ import com.sairo.be.domain.migration.entity.ImportBatch;
 import com.sairo.be.domain.migration.entity.ImportRecordLink;
 import com.sairo.be.domain.migration.entity.ImportRowOutcome;
 import com.sairo.be.domain.migration.entity.ImportRowResult;
+import com.sairo.be.domain.migration.entity.ImportSkipReason;
 import com.sairo.be.domain.migration.entity.ImportTargetType;
 import com.sairo.be.domain.migration.repository.ImportBatchRepository;
 import com.sairo.be.domain.migration.repository.ImportRecordLinkRepository;
@@ -70,23 +71,33 @@ public class ImportRunTransactions {
     Optional<ImportRecordLink> existing =
         linkRepository.findByOfficeIdAndSourceSystemAndSourceTypeAndSourceId(
             batch.getOfficeId(), sourceSystem, type, sourceId);
-    RowDisposition disposition;
     if (existing.isPresent()) {
-      disposition = RowDisposition.LINKED;
-    } else {
-      long targetId = create(principal, type, normalized);
-      linkRepository.save(
-          ImportRecordLink.of(
-              batch.getId(), batch.getOfficeId(), sourceSystem, type, sourceId, targetId));
-      disposition = RowDisposition.CREATED;
+      saveResult(
+          batch,
+          rowNumber,
+          ImportRowOutcome.SKIPPED,
+          null,
+          ImportSkipReason.ALREADY_IMPORTED,
+          existing.get().getTargetEntityId());
+      return RowDisposition.LINKED;
     }
-    saveResult(batch, rowNumber, ImportRowOutcome.SUCCEEDED, null);
-    return disposition;
+    long targetId = create(principal, type, normalized);
+    linkRepository.save(
+        ImportRecordLink.of(
+            batch.getId(), batch.getOfficeId(), sourceSystem, type, sourceId, targetId));
+    saveResult(batch, rowNumber, ImportRowOutcome.SUCCEEDED, null, null, null);
+    return RowDisposition.CREATED;
+  }
+
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void recordSkipped(
+      ImportBatch batch, int rowNumber, ImportSkipReason reason, Long matchedEntityId) {
+    saveResult(batch, rowNumber, ImportRowOutcome.SKIPPED, null, reason, matchedEntityId);
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void recordFailure(ImportBatch batch, int rowNumber, String reason) {
-    saveResult(batch, rowNumber, ImportRowOutcome.FAILED, reason);
+    saveResult(batch, rowNumber, ImportRowOutcome.FAILED, reason, null, null);
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -96,6 +107,7 @@ public class ImportRunTransactions {
     batch.finishExecution(
         (int) rowResultRepository.countByBatchIdAndResult(batchId, ImportRowOutcome.SUCCEEDED),
         (int) rowResultRepository.countByBatchIdAndResult(batchId, ImportRowOutcome.FAILED),
+        (int) rowResultRepository.countByBatchIdAndResult(batchId, ImportRowOutcome.SKIPPED),
         now,
         linkRepository.existsByBatchId(batchId));
     batchRepository.saveAndFlush(batch);
@@ -108,6 +120,7 @@ public class ImportRunTransactions {
     batch.failExecution(
         (int) rowResultRepository.countByBatchIdAndResult(batchId, ImportRowOutcome.SUCCEEDED),
         (int) rowResultRepository.countByBatchIdAndResult(batchId, ImportRowOutcome.FAILED),
+        (int) rowResultRepository.countByBatchIdAndResult(batchId, ImportRowOutcome.SKIPPED),
         now,
         linkRepository.existsByBatchId(batchId));
     batchRepository.saveAndFlush(batch);
@@ -136,20 +149,31 @@ public class ImportRunTransactions {
   }
 
   private void saveResult(
-      ImportBatch batch, int rowNumber, ImportRowOutcome outcome, String reason) {
+      ImportBatch batch,
+      int rowNumber,
+      ImportRowOutcome outcome,
+      String reason,
+      ImportSkipReason skipReason,
+      Long matchedEntityId) {
     ImportRowResult row =
         rowResultRepository.findByBatchIdAndSourceRowNumber(batch.getId(), rowNumber).orElse(null);
     if (row == null) {
       rowResultRepository.save(
-          outcome == ImportRowOutcome.SUCCEEDED
-              ? ImportRowResult.succeeded(batch.getId(), batch.getOfficeId(), rowNumber)
-              : ImportRowResult.failed(batch.getId(), batch.getOfficeId(), rowNumber, reason));
+          switch (outcome) {
+            case SUCCEEDED ->
+                ImportRowResult.succeeded(batch.getId(), batch.getOfficeId(), rowNumber);
+            case FAILED ->
+                ImportRowResult.failed(batch.getId(), batch.getOfficeId(), rowNumber, reason);
+            case SKIPPED ->
+                ImportRowResult.skipped(
+                    batch.getId(), batch.getOfficeId(), rowNumber, skipReason, matchedEntityId);
+          });
       return;
     }
-    if (outcome == ImportRowOutcome.SUCCEEDED) {
-      row.markSucceeded();
-    } else {
-      row.markFailed(reason);
+    switch (outcome) {
+      case SUCCEEDED -> row.markSucceeded();
+      case FAILED -> row.markFailed(reason);
+      case SKIPPED -> row.markSkipped(skipReason, matchedEntityId);
     }
     rowResultRepository.save(row);
   }

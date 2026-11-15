@@ -15,6 +15,7 @@ import com.sairo.be.domain.property.service.PropertyQueryService;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.access.AccessPermission;
 import com.sairo.be.global.security.access.RequiresAccess;
+import com.sairo.be.global.support.IdempotentRequests;
 import com.sairo.be.global.support.IfMatchVersion;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.PageResponse;
@@ -98,13 +99,19 @@ public class PropertyController {
         PageQuery.of(page, size));
   }
 
-  @Operation(summary = "매물 등록(임시저장)", description = "name과 categoryId만 있어도 DRAFT로 저장한다.")
+  @Operation(
+      summary = "매물 등록(임시저장)",
+      description =
+          "name과 categoryId만 있어도 DRAFT로 저장한다. Idempotency-Key 헤더를 보내면 같은 키의 재요청은"
+              + " 새로 만들지 않고 첫 응답을 돌려준다.")
   @PostMapping
   @RequiresAccess(AccessPermission.AGENT_OR_OWNER)
   @ResponseStatus(HttpStatus.CREATED)
   public PropertyCreateResponse create(
-      @RequestBody JsonNode body, @AuthenticationPrincipal StaffPrincipal principal) {
-    return commandService.create(principal, body);
+      @RequestBody JsonNode body,
+      @RequestHeader(value = IdempotentRequests.HEADER, required = false) String idempotencyKey,
+      @AuthenticationPrincipal StaffPrincipal principal) {
+    return commandService.create(principal, body, idempotencyKey);
   }
 
   @Operation(summary = "등록 전 유사 주소 매물 조회", description = "같은 사무소의 보관되지 않은 매물 중 같은 주소를 찾는다.")

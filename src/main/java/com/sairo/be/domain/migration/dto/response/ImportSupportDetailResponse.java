@@ -42,7 +42,8 @@ public record ImportSupportDetailResponse(
     OffsetDateTime updatedAt,
     Long version) {
 
-  public record ExecutionResult(long succeeded, long failed, long unprocessed) {}
+  public record ExecutionResult(
+      long succeeded, long failed, long skippedDuplicate, long unprocessed) {}
 
   public record SubmittedMapping(
       int versionNo,

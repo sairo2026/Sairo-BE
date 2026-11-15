@@ -5,6 +5,7 @@ import com.sairo.be.domain.migration.dto.response.ImportBatchListResponse;
 import com.sairo.be.domain.migration.entity.ImportBatch;
 import com.sairo.be.domain.migration.entity.ImportBatchStatus;
 import com.sairo.be.domain.migration.entity.ImportRowOutcome;
+import com.sairo.be.domain.migration.entity.ImportSkipReason;
 import com.sairo.be.domain.migration.mapper.ImportBatchMapper;
 import com.sairo.be.domain.migration.repository.ImportBatchJdbcRepository;
 import com.sairo.be.domain.migration.repository.ImportBatchRepository;
@@ -12,6 +13,7 @@ import com.sairo.be.domain.migration.repository.ImportRowResultRepository;
 import com.sairo.be.domain.migration.repository.ImportSupportLinkRepository;
 import com.sairo.be.domain.migration.repository.ImportSupportLinkRepository.ActiveRequest;
 import com.sairo.be.global.security.StaffPrincipal;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
@@ -83,15 +85,33 @@ public class ImportQueryService {
           rowResultRepository.countByBatchIdAndResult(batch.getId(), ImportRowOutcome.SUCCEEDED);
       long failed =
           rowResultRepository.countByBatchIdAndResult(batch.getId(), ImportRowOutcome.FAILED);
-      return new ImportBatchDetailResponse.Counts(
-          total, succeeded, failed, Math.max(0, total - succeeded - failed));
+      return counts(batch.getId(), total, succeeded, failed);
     }
     if (batch.getSucceededCount() == null || batch.getFailedCount() == null) {
       return null;
     }
-    long succeeded = batch.getSucceededCount();
-    long failed = batch.getFailedCount();
+    return counts(batch.getId(), total, batch.getSucceededCount(), batch.getFailedCount());
+  }
+
+  private ImportBatchDetailResponse.Counts counts(
+      long batchId, long total, long succeeded, long failed) {
+    Map<ImportSkipReason, Long> byReason = new EnumMap<>(ImportSkipReason.class);
+    for (Object[] row : rowResultRepository.countSkippedByReason(batchId)) {
+      byReason.put((ImportSkipReason) row[0], (Long) row[1]);
+    }
+    ImportBatchDetailResponse.SkippedByReason breakdown =
+        new ImportBatchDetailResponse.SkippedByReason(
+            byReason.getOrDefault(ImportSkipReason.ALREADY_IMPORTED, 0L),
+            byReason.getOrDefault(ImportSkipReason.DUPLICATE_IN_FILE, 0L),
+            byReason.getOrDefault(ImportSkipReason.DUPLICATE_EXISTING, 0L));
+    long skipped =
+        breakdown.alreadyImported() + breakdown.duplicateInFile() + breakdown.duplicateExisting();
     return new ImportBatchDetailResponse.Counts(
-        total, succeeded, failed, Math.max(0, total - succeeded - failed));
+        total,
+        succeeded,
+        failed,
+        skipped,
+        Math.max(0, total - succeeded - failed - skipped),
+        breakdown);
   }
 }

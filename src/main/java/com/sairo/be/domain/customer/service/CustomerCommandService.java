@@ -18,6 +18,7 @@ import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.port.NotificationPublisher;
 import com.sairo.be.global.port.NotificationPublisher.Notice;
 import com.sairo.be.global.security.StaffPrincipal;
+import com.sairo.be.global.support.IdempotentRequests;
 import com.sairo.be.global.support.TimeRules;
 import java.time.Clock;
 import java.time.Instant;
@@ -69,6 +70,7 @@ public class CustomerCommandService {
   private final CustomerGuard guard;
   private final CustomerDetailAssembler assembler;
   private final NotificationPublisher notificationPublisher;
+  private final IdempotentRequests idempotentRequests;
   private final Clock clock;
 
   public CustomerCommandService(
@@ -78,6 +80,7 @@ public class CustomerCommandService {
       CustomerGuard guard,
       CustomerDetailAssembler assembler,
       NotificationPublisher notificationPublisher,
+      IdempotentRequests idempotentRequests,
       Clock clock) {
     this.customerRepository = customerRepository;
     this.readRepository = readRepository;
@@ -85,12 +88,20 @@ public class CustomerCommandService {
     this.guard = guard;
     this.assembler = assembler;
     this.notificationPublisher = notificationPublisher;
+    this.idempotentRequests = idempotentRequests;
     this.clock = clock;
   }
 
   @Transactional
-  public CustomerCreateResponse create(StaffPrincipal principal, JsonNode body) {
-    return register(principal, body, LifecycleCreationSource.MANUAL);
+  public CustomerCreateResponse create(
+      StaffPrincipal principal, JsonNode body, String idempotencyKey) {
+    return idempotentRequests.execute(
+        principal,
+        "POST /api/customers",
+        idempotencyKey,
+        body,
+        CustomerCreateResponse.class,
+        () -> register(principal, body, LifecycleCreationSource.MANUAL));
   }
 
   @Transactional
