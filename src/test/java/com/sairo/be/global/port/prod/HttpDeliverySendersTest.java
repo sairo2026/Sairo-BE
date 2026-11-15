@@ -25,6 +25,9 @@ class HttpDeliverySendersTest {
   private final AtomicReference<String> authorization = new AtomicReference<>();
   private final AtomicReference<String> body = new AtomicReference<>();
   private volatile int status = 200;
+  private final HtmlMailRenderer renderer =
+      new HtmlMailRenderer(
+          "https://app.sairo.agency/email/sairo-logo.png", "https://app.sairo.agency");
 
   @BeforeEach
   void startServer() throws Exception {
@@ -52,8 +55,9 @@ class HttpDeliverySendersTest {
 
   @Test
   void resendPostsMailWithBearerKey() throws Exception {
-    new ResendMailSender(baseUrl(), "test-key", "from@example.test", "사이로(SAIRO)")
-        .send(new MailMessage("to@example.test", "제목", "본문"));
+    new ResendMailSender(baseUrl(), "test-key", "from@example.test", "사이로(SAIRO)", renderer)
+        .send(
+            new MailMessage("to@example.test", "제목", "본문\n\nhttps://app.sairo.agency/verify?t=1"));
 
     assertEquals("/emails", path.get());
     assertEquals("Bearer test-key", authorization.get());
@@ -61,13 +65,19 @@ class HttpDeliverySendersTest {
     assertEquals("\"사이로(SAIRO)\" <from@example.test>", json.get("from").asString());
     assertEquals("to@example.test", json.get("to").get(0).asString());
     assertEquals("제목", json.get("subject").asString());
-    assertEquals("본문", json.get("text").asString());
+    assertEquals("본문\n\nhttps://app.sairo.agency/verify?t=1", json.get("text").asString());
+    String html = json.get("html").asString();
+    assertTrue(html.startsWith("<!DOCTYPE html>"));
+    assertTrue(html.contains("본문"));
+    assertTrue(html.contains("링크 열기"));
+    assertTrue(html.contains("https://app.sairo.agency/email/sairo-logo.png"));
   }
 
   @Test
   void resendRejectionFails() {
     status = 422;
-    ResendMailSender sender = new ResendMailSender(baseUrl(), "test-key", "from@example.test", "");
+    ResendMailSender sender =
+        new ResendMailSender(baseUrl(), "test-key", "from@example.test", "", renderer);
     assertThrows(
         IllegalStateException.class,
         () -> sender.send(new MailMessage("to@example.test", "제목", "본문")));
