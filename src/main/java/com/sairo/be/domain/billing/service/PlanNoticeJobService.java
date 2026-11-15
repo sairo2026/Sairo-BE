@@ -45,6 +45,7 @@ public class PlanNoticeJobService {
   private final SystemJobRunService jobRunService;
   private final AdvisoryLock advisoryLock;
   private final TransactionTemplate transactionTemplate;
+  private final ConsentChecker consentChecker;
 
   public PlanNoticeJobService(
       JdbcClient jdbcClient,
@@ -58,7 +59,8 @@ public class PlanNoticeJobService {
       BillingNoticeDispatcher noticeDispatcher,
       SystemJobRunService jobRunService,
       AdvisoryLock advisoryLock,
-      TransactionTemplate transactionTemplate) {
+      TransactionTemplate transactionTemplate,
+      ConsentChecker consentChecker) {
     this.jdbcClient = jdbcClient;
     this.subscriptionRepository = subscriptionRepository;
     this.cancellationRepository = cancellationRepository;
@@ -71,6 +73,7 @@ public class PlanNoticeJobService {
     this.jobRunService = jobRunService;
     this.advisoryLock = advisoryLock;
     this.transactionTemplate = transactionTemplate;
+    this.consentChecker = consentChecker;
   }
 
   public void runAll(Instant now) {
@@ -212,6 +215,10 @@ public class PlanNoticeJobService {
           }
           int members = context.billableMembers(officeId);
           long amount = PriceCalculator.monthlyAmount(price.get().table(), members);
+          if (consentChecker.findValid(subscriptionId, amount).isEmpty()) {
+            noticeDispatcher.purchaseConsentNeededBeforeRenewal(officeId, chargeAt);
+            return;
+          }
           Optional<BillingCustomer> customer =
               customerRepository.findByOfficeId(officeId).filter(BillingCustomer::hasBillingKey);
           noticeDispatcher.paymentUpcoming(

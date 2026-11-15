@@ -212,6 +212,26 @@ public class BillingNoticeDispatcher {
         officeId, "PLAN_CHANGED", BillingNoticeTemplate.CANCELLATION_REVOKED, base(officeId));
   }
 
+  /** 갱신 7일 전에 유효한 구매 동의가 없을 때 일반 갱신 안내 대신 보내는 동의 요청(PLAN_CHANGED)이다. */
+  public List<Long> purchaseConsentNeededBeforeRenewal(Long officeId, Instant chargeAt) {
+    Map<String, String> values = base(officeId);
+    values.put("결제 예정일", format(chargeAt));
+    return send(
+        officeId,
+        "PLAN_CHANGED",
+        BillingNoticeTemplate.PURCHASE_CONSENT_NEEDED_BEFORE_RENEWAL,
+        values);
+  }
+
+  /** 갱신 시점에 유효한 구매 동의가 없어 청구서를 만들지 못하고 미납유예로 들어간 안내(PAYMENT)다. */
+  public List<Long> renewalNotProcessedNoConsent(Long officeId) {
+    return send(
+        officeId,
+        "PAYMENT",
+        BillingNoticeTemplate.RENEWAL_NOT_PROCESSED_NO_CONSENT,
+        base(officeId));
+  }
+
   /** 대표 이전으로 구매 동의가 철회된 뒤 새 대표에게 다시 동의를 요청하는 안내(PLAN_CHANGED)다. */
   public List<Long> purchaseConsentReconfirm(Long officeId) {
     return send(
