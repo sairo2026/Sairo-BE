@@ -2,6 +2,10 @@ package com.sairo.be.domain.ops.service;
 
 import static com.sairo.be.global.support.TimeRules.toDisplayOffset;
 
+import com.sairo.be.domain.billing.entity.SubscriptionPlan;
+import com.sairo.be.domain.billing.entity.SubscriptionStatus;
+import com.sairo.be.domain.billing.service.BillingContextService;
+import com.sairo.be.domain.billing.service.PriceCalculator;
 import com.sairo.be.domain.ops.dto.response.OpsConsoleResponses.ArchiveGrantSummary;
 import com.sairo.be.domain.ops.dto.response.OpsConsoleResponses.EmploymentRosterSummary;
 import com.sairo.be.domain.ops.dto.response.OpsConsoleResponses.ExecSummary;
@@ -15,6 +19,7 @@ import com.sairo.be.domain.ops.dto.response.OpsConsoleResponses.SubscriptionSumm
 import com.sairo.be.domain.ops.repository.OpsConsoleQueryRepository;
 import com.sairo.be.domain.ops.repository.OpsConsoleQueryRepository.OfficeFilter;
 import com.sairo.be.domain.ops.repository.OpsConsoleQueryRepository.OfficeRow;
+import com.sairo.be.domain.ops.repository.OpsConsoleQueryRepository.SubscriptionRow;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.security.OperatorPrincipal;
@@ -52,10 +57,13 @@ public class OpsHomeService {
           "ENDED");
 
   private final OpsConsoleQueryRepository queries;
+  private final BillingContextService billingContext;
   private final Clock clock;
 
-  public OpsHomeService(OpsConsoleQueryRepository queries, Clock clock) {
+  public OpsHomeService(
+      OpsConsoleQueryRepository queries, BillingContextService billingContext, Clock clock) {
     this.queries = queries;
+    this.billingContext = billingContext;
     this.clock = clock;
   }
 
@@ -149,7 +157,7 @@ public class OpsHomeService {
                 row ->
                     new SubscriptionSummary(
                         row.status(),
-                        row.plan(),
+                        displayPlan(row, billingContext.billableMembers(officeId)),
                         toDisplayOffset(row.trialEndsAt()),
                         toDisplayOffset(
                             row.currentPeriodEnd() != null
@@ -215,6 +223,14 @@ public class OpsHomeService {
         archiveGrant,
         toDisplayOffset(office.updatedAt()),
         office.version());
+  }
+
+  private static String displayPlan(SubscriptionRow row, int memberCount) {
+    return PriceCalculator.displayPlan(
+            SubscriptionStatus.valueOf(row.status()),
+            SubscriptionPlan.valueOf(row.plan()),
+            memberCount)
+        .name();
   }
 
   private static OperatorOfficeItem toItem(OfficeRow row) {

@@ -1,6 +1,7 @@
 package com.sairo.be.domain.billing.service;
 
 import com.sairo.be.domain.billing.entity.SubscriptionPlan;
+import com.sairo.be.domain.billing.entity.SubscriptionStatus;
 
 public final class PriceCalculator {
 
@@ -10,6 +11,16 @@ public final class PriceCalculator {
 
   public static SubscriptionPlan planFor(int memberCount) {
     return memberCount <= 1 ? SubscriptionPlan.SOLO : SubscriptionPlan.TEAM;
+  }
+
+  public static SubscriptionPlan displayPlan(
+      SubscriptionStatus status, SubscriptionPlan stored, int memberCount) {
+    if (status == SubscriptionStatus.ENDED
+        || status == SubscriptionStatus.SUSPENDED
+        || stored == SubscriptionPlan.ENTERPRISE) {
+      return stored;
+    }
+    return planFor(memberCount);
   }
 
   public static long monthlyAmount(PriceTable table, int memberCount) {

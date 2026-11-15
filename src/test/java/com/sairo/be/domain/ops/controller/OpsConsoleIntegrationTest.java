@@ -212,7 +212,7 @@ class OpsConsoleIntegrationTest extends OpsConsoleTestBase {
         .andExpect(jsonPath("$.members[0].status").value("APPROVED"))
         .andExpect(jsonPath("$.employmentRoster.agentCount").value(1))
         .andExpect(jsonPath("$.employmentRoster.deputyCount").value(1))
-        .andExpect(jsonPath("$.subscription.plan").value("TEAM"))
+        .andExpect(jsonPath("$.subscription.plan").value("SOLO"))
         .andExpect(jsonPath("$.subscription.currentPeriodEnd").exists())
         .andExpect(jsonPath("$.openInquiryCount").value(1))
         .andExpect(jsonPath("$.returnGrant").isEmpty())
