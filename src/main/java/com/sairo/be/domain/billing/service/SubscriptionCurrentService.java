@@ -99,7 +99,7 @@ public class SubscriptionCurrentService {
 
     return new SubscriptionCurrentResponse(
         status.name(),
-        subscription.getPlan().name(),
+        context.displayPlan(subscription, memberCount).name(),
         memberCount,
         selection.map(PriceSelection::version).orElse(null),
         agreement.map(this::toStartCustomer).orElse(null),

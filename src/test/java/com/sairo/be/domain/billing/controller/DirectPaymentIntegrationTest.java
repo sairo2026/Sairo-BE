@@ -6,10 +6,12 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sairo.be.domain.office.entity.OfficeMembershipRole;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.port.PaymentGateway.ChargeCommand;
 import com.sairo.be.global.port.PaymentGateway.PaymentStatus;
 import com.sairo.be.support.IntegrationTest;
+import com.sairo.be.support.fixture.TestData;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -29,6 +31,36 @@ class DirectPaymentIntegrationTest extends PaymentTestBase {
 
   private long count(String table) {
     return jdbcTemplate.queryForObject("SELECT count(*) FROM " + table, Long.class);
+  }
+
+  @Test
+  void 과금_인원이_2명이면_첫_결제_응답은_TEAM이고_저장_요금제는_SOLO이며_청구액은_2명_기준이다() throws Exception {
+    TestData.Staff owner = owner();
+    memberIn(owner, OfficeMembershipRole.AGENT);
+    long subscriptionId =
+        fixtures
+            .subscription(owner.office().getId())
+            .status("PRE_PAYMENT")
+            .prePaymentSince(daysFromNow(-2))
+            .insert();
+    fixtures.consent(
+        subscriptionId, owner.user().getId(), owner.office().getId(), 49_900, 4_536, 49_900);
+    fixtures.billingCustomerWithKey(
+        owner.office().getId(),
+        "customer-key-" + owner.office().getId(),
+        billingKeyCipher.encrypt(BILLING_KEY));
+    mockMvc
+        .perform(postRequest(FIRST, "").apply(cookieOf(owner)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("ACTIVE"))
+        .andExpect(jsonPath("$.plan").value("TEAM"));
+    String stored =
+        jdbcTemplate.queryForObject(
+            "SELECT plan FROM subscription WHERE id = ?", String.class, subscriptionId);
+    assertThat(stored).isEqualTo("SOLO");
+    Map<String, Object> invoice =
+        jdbcTemplate.queryForMap("SELECT amount, member_count_snapshot FROM billing_invoice");
+    assertThat(invoice).containsEntry("amount", 49_900L).containsEntry("member_count_snapshot", 2);
   }
 
   @Test
