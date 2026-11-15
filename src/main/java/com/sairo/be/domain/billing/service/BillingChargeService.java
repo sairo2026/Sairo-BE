@@ -47,6 +47,7 @@ public class BillingChargeService {
   private final SubscriptionTransitions transitions;
   private final TransactionTemplate transactionTemplate;
   private final BillingNoticeDispatcher noticeDispatcher;
+  private final LiveChargingGuard liveChargingGuard;
   private final Clock clock;
 
   public BillingChargeService(
@@ -62,6 +63,7 @@ public class BillingChargeService {
       SubscriptionTransitions transitions,
       TransactionTemplate transactionTemplate,
       BillingNoticeDispatcher noticeDispatcher,
+      LiveChargingGuard liveChargingGuard,
       Clock clock) {
     this.invoiceRepository = invoiceRepository;
     this.attemptRepository = attemptRepository;
@@ -75,10 +77,12 @@ public class BillingChargeService {
     this.transitions = transitions;
     this.transactionTemplate = transactionTemplate;
     this.noticeDispatcher = noticeDispatcher;
+    this.liveChargingGuard = liveChargingGuard;
     this.clock = clock;
   }
 
   public ChargeOutcome charge(Long invoiceId) {
+    liveChargingGuard.requireChargeAllowed();
     Prepared prepared = transactionTemplate.execute(status -> prepare(invoiceId));
     PaymentResult result;
     try {
