@@ -1,10 +1,12 @@
 package com.sairo.be.domain.office.service;
 
 import com.sairo.be.domain.office.entity.OfficeMembershipStatus;
+import com.sairo.be.domain.office.entity.OfficeRequestSource;
 import com.sairo.be.domain.office.repository.MembershipRecordRepository;
 import com.sairo.be.domain.office.repository.MembershipRecordRepository.Row;
 import com.sairo.be.domain.office.repository.OfficeMembershipHistoryRepository;
 import com.sairo.be.domain.office.repository.OfficeMembershipHistoryRepository.Actor;
+import com.sairo.be.global.port.NotificationPublisher;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -18,14 +20,17 @@ public class MembershipExpiryService {
 
   private final MembershipRecordRepository repository;
   private final OfficeMembershipHistoryRepository historyRepository;
+  private final NotificationPublisher notificationPublisher;
   private final Clock clock;
 
   public MembershipExpiryService(
       MembershipRecordRepository repository,
       OfficeMembershipHistoryRepository historyRepository,
+      NotificationPublisher notificationPublisher,
       Clock clock) {
     this.repository = repository;
     this.historyRepository = historyRepository;
+    this.notificationPublisher = notificationPublisher;
     this.clock = clock;
   }
 
@@ -49,6 +54,9 @@ public class MembershipExpiryService {
           null,
           "기한 만료",
           now);
+      if (row.requestSource() == OfficeRequestSource.INVITE) {
+        notificationPublisher.retract("INVITATION", "MEMBERSHIP", row.id());
+      }
       expired++;
     }
     return expired;

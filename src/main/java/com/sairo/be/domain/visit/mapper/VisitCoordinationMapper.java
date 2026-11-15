@@ -88,7 +88,8 @@ public final class VisitCoordinationMapper {
       Map<Long, List<Slot>> applicableSlots,
       Map<Long, ItemState> states,
       List<ScheduleStateService.Alternative> alternatives,
-      Map<Long, CandidateGrant> grants) {
+      Map<Long, CandidateGrant> grants,
+      Map<Long, Long> approvalIds) {
     java.util.Set<Long> confirmedCandidates = new java.util.HashSet<>();
     for (ItemRow item : items) {
       if (item.confirmedRequestId() != null && item.kept()) {
@@ -124,7 +125,8 @@ public final class VisitCoordinationMapper {
                         officeNames.getOrDefault(candidate.getPropertyOfficeId(), ""),
                         grants.get(candidate.getId()),
                         confirmedCandidates.contains(candidate.getId()),
-                        applicableSlots.getOrDefault(candidate.getId(), List.of())))
+                        applicableSlots.getOrDefault(candidate.getId(), List.of()),
+                        approvalIds.get(candidate.getId())))
             .toList(),
         scheduleItems(items, states),
         alternatives(alternatives),
@@ -161,7 +163,8 @@ public final class VisitCoordinationMapper {
       String ownerOfficeName,
       CandidateGrant grant,
       boolean confirmed,
-      List<Slot> applicable) {
+      List<Slot> applicable,
+      Long approvalId) {
     boolean crossOffice = candidate.isCrossOffice();
     boolean hideDetail = crossOffice && !confirmed;
     return new VisitCoordinationDetailResponse.Candidate(
@@ -184,7 +187,10 @@ public final class VisitCoordinationMapper {
                     new VisitCoordinationDetailResponse.TimeSlot(
                         TimeRules.toDisplayOffset(slot.startsAt()),
                         TimeRules.toDisplayOffset(slot.endsAt())))
-            .toList());
+            .toList(),
+        candidate.getVisitDurationMinutes(),
+        candidate.getTravelDurationMinutes(),
+        approvalId);
   }
 
   public static List<VisitCoordinationDetailResponse.Alternative> alternatives(

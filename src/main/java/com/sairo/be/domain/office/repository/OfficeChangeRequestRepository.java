@@ -17,6 +17,8 @@ public interface OfficeChangeRequestRepository extends JpaRepository<OfficeChang
   Page<OfficeChangeRequest> findByOfficeIdAndStatusIn(
       Long officeId, Collection<ChangeRequestStatus> statuses, Pageable pageable);
 
+  boolean existsByOfficeIdAndStatus(Long officeId, ChangeRequestStatus status);
+
   Page<OfficeChangeRequest> findByStatusIn(
       Collection<ChangeRequestStatus> statuses, Pageable pageable);
 

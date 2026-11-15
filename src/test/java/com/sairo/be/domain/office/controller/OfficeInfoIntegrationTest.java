@@ -3,6 +3,7 @@ package com.sairo.be.domain.office.controller;
 import static com.sairo.be.support.AuthFlowSupport.jsonPatch;
 import static com.sairo.be.support.AuthFlowSupport.jsonPost;
 import static com.sairo.be.support.ErrorResponseAssertions.assertError;
+import static com.sairo.be.support.ErrorResponseAssertions.assertFieldError;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -250,6 +251,9 @@ class OfficeInfoIntegrationTest extends AuthIntegrationTestBase {
               "/api/office-change-requests",
               "{\"changeType\":\"ADDRESS\",\"requestedValues\":{\"address\":\"" + address + "\"}}",
               cookie));
+      jdbcTemplate.update(
+          "UPDATE office_change_request SET status = 'REJECTED', reviewed_at = now(),"
+              + " rejection_reason = '반려' WHERE requested_values LIKE '%첫째%'");
     }
     Cookie otherCookie = cookieOf(other);
     grantStepUp(otherCookie);
@@ -295,5 +299,121 @@ class OfficeInfoIntegrationTest extends AuthIntegrationTestBase {
         ErrorCode.FORBIDDEN);
     assertError(mockMvc.perform(get("/api/office-change-requests")), ErrorCode.UNAUTHENTICATED);
     assertThat(AuthFlowSupport.CSRF_VALUE).isNotBlank();
+  }
+
+  @Test
+  void 연락처_수정은_숫자가_충분하지_않은_값을_INVALID_FORMAT으로_거절한다() throws Exception {
+    var owner = staff(OfficeMembershipRole.OWNER);
+    Cookie cookie = cookieOf(owner);
+    for (String invalid :
+        new String[] {
+          "+++++++", "()- ()- ", "-------", "012345", "+82+10-0000-0002", "0101234567890123456"
+        }) {
+      assertFieldError(
+          mockMvc.perform(patchPhone(cookie, "1", "{\"representativePhone\":\"" + invalid + "\"}")),
+          "representativePhone",
+          "INVALID_FORMAT");
+    }
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT representative_phone FROM office WHERE id = ?",
+                String.class,
+                owner.office().getId()))
+        .isEqualTo("010-0000-0000");
+  }
+
+  @Test
+  void 연락처_수정은_국내_번호와_국제_번호_형식을_받는다() throws Exception {
+    var owner = staff(OfficeMembershipRole.OWNER);
+    Cookie cookie = cookieOf(owner);
+    long version = 1;
+    for (String valid : new String[] {"02-123-4567", "+82 10-0000-0002", "(02) 1234-5678"}) {
+      mockMvc
+          .perform(
+              patchPhone(
+                  cookie, String.valueOf(version), "{\"representativePhone\":\"" + valid + "\"}"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.representativePhone").value(valid));
+      version++;
+    }
+  }
+
+  @Test
+  void 변경_신청은_진행_중인_신청이_있으면_409로_거절하고_처리된_뒤에는_다시_받는다() throws Exception {
+    var owner = staff(OfficeMembershipRole.OWNER);
+    Cookie cookie = cookieOf(owner);
+    String body = "{\"changeType\":\"ADDRESS\",\"requestedValues\":{\"address\":\"서울 새 주소\"}}";
+    grantStepUp(cookie);
+    mockMvc
+        .perform(jsonPost("/api/office-change-requests", body, cookie))
+        .andExpect(status().isCreated());
+    grantStepUp(cookie);
+    assertError(
+        mockMvc.perform(jsonPost("/api/office-change-requests", body, cookie)),
+        ErrorCode.PENDING_REGISTRATION_EXISTS);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM office_change_request WHERE office_id = ?",
+                Integer.class,
+                owner.office().getId()))
+        .isEqualTo(1);
+    jdbcTemplate.update(
+        "UPDATE office_change_request SET status = 'REJECTED', reviewed_at = now(),"
+            + " rejection_reason = '반려' WHERE office_id = ?",
+        owner.office().getId());
+    mockMvc
+        .perform(jsonPost("/api/office-change-requests", body, cookie))
+        .andExpect(status().isCreated());
+  }
+
+  @Test
+  void 변경_신청은_다른_사무소의_진행_중_신청에_막히지_않는다() throws Exception {
+    var first = staff(OfficeMembershipRole.OWNER);
+    var second = staff(OfficeMembershipRole.OWNER);
+    String body = "{\"changeType\":\"ADDRESS\",\"requestedValues\":{\"address\":\"서울 새 주소\"}}";
+    for (var owner : new TestData.Staff[] {first, second}) {
+      Cookie cookie = cookieOf(owner);
+      grantStepUp(cookie);
+      mockMvc
+          .perform(jsonPost("/api/office-change-requests", body, cookie))
+          .andExpect(status().isCreated());
+    }
+  }
+
+  @Test
+  void 변경_신청은_사업자등록번호_검증번호가_틀리면_400이고_하이픈_표기는_정규화해_받는다() throws Exception {
+    var owner = staff(OfficeMembershipRole.OWNER);
+    Cookie cookie = cookieOf(owner);
+    grantStepUp(cookie);
+    assertFieldError(
+        mockMvc.perform(
+            jsonPost(
+                "/api/office-change-requests",
+                "{\"changeType\":\"REGISTRATION_INFO\",\"requestedValues\":{\"businessRegistrationNumber\":\"1234567890\"}}",
+                cookie)),
+        "requestedValues.businessRegistrationNumber",
+        "INVALID_VALUE");
+    mockMvc
+        .perform(
+            jsonPost(
+                "/api/office-change-requests",
+                "{\"changeType\":\"REGISTRATION_INFO\",\"requestedValues\":{\"businessRegistrationNumber\":\"123-45-67891\"}}",
+                cookie))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.requestedValues.businessRegistrationNumber").value("1234567891"));
+  }
+
+  @Test
+  void 대표자_변경_신청의_연락처도_숫자가_없는_값은_400이다() throws Exception {
+    Cookie cookie = cookieOf(staff(OfficeMembershipRole.OWNER));
+    grantStepUp(cookie);
+    assertFieldError(
+        mockMvc.perform(
+            jsonPost(
+                "/api/office-change-requests",
+                "{\"changeType\":\"REPRESENTATIVE\",\"requestedValues\":{\"representativePhone\":\"+++++++\"}}",
+                cookie)),
+        "requestedValues.representativePhone",
+        "INVALID_FORMAT");
   }
 }

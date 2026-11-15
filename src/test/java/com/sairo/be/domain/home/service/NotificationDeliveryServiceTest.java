@@ -69,6 +69,7 @@ class NotificationDeliveryServiceTest {
     assertThat(NotificationDeliveryService.subjectOf("DELETION_SCHEDULED"))
         .isEqualTo("[사이로] 삭제 예정 안내");
     assertThat(NotificationDeliveryService.subjectOf("TERMS_CHANGED")).isEqualTo("[사이로] 약관 변경 안내");
+    assertThat(NotificationDeliveryService.subjectOf("OWNER_TRANSFER")).isEqualTo("[사이로] 대표 이전 안내");
   }
 
   @Test

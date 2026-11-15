@@ -69,13 +69,32 @@ class ApproverConditionParserTest {
     JsonNode body =
         MAPPER.readTree(
             "{\"appliesFrom\":\"2030-01-01T00:00:00+09:00\",\"appliesUntil\":\"2030-03-01T00:00:00+09:00\","
-                + "\"windows\":[]}");
+                + "\"windows\":["
+                + weekday(1, "09:00", "10:00", false)
+                + "]}");
 
     Parsed parsed = ApproverConditionParser.parse(body, Mode.LINK_PREVIEW);
 
     assertThat(parsed.impactAcknowledged()).isFalse();
     assertThat(parsed.acknowledgedNoticeVersion()).isNull();
-    assertThat(parsed.spec().windows()).isEmpty();
+    assertThat(parsed.spec().windows()).hasSize(1);
+  }
+
+  @Test
+  void 가능_시간대가_없거나_제외_시간대만_있으면_windows_필드_오류로_거절한다() {
+    for (String windows : new String[] {"[]", "[" + weekday(1, "09:00", "10:00", true) + "]"}) {
+      for (Mode mode : new Mode[] {Mode.LINK_SAVE, Mode.LINK_PREVIEW}) {
+        assertThatThrownBy(() -> ApproverConditionParser.parse(json(windows, ""), mode))
+            .isInstanceOfSatisfying(
+                BusinessException.class,
+                e -> {
+                  assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST);
+                  assertThat(e.getFieldErrors()).hasSize(1);
+                  assertThat(e.getFieldErrors().get(0).field()).isEqualTo("windows");
+                  assertThat(e.getFieldErrors().get(0).code().name()).isEqualTo("REQUIRED");
+                });
+      }
+    }
   }
 
   @Test
@@ -89,7 +108,10 @@ class ApproverConditionParserTest {
     rules.append("]");
 
     assertThatThrownBy(
-            () -> ApproverConditionParser.parse(json("[]", rules.toString()), Mode.LINK_SAVE))
+            () ->
+                ApproverConditionParser.parse(
+                    json("[" + weekday(1, "09:00", "10:00", false) + "]", rules.toString()),
+                    Mode.LINK_SAVE))
         .isInstanceOfSatisfying(
             BusinessException.class,
             e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));

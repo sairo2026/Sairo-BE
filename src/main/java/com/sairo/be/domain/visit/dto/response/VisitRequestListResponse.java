@@ -12,6 +12,7 @@ public record VisitRequestListResponse(List<Item> items) {
       boolean crossOffice,
       Long accessGrantId,
       Long candidatePropertyId,
+      String requestKind,
       String status,
       OffsetDateTime requestedStartAt,
       OffsetDateTime requestedEndAt,

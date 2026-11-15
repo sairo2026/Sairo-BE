@@ -305,6 +305,7 @@ public class TaskService {
         row.completedAt() == null ? null : TimeRules.toDisplayOffset(row.completedAt()),
         row.status(),
         row.sourceType(),
+        row.sourceId(),
         row.officeId(),
         TimeRules.toDisplayOffset(row.createdAt()),
         TimeRules.toDisplayOffset(row.updatedAt()),

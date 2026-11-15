@@ -12,6 +12,8 @@ import com.sairo.be.domain.office.repository.OfficeMembershipHistoryRepository.A
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
+import com.sairo.be.global.port.NotificationPublisher;
+import com.sairo.be.global.port.NotificationPublisher.Notice;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StepUpState;
 import com.sairo.be.global.support.AdvisoryLock;
@@ -21,6 +23,7 @@ import java.time.Instant;
 import java.util.List;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +37,9 @@ public class MembershipAdminService {
   private final StepUpState stepUpState;
   private final AdvisoryLock advisoryLock;
   private final MemberWorkHandoverService workHandoverService;
+  private final DeputyQuotaService quotaService;
+  private final NotificationPublisher notificationPublisher;
+  private final JdbcClient jdbcClient;
   private final Clock clock;
 
   public MembershipAdminService(
@@ -43,6 +49,9 @@ public class MembershipAdminService {
       StepUpState stepUpState,
       AdvisoryLock advisoryLock,
       MemberWorkHandoverService workHandoverService,
+      DeputyQuotaService quotaService,
+      NotificationPublisher notificationPublisher,
+      JdbcClient jdbcClient,
       Clock clock) {
     this.repository = repository;
     this.historyRepository = historyRepository;
@@ -50,6 +59,9 @@ public class MembershipAdminService {
     this.stepUpState = stepUpState;
     this.advisoryLock = advisoryLock;
     this.workHandoverService = workHandoverService;
+    this.quotaService = quotaService;
+    this.notificationPublisher = notificationPublisher;
+    this.jdbcClient = jdbcClient;
     this.clock = clock;
   }
 
@@ -64,6 +76,9 @@ public class MembershipAdminService {
       throw MembershipRules.invalid("role", FieldErrorCode.NOT_ALLOWED, "대표 변경은 대표 이전 절차를 써야 합니다.");
     }
     stepUpState.require(session);
+    if (role == OfficeMembershipRole.DEPUTY) {
+      advisoryLock.lockForTransaction("membership-quota:" + owner.officeId());
+    }
     Row row = lockInOffice(owner, membershipId);
     if (row.version() != expectedVersion) {
       throw BusinessException.versionConflict(row.version());
@@ -74,11 +89,18 @@ public class MembershipAdminService {
     if (row.status() != OfficeMembershipStatus.APPROVED) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
+    if (role == OfficeMembershipRole.DEPUTY
+        && row.role() != OfficeMembershipRole.DEPUTY
+        && quotaService.wouldExceedWithAdditionalDeputy(owner.officeId())) {
+      throw new BusinessException(ErrorCode.DEPUTY_QUOTA_EXCEEDED);
+    }
     Instant now = clock.instant();
     repository.changeRole(membershipId, role, now);
     if (role == OfficeMembershipRole.DEPUTY) {
       workHandoverService.handOverToOwner(owner.officeId(), membershipId, now);
     }
+    publishToMember(
+        owner.officeId(), membershipId, MembershipNotices.roleChanged(officeName(owner), role));
     stepUpState.consume(session);
     sessionRefreshService.refreshAfterCommit(row.userId());
     return MembershipMapper.toRoleResult(repository.find(membershipId).orElseThrow());
@@ -102,6 +124,7 @@ public class MembershipAdminService {
         owner.membershipId(),
         reason.strip(),
         now);
+    publishToMember(owner.officeId(), membershipId, MembershipNotices.suspended(officeName(owner)));
     sessionRefreshService.terminateAfterCommit(List.of(row.userId()));
     return MembershipMapper.toResult(repository.find(membershipId).orElseThrow());
   }
@@ -114,7 +137,7 @@ public class MembershipAdminService {
     }
     Instant now = clock.instant();
     try {
-      repository.approve(membershipId, now);
+      repository.reinstate(membershipId, now);
     } catch (DataIntegrityViolationException e) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
@@ -126,6 +149,8 @@ public class MembershipAdminService {
         owner.membershipId(),
         null,
         now);
+    publishToMember(
+        owner.officeId(), membershipId, MembershipNotices.reinstated(officeName(owner)));
     return MembershipMapper.toResult(repository.find(membershipId).orElseThrow());
   }
 
@@ -176,6 +201,19 @@ public class MembershipAdminService {
         null,
         now);
     sessionRefreshService.refreshAfterCommit(row.userId());
+  }
+
+  private void publishToMember(Long officeId, Long membershipId, String message) {
+    notificationPublisher.publishToMembership(
+        membershipId, new Notice(officeId, null, "SECURITY_ALERT", message, "NONE", null));
+  }
+
+  private String officeName(StaffPrincipal owner) {
+    return jdbcClient
+        .sql("SELECT name FROM office WHERE id = :id")
+        .param("id", owner.officeId())
+        .query(String.class)
+        .single();
   }
 
   private void requireNotLastOwner(Row row) {

@@ -3,6 +3,7 @@ package com.sairo.be.domain.support.service;
 import com.sairo.be.domain.customer.service.CustomerInput;
 import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.support.InputRules;
+import com.sairo.be.global.support.PhoneNumbers;
 import java.util.Set;
 import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
@@ -46,7 +47,7 @@ public final class EnterpriseLeadParser {
       throw CustomerInput.invalid("contactEmail", FieldErrorCode.INVALID_FORMAT, "이메일 형식이 아닙니다.");
     }
     String contactPhone = CustomerInput.requiredText(body, "contactPhone", 30, false);
-    if (!PHONE.matcher(contactPhone).matches()) {
+    if (!PhoneNumbers.isContactNumber(contactPhone)) {
       throw CustomerInput.invalid("contactPhone", FieldErrorCode.INVALID_FORMAT, "연락처 형식이 아닙니다.");
     }
     int branchCount = count(body, "branchCount");

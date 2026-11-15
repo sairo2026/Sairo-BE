@@ -18,6 +18,7 @@ import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StaffRole;
 import com.sairo.be.global.security.StepUpState;
+import com.sairo.be.global.support.AdvisoryLock;
 import com.sairo.be.global.support.InputRules;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.PageResponse;
@@ -41,16 +42,19 @@ public class OfficeInfoService {
   private final OfficeChangeRequestRepository changeRequestRepository;
   private final ChangeValuesCodec codec;
   private final StepUpState stepUpState;
+  private final AdvisoryLock advisoryLock;
 
   public OfficeInfoService(
       OfficeRepository officeRepository,
       OfficeChangeRequestRepository changeRequestRepository,
       ChangeValuesCodec codec,
-      StepUpState stepUpState) {
+      StepUpState stepUpState,
+      AdvisoryLock advisoryLock) {
     this.officeRepository = officeRepository;
     this.changeRequestRepository = changeRequestRepository;
     this.codec = codec;
     this.stepUpState = stepUpState;
+    this.advisoryLock = advisoryLock;
   }
 
   @Transactional(readOnly = true)
@@ -86,6 +90,11 @@ public class OfficeInfoService {
       StaffPrincipal principal, HttpSession session, OfficeChangeRequestCreateRequest request) {
     Map<String, String> values = validateValues(request.changeType(), request.requestedValues());
     stepUpState.require(session);
+    advisoryLock.lockForTransaction("office-change-request:" + principal.officeId());
+    if (changeRequestRepository.existsByOfficeIdAndStatus(
+        principal.officeId(), ChangeRequestStatus.PENDING_REVIEW)) {
+      throw new BusinessException(ErrorCode.PENDING_REGISTRATION_EXISTS);
+    }
     Office office = requireOffice(principal.officeId());
     OfficeChangeRequest saved =
         changeRequestRepository.saveAndFlush(
@@ -137,7 +146,7 @@ public class OfficeInfoService {
   private String validateValue(String key, String raw) {
     String field = "requestedValues." + key;
     return switch (key) {
-      case "businessRegistrationNumber" -> OfficeInputRules.businessNumber(field, raw);
+      case "businessRegistrationNumber" -> OfficeInputRules.businessNumberWithChecksum(field, raw);
       case "representativePhone" -> OfficeInputRules.phone(field, raw);
       case "entityType" -> {
         try {

@@ -136,6 +136,21 @@ public class MembershipRecordRepository {
         "status = 'APPROVED', approved_at = :now, suspended_at = NULL, suspension_reason = NULL,");
   }
 
+  public void reinstate(long id, Instant now) {
+    update(id, now, "status = 'APPROVED', suspended_at = NULL, suspension_reason = NULL,");
+  }
+
+  public Optional<Long> unresolvedRejection(long officeId, long userId) {
+    return jdbcClient
+        .sql(
+            "SELECT id FROM office_membership WHERE office_id = :office AND user_id = :user AND"
+                + " status = 'REJECTED' AND resolved_at IS NULL FOR UPDATE")
+        .param("office", officeId)
+        .param("user", userId)
+        .query(Long.class)
+        .optional();
+  }
+
   public void reject(long id, String reason, Instant now) {
     jdbcClient
         .sql(

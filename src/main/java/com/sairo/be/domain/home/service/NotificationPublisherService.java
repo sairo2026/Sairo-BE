@@ -116,6 +116,12 @@ public class NotificationPublisherService implements NotificationPublisher {
     return ids;
   }
 
+  @Override
+  @Transactional(propagation = Propagation.REQUIRED)
+  public int retract(String type, String targetType, Long targetId) {
+    return repository.deleteByTarget(type, targetType, targetId);
+  }
+
   private void deliver(Delivery delivery) {
     NotificationChannelSender sender = channelSender.getIfAvailable();
     if (sender == null) {

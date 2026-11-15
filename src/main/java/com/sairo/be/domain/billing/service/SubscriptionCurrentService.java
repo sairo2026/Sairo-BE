@@ -17,6 +17,8 @@ import com.sairo.be.domain.billing.repository.SubscriptionPurchaseConsentReposit
 import com.sairo.be.domain.billing.service.PriceScheduleSelector.PriceSelection;
 import com.sairo.be.domain.legal.service.TermsCatalogService;
 import com.sairo.be.domain.legal.service.TermsVersionView;
+import com.sairo.be.global.error.BusinessException;
+import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.security.StaffPrincipal;
 import java.time.Instant;
 import java.util.Optional;
@@ -33,6 +35,7 @@ public class SubscriptionCurrentService {
 
   private final BillingContextService context;
   private final PriceScheduleSelector priceSelector;
+  private final PurchaseQuoteService purchaseQuote;
   private final BillingQueryRepository queryRepository;
   private final BillingCustomerRepository customerRepository;
   private final SubscriptionPurchaseConsentRepository consentRepository;
@@ -42,6 +45,7 @@ public class SubscriptionCurrentService {
   public SubscriptionCurrentService(
       BillingContextService context,
       PriceScheduleSelector priceSelector,
+      PurchaseQuoteService purchaseQuote,
       BillingQueryRepository queryRepository,
       BillingCustomerRepository customerRepository,
       SubscriptionPurchaseConsentRepository consentRepository,
@@ -49,6 +53,7 @@ public class SubscriptionCurrentService {
       TermsCatalogService termsCatalogService) {
     this.context = context;
     this.priceSelector = priceSelector;
+    this.purchaseQuote = purchaseQuote;
     this.queryRepository = queryRepository;
     this.customerRepository = customerRepository;
     this.consentRepository = consentRepository;
@@ -69,12 +74,14 @@ public class SubscriptionCurrentService {
 
     Instant nextChargeAt = nextChargeAt(subscription, cancellation.isPresent());
     Long nextChargeAmount =
-        nextChargeAt == null
-            ? null
-            : priceSelector
-                .find(officeId, nextChargeAt)
-                .map(found -> PriceCalculator.monthlyAmount(found.table(), memberCount))
-                .orElse(null);
+        status == SubscriptionStatus.PRE_PAYMENT
+            ? prePaymentAmount(officeId, subscription)
+            : nextChargeAt == null
+                ? null
+                : priceSelector
+                    .find(officeId, nextChargeAt)
+                    .map(found -> PriceCalculator.monthlyAmount(found.table(), memberCount))
+                    .orElse(null);
 
     boolean pastDue =
         status == SubscriptionStatus.PAST_DUE_GRACE
@@ -148,6 +155,17 @@ public class SubscriptionCurrentService {
         toDisplayOffset(subscription.getUpdatedAt()),
         subscription.getVersion(),
         subscription.getId());
+  }
+
+  private Long prePaymentAmount(Long officeId, Subscription subscription) {
+    try {
+      return purchaseQuote.quote(officeId, subscription).totalAmountInclVat();
+    } catch (BusinessException e) {
+      if (e.getErrorCode() == ErrorCode.PRICE_SCHEDULE_NOT_PUBLISHED) {
+        return null;
+      }
+      throw e;
+    }
   }
 
   private SubscriptionCurrentResponse.StartCustomer toStartCustomer(ApprovedAgreementRow row) {

@@ -23,6 +23,7 @@ import com.sairo.be.support.fixture.AppUserBuilder;
 import com.sairo.be.support.fixture.TestData;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -115,6 +116,14 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
             .andExpect(status().isCreated())
             .andReturn();
     return AuthFlowSupport.json(result).get("transferId").asLong();
+  }
+
+  private List<String> transferNotices(TestData.Staff recipient) {
+    return jdbcTemplate.queryForList(
+        "SELECT message FROM notification WHERE recipient_user_id = ? AND notification_type ="
+            + " 'OWNER_TRANSFER' AND target_type = 'NONE' AND target_id IS NULL ORDER BY id",
+        String.class,
+        recipient.user().getId());
   }
 
   private String transferStatus(long id) {
@@ -339,11 +348,19 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
                 id))
         .startsWith("7 days");
     Cookie agentCookie = cookieOf(agent);
+    assertThat(transferNotices(agent)).hasSize(1);
+    assertThat(transferNotices(agent).get(0)).contains("대표 이전을 요청했습니다");
+    assertThat(transferNotices(owner)).isEmpty();
     post("/api/owner-transfers/" + id + "/accept", "", agentCookie)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("UNDER_REVIEW"))
         .andExpect(jsonPath("$.acceptedAt").exists())
         .andExpect(jsonPath("$.toDisplayName").exists());
+    assertThat(transferNotices(owner)).hasSize(1);
+    assertThat(transferNotices(owner).get(0)).contains("대표 이전을 수락했습니다");
+    assertThat(
+            jdbcTemplate.queryForObject("SELECT count(*) FROM notification_delivery", Long.class))
+        .isEqualTo(2L);
     mockMvc
         .perform(get("/api/offices/current/owner-transfer").cookie(agentCookie))
         .andExpect(jsonPath("$.status").value("UNDER_REVIEW"))
@@ -422,6 +439,8 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("REJECTED"))
         .andExpect(jsonPath("$.rejectedAt").exists());
+    assertThat(transferNotices(owner)).hasSize(1);
+    assertThat(transferNotices(owner).get(0)).contains("대표 이전을 거절했습니다");
     assertError(post(accept, "", agentCookie), ErrorCode.INVALID_TRANSITION);
     assertError(post(reject, "", agentCookie), ErrorCode.INVALID_TRANSITION);
     long second = transferTo(agent);
@@ -515,5 +534,66 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
     long id = transferTo(agent);
     withdrawalService.releaseForWithdrawal(agent.user().getId(), Instant.now());
     assertThat(transferStatus(id)).isEqualTo("REJECTED");
+  }
+
+  @Test
+  void 대표_이전이_완료돼도_구독과_기존_동의는_그대로이고_새_대표가_구독과_구매_동의_미리보기를_이어받는다() throws Exception {
+    var fixtures = new com.sairo.be.support.fixture.BillingFixtures(jdbcTemplate);
+    fixtures.standardPrice("2026-12-STD", Instant.now().minus(java.time.Duration.ofDays(60)));
+    fixtures.purchaseTerms(com.sairo.be.support.fixture.BillingFixtures.PURCHASE_TERMS_VERSION);
+    long subscriptionId =
+        fixtures
+            .subscription(office.getId())
+            .status("ACTIVE")
+            .period(
+                Instant.now().minus(java.time.Duration.ofDays(5)),
+                Instant.now().plus(java.time.Duration.ofDays(25)))
+            .insert();
+    fixtures.consent(subscriptionId, owner.user().getId(), office.getId(), 39_900, 3_627, 39_900);
+    java.util.Map<String, Object> before =
+        jdbcTemplate.queryForMap("SELECT * FROM subscription WHERE id = ?", subscriptionId);
+    var agent = staffIn(OfficeMembershipRole.AGENT);
+    long id = transferTo(agent);
+    Cookie agentCookie = cookieOf(agent);
+    post("/api/owner-transfers/" + id + "/accept", "", agentCookie);
+    Cookie operator = operatorSession(createOperator("9001003", "김운영", OperatorRole.OPS));
+    post("/api/ops/owner-transfers/" + id + "/approve", "", operator).andExpect(status().isOk());
+
+    java.util.Map<String, Object> after =
+        jdbcTemplate.queryForMap("SELECT * FROM subscription WHERE id = ?", subscriptionId);
+    assertThat(after.get("status")).isEqualTo(before.get("status"));
+    assertThat(after.get("current_period_start")).isEqualTo(before.get("current_period_start"));
+    assertThat(after.get("current_period_end")).isEqualTo(before.get("current_period_end"));
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM subscription_purchase_consent WHERE subscription_id = ?",
+                Long.class,
+                subscriptionId))
+        .isEqualTo(1L);
+    mockMvc
+        .perform(get("/api/subscriptions/current").cookie(agentCookie))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("ACTIVE"));
+    mockMvc
+        .perform(get("/api/subscriptions/purchase-consent/preview").cookie(agentCookie))
+        .andExpect(status().isOk());
+    assertError(
+        mockMvc.perform(get("/api/subscriptions/current").cookie(ownerCookie)),
+        ErrorCode.FORBIDDEN);
+  }
+
+  @Test
+  void 대표_이전_알림은_알림함과_함께_이메일_전달_대기를_만든다() throws Exception {
+    var agent = staffIn(OfficeMembershipRole.AGENT);
+    transferTo(agent);
+    assertThat(transferNotices(agent)).hasSize(1);
+    assertThat(
+            jdbcTemplate.queryForList(
+                "SELECT d.channel FROM notification_delivery d JOIN notification n ON n.id ="
+                    + " d.notification_id WHERE n.recipient_user_id = ? AND n.notification_type ="
+                    + " 'OWNER_TRANSFER'",
+                String.class,
+                agent.user().getId()))
+        .containsExactly("EMAIL");
   }
 }

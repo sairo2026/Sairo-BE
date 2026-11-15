@@ -106,15 +106,26 @@ class TaxRecipientIntegrationTest extends BillingIntegrationTestBase {
   }
 
   @Test
-  void 사업자등록번호_형식이나_검증번호가_틀리면_422_TAX_RECIPIENT_INVALID이다() throws Exception {
+  void 사업자등록번호_형식이나_검증번호가_틀리면_422이고_사업자등록번호_필드를_알려_준다() throws Exception {
     TestData.Staff owner = owner();
-    for (String invalid :
-        new String[] {"1234567890", "123456789", "12345678912", "123-45-67891", "abcdefghij"}) {
+    for (String invalid : new String[] {"123456789", "12345678912", "abcdefghij", "12-34-5678"}) {
       assertError(
-          mockMvc.perform(
-              putRequest(URL, body(invalid, "tax@example.com", "UNKNOWN")).apply(cookieOf(owner))),
-          ErrorCode.TAX_RECIPIENT_INVALID);
+              mockMvc.perform(
+                  putRequest(URL, body(invalid, "tax@example.com", "UNKNOWN"))
+                      .apply(cookieOf(owner))),
+              ErrorCode.TAX_RECIPIENT_INVALID)
+          .andExpect(jsonPath("$.fieldErrors.length()").value(1))
+          .andExpect(jsonPath("$.fieldErrors[0].field").value("businessNumber"))
+          .andExpect(jsonPath("$.fieldErrors[0].code").value("INVALID_FORMAT"));
     }
+    assertError(
+            mockMvc.perform(
+                putRequest(URL, body("1234567890", "tax@example.com", "UNKNOWN"))
+                    .apply(cookieOf(owner))),
+            ErrorCode.TAX_RECIPIENT_INVALID)
+        .andExpect(jsonPath("$.fieldErrors.length()").value(1))
+        .andExpect(jsonPath("$.fieldErrors[0].field").value("businessNumber"))
+        .andExpect(jsonPath("$.fieldErrors[0].code").value("INVALID_VALUE"));
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM tax_invoice_recipient", Integer.class))
@@ -126,10 +137,44 @@ class TaxRecipientIntegrationTest extends BillingIntegrationTestBase {
     TestData.Staff owner = owner();
     for (String invalid : new String[] {"plain", "a@b", "a b@example.com", "@example.com"}) {
       assertError(
-          mockMvc.perform(
-              putRequest(URL, body("1234567891", invalid, "UNKNOWN")).apply(cookieOf(owner))),
-          ErrorCode.TAX_RECIPIENT_INVALID);
+              mockMvc.perform(
+                  putRequest(URL, body("1234567891", invalid, "UNKNOWN")).apply(cookieOf(owner))),
+              ErrorCode.TAX_RECIPIENT_INVALID)
+          .andExpect(jsonPath("$.fieldErrors.length()").value(1))
+          .andExpect(jsonPath("$.fieldErrors[0].field").value("receiverEmail"))
+          .andExpect(jsonPath("$.fieldErrors[0].code").value("INVALID_FORMAT"));
     }
+  }
+
+  @Test
+  void 사업자등록번호와_이메일이_모두_틀리면_두_필드를_함께_알려_준다() throws Exception {
+    TestData.Staff owner = owner();
+    assertError(
+            mockMvc.perform(
+                putRequest(URL, body("1234567890", "plain", "UNKNOWN")).apply(cookieOf(owner))),
+            ErrorCode.TAX_RECIPIENT_INVALID)
+        .andExpect(jsonPath("$.fieldErrors.length()").value(2))
+        .andExpect(
+            jsonPath("$.fieldErrors[?(@.field == 'businessNumber')].code").value("INVALID_VALUE"))
+        .andExpect(
+            jsonPath("$.fieldErrors[?(@.field == 'receiverEmail')].code").value("INVALID_FORMAT"));
+  }
+
+  @Test
+  void 하이픈이_든_사업자등록번호도_숫자만_남겨_저장한다() throws Exception {
+    TestData.Staff owner = owner();
+    mockMvc
+        .perform(
+            putRequest(URL, body(" 123-45-67891 ", "tax@example.com", "GENERAL"))
+                .apply(cookieOf(owner)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.businessNumber").value("1234567891"));
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT business_number FROM tax_invoice_recipient WHERE office_id = ?",
+                String.class,
+                owner.office().getId()))
+        .isEqualTo("1234567891");
   }
 
   @Test
