@@ -1046,16 +1046,61 @@ class MembershipIntegrationTest extends AuthIntegrationTestBase {
         ErrorCode.PENDING_MEMBERSHIP_EXISTS);
   }
 
-  @Test
-  void 회수된_소속이_있는_사용자는_같은_사무소에서_다시_초대할_수_없다() throws Exception {
-    AppUser target = plainUser();
-    jdbcTemplate.update(
+  private long revokedMembership(AppUser user, String revokedBy) {
+    return jdbcTemplate.queryForObject(
         "INSERT INTO office_membership (office_id, user_id, role, status, request_source,"
             + " approved_at, revoked_at, revoked_by_type, revocation_reason, qualification_number,"
             + " employment_report_confirmed, training_confirmed) VALUES (?, ?, 'AGENT', 'REVOKED',"
-            + " 'REQUEST', now(), now(), 'OWNER', '사유', '서울-1', true, true)",
+            + " 'REQUEST', now(), now(), ?, '사유', '서울-1', true, true) RETURNING id",
+        Long.class,
         office.getId(),
-        target.getId());
+        user.getId(),
+        revokedBy);
+  }
+
+  @Test
+  void 회수된_소속이_있는_사용자도_같은_사무소에서_다시_초대할_수_있고_이력_행은_남는다() throws Exception {
+    AppUser target = plainUser();
+    long revoked = revokedMembership(target, "OWNER");
+    post(
+            "/api/offices/current/memberships/invite",
+            "{\"email\":\"" + target.getEmail() + "\",\"role\":\"AGENT\"}",
+            ownerCookie)
+        .andExpect(status().isCreated());
+    assertThat(statusOf(revoked)).isEqualTo("REVOKED");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM office_membership WHERE office_id = ? AND user_id = ?",
+                Long.class,
+                office.getId(),
+                target.getId()))
+        .isEqualTo(2L);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM office_membership WHERE office_id = ? AND user_id = ? AND"
+                    + " status = 'PENDING' AND request_source = 'INVITE'",
+                Long.class,
+                office.getId(),
+                target.getId()))
+        .isEqualTo(1L);
+  }
+
+  @Test
+  void 나가기로_회수된_사용자는_같은_사무소에_다시_참여_요청을_할_수_있다() throws Exception {
+    AppUser target = plainUser();
+    long left = revokedMembership(target, "SELF");
+    String url = "/api/offices/" + office.getId() + "/memberships";
+    Cookie cookie = plainCookie(target);
+    post(url, AGENT_BODY, cookie).andExpect(status().isCreated());
+    assertThat(statusOf(left)).isEqualTo("REVOKED");
+    assertError(post(url, AGENT_BODY, cookie), ErrorCode.PENDING_MEMBERSHIP_EXISTS);
+  }
+
+  @Test
+  void 회수_이력이_있어도_열린_소속이_있으면_초대는_여전히_409다() throws Exception {
+    AppUser target = plainUser();
+    revokedMembership(target, "OWNER");
+    pendingRequest(target, "AGENT");
     assertError(
         post(
             "/api/offices/current/memberships/invite",

@@ -56,6 +56,20 @@ class V13UpgradeTest {
     }
   }
 
+  @Test
+  void V25는_소속_유일_인덱스에서_REVOKED를_빼고_나머지_조건은_유지한다() throws Exception {
+    flyway("latest").migrate();
+
+    try (Connection conn = connect()) {
+      String definition =
+          text(
+              conn,
+              "SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_office_membership_active'");
+      assertThat(definition).contains("PENDING", "APPROVED", "SUSPENDED", "REJECTED");
+      assertThat(definition).doesNotContain("REVOKED");
+    }
+  }
+
   private TreeSet<String> publicTables(Connection conn) throws Exception {
     TreeSet<String> tables = new TreeSet<>();
     try (PreparedStatement ps =
