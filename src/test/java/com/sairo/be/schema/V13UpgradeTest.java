@@ -258,6 +258,7 @@ class V13UpgradeTest {
       for (String[] changed :
           new String[][] {
             {"notification_notification_type_check", "TERMS_CHANGED"},
+            {"notification_notification_type_check", "CONTRACT_EXPIRY"},
             {"notification_target_type_check", "CONTRACT"},
             {"ops_raw_access_grant_check", "expires_at > executed_at"},
             {"export_job_scope_check", "ARCHIVE"},

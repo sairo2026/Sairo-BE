@@ -90,7 +90,9 @@ public class HomeSummaryService {
         deputy
             ? List.of()
             : repository.openFollowups(officeId).stream()
-                .map(row -> new FollowupTask(row.id(), FOLLOWUP_TITLE, row.dueDate()))
+                .map(
+                    row ->
+                        new FollowupTask(row.id(), FOLLOWUP_TITLE, row.dueDate(), row.contractId()))
                 .toList();
 
     List<OpenTask> openTasks =
