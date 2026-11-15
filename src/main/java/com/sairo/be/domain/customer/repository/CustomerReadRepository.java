@@ -20,11 +20,20 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class CustomerReadRepository {
 
-  private static final String CLOSURE =
+  private static final String MERGE_CLOSURE =
+      "WITH RECURSIVE closure(root_id, member_id) AS (SELECT DISTINCT l.primary_customer_id,"
+          + " l.primary_customer_id FROM customer_merge_log l JOIN customer r ON r.id ="
+          + " l.primary_customer_id WHERE r.office_id = :officeId AND NOT EXISTS (SELECT 1 FROM"
+          + " customer_merge_log p WHERE p.merged_customer_id = l.primary_customer_id) UNION ALL"
+          + " SELECT cl.root_id, l.merged_customer_id FROM closure cl JOIN customer_merge_log l ON"
+          + " l.primary_customer_id = cl.member_id) ";
+
+  private static final String CLOSURE_OF_IDS =
       "WITH RECURSIVE closure(root_id, member_id) AS (SELECT c.id, c.id FROM customer c WHERE"
-          + " c.office_id = :officeId AND NOT EXISTS (SELECT 1 FROM customer_merge_log l WHERE"
-          + " l.merged_customer_id = c.id) UNION ALL SELECT cl.root_id, l.merged_customer_id FROM"
-          + " closure cl JOIN customer_merge_log l ON l.primary_customer_id = cl.member_id) ";
+          + " c.id IN (:ids) AND c.office_id = :officeId AND NOT EXISTS (SELECT 1 FROM"
+          + " customer_merge_log l WHERE l.merged_customer_id = c.id) UNION ALL SELECT"
+          + " cl.root_id, l.merged_customer_id FROM closure cl JOIN customer_merge_log l ON"
+          + " l.primary_customer_id = cl.member_id) ";
 
   private final JdbcClient jdbcClient;
 
@@ -174,7 +183,7 @@ public class CustomerReadRepository {
     params.put("offset", offset);
     return jdbcClient
         .sql(
-            CLOSURE
+            MERGE_CLOSURE
                 + "SELECT c.id, c.office_id, c.name, c.is_corporation, c.phone, c.deleted_at,"
                 + " c.created_at, c.updated_at, c.version FROM customer c"
                 + where
@@ -200,7 +209,7 @@ public class CustomerReadRepository {
     String where = listWhere(officeId, filter, params);
     Long count =
         jdbcClient
-            .sql(CLOSURE + "SELECT count(*) FROM customer c" + where)
+            .sql(MERGE_CLOSURE + "SELECT count(*) FROM customer c" + where)
             .params(params)
             .query(Long.class)
             .single();
@@ -229,13 +238,13 @@ public class CustomerReadRepository {
           "lower(%s.name) LIKE :kw ESCAPE '\\' OR lower(coalesce(%s.phone, '')) LIKE :kw ESCAPE"
               + " '\\'"
               + phoneClause;
-      where.append(" AND (");
-      where.append(direct.replace("%s", "c"));
-      where.append(
-          " OR EXISTS (SELECT 1 FROM closure cl JOIN customer m ON m.id = cl.member_id WHERE"
-              + " cl.root_id = c.id AND m.id <> c.id AND (");
+      where.append(" AND c.id IN (SELECT m.id FROM customer m WHERE m.office_id = :officeId AND (");
       where.append(direct.replace("%s", "m"));
-      where.append(")))");
+      where.append(
+          ") UNION SELECT cl.root_id FROM closure cl JOIN customer m ON m.id = cl.member_id WHERE"
+              + " m.id <> cl.root_id AND (");
+      where.append(direct.replace("%s", "m"));
+      where.append("))");
     }
     if (filter.role() != null) {
       where.append(roleClause(filter.role()));
@@ -245,20 +254,27 @@ public class CustomerReadRepository {
 
   private static String roleClause(String role) {
     String demand =
-        "EXISTS (SELECT 1 FROM closure cl JOIN customer_demand_condition d ON d.customer_id ="
-            + " cl.member_id WHERE cl.root_id = c.id)";
-    String owner =
-        "EXISTS (SELECT 1 FROM closure cl JOIN property_owner_occupant oo ON oo.customer_id ="
-            + " cl.member_id WHERE cl.root_id = c.id AND oo.role = 'OWNER')";
-    String occupant =
-        "EXISTS (SELECT 1 FROM closure cl JOIN property_owner_occupant oo ON oo.customer_id ="
-            + " cl.member_id WHERE cl.root_id = c.id AND oo.role = 'OCCUPANT')";
+        "c.id IN (SELECT d.customer_id FROM customer_demand_condition d JOIN customer dc ON dc.id ="
+            + " d.customer_id WHERE dc.office_id = :officeId UNION ALL SELECT cl.root_id FROM"
+            + " closure cl JOIN customer_demand_condition d ON d.customer_id = cl.member_id)";
+    String owner = partyRole("OWNER");
+    String occupant = partyRole("OCCUPANT");
     return switch (role) {
       case "DEMAND" -> " AND " + demand;
       case "OWNER" -> " AND " + owner;
       case "OCCUPANT" -> " AND " + occupant;
       default -> " AND NOT " + demand + " AND NOT " + owner + " AND NOT " + occupant;
     };
+  }
+
+  private static String partyRole(String role) {
+    return "c.id IN (SELECT oo.customer_id FROM property_owner_occupant oo WHERE oo.office_id ="
+        + " :officeId AND oo.role = '"
+        + role
+        + "' UNION ALL SELECT cl.root_id FROM closure cl JOIN property_owner_occupant oo ON"
+        + " oo.customer_id = cl.member_id WHERE oo.role = '"
+        + role
+        + "')";
   }
 
   public Map<Long, RoleFlags> findRoles(long officeId, Collection<Long> customerIds) {
@@ -268,7 +284,7 @@ public class CustomerReadRepository {
     }
     jdbcClient
         .sql(
-            CLOSURE
+            CLOSURE_OF_IDS
                 + "SELECT c.id, EXISTS (SELECT 1 FROM closure cl JOIN customer_demand_condition d"
                 + " ON d.customer_id = cl.member_id WHERE cl.root_id = c.id), EXISTS (SELECT 1"
                 + " FROM closure cl JOIN property_owner_occupant oo ON oo.customer_id ="
@@ -547,17 +563,22 @@ public class CustomerReadRepository {
 
   public List<DuplicateRow> findDuplicates(long officeId, String name, String phone) {
     String digits = phone.replaceAll("\\D", "");
+    String same =
+        "lower(regexp_replace(m.name, '\\s+', '', 'g')) = :name AND"
+            + " (regexp_replace(coalesce(m.phone, ''), '\\D', '', 'g') = :digits OR"
+            + " regexp_replace(coalesce(m.secondary_phone, ''), '\\D', '', 'g') = :digits)";
     return jdbcClient
         .sql(
-            CLOSURE
+            MERGE_CLOSURE
                 + "SELECT DISTINCT c.id, c.name, c.is_corporation, c.phone, c.deleted_at,"
                 + " c.managing_membership_id FROM customer c WHERE c.office_id = :officeId AND NOT"
                 + " EXISTS (SELECT 1 FROM customer_merge_log l WHERE l.merged_customer_id = c.id)"
-                + " AND EXISTS (SELECT 1 FROM closure cl JOIN customer m ON m.id = cl.member_id"
-                + " WHERE cl.root_id = c.id AND lower(regexp_replace(m.name, '\\s+', '', 'g')) ="
-                + " :name AND (regexp_replace(coalesce(m.phone, ''), '\\D', '', 'g') = :digits OR"
-                + " regexp_replace(coalesce(m.secondary_phone, ''), '\\D', '', 'g') = :digits))"
-                + " ORDER BY c.id")
+                + " AND c.id IN (SELECT m.id FROM customer m WHERE m.office_id = :officeId AND "
+                + same
+                + " UNION SELECT cl.root_id FROM closure cl JOIN customer m ON m.id = cl.member_id"
+                + " WHERE m.id <> cl.root_id AND "
+                + same
+                + ") ORDER BY c.id")
         .param("officeId", officeId)
         .param("name", name.replaceAll("\\s+", "").toLowerCase())
         .param("digits", digits)

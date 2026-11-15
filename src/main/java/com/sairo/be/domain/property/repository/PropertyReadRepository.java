@@ -149,13 +149,15 @@ public class PropertyReadRepository {
     if (filter.keyword() != null) {
       params.put("keyword", "%" + escapeLike(filter.keyword().toLowerCase()) + "%");
       where.append(
-          " AND (lower(p.name) LIKE :keyword ESCAPE '\\' OR lower(coalesce(p.address, '')) LIKE"
-              + " :keyword ESCAPE '\\' OR EXISTS (SELECT 1 FROM property_owner_occupant oo"
-              + " JOIN customer cu ON cu.id = oo.customer_id WHERE oo.property_id = p.id AND"
-              + " (lower(cu.name) LIKE :keyword ESCAPE '\\' OR EXISTS (SELECT 1 FROM"
-              + " customer_merge_log ml JOIN customer mc ON mc.id = ml.merged_customer_id WHERE"
-              + " ml.primary_customer_id = cu.id AND lower(mc.name) LIKE :keyword ESCAPE"
-              + " '\\'))))");
+          " AND p.id IN (SELECT x.id FROM property x WHERE x.office_id = :officeId AND"
+              + " (lower(x.name) LIKE :keyword ESCAPE '\\' OR lower(coalesce(x.address, '')) LIKE"
+              + " :keyword ESCAPE '\\') UNION SELECT oo.property_id FROM property_owner_occupant oo"
+              + " JOIN customer cu ON cu.id = oo.customer_id WHERE oo.office_id = :officeId AND"
+              + " lower(cu.name) LIKE :keyword ESCAPE '\\' UNION SELECT oo.property_id FROM"
+              + " property_owner_occupant oo WHERE oo.office_id = :officeId AND oo.customer_id IN"
+              + " (SELECT ml.primary_customer_id FROM customer_merge_log ml JOIN customer mc ON"
+              + " mc.id = ml.merged_customer_id WHERE mc.office_id = :officeId AND"
+              + " lower(mc.name) LIKE :keyword ESCAPE '\\'))");
     }
     if (filter.categoryId() != null) {
       params.put("categoryId", filter.categoryId());

@@ -50,15 +50,22 @@ public class SettlementService {
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     YearMonth current = SettlementPeriods.current(now);
     YearMonth earliest = earliest(principal.officeId(), current);
-    List<MonthlySettlementListResponse.Item> items = new ArrayList<>();
+    List<YearMonth> months = new ArrayList<>();
+    List<SettlementWindow> windows = new ArrayList<>();
     for (YearMonth month = current; !month.isBefore(earliest); month = month.minusMonths(1)) {
-      long signed =
-          metricRepository.aggregate(
-              SettlementMetric.contractSignedCount,
-              SettlementPeriods.window(principal.officeId(), month, now));
+      months.add(month);
+      windows.add(SettlementPeriods.window(principal.officeId(), month, now));
+    }
+    Map<Instant, Long> signedCounts =
+        metricRepository.contractSignedCounts(principal.officeId(), windows);
+    List<MonthlySettlementListResponse.Item> items = new ArrayList<>();
+    for (int i = 0; i < months.size(); i++) {
+      YearMonth month = months.get(i);
       items.add(
           new MonthlySettlementListResponse.Item(
-              month.toString(), month.isBefore(current), signed));
+              month.toString(),
+              month.isBefore(current),
+              signedCounts.getOrDefault(windows.get(i).from(), 0L)));
     }
     return new MonthlySettlementListResponse(items);
   }

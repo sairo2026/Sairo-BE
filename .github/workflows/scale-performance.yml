@@ -1,0 +1,131 @@
+name: Scale Performance
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "baseline-and-current, current-only, baseline-only"
+        required: false
+        default: "baseline-and-current"
+      baseline_flyway_target:
+        description: "Flyway target version for the baseline schema"
+        required: false
+        default: "19"
+      large_properties:
+        required: false
+        default: "100000"
+      large_customers:
+        required: false
+        default: "100000"
+      mid_offices:
+        required: false
+        default: "10"
+      mid_properties:
+        required: false
+        default: "10000"
+      mid_customers:
+        required: false
+        default: "10000"
+      iterations:
+        required: false
+        default: "30"
+      import_rows:
+        required: false
+        default: "10000"
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: sairo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      MODE: ${{ inputs.mode || 'baseline-and-current' }}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/sairo?options=-c%20statement_timeout=20000
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ""
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      PERF_LARGE_PROPERTIES: ${{ inputs.large_properties || '100000' }}
+      PERF_LARGE_CUSTOMERS: ${{ inputs.large_customers || '100000' }}
+      PERF_MID_OFFICES: ${{ inputs.mid_offices || '10' }}
+      PERF_MID_PROPERTIES: ${{ inputs.mid_properties || '10000' }}
+      PERF_MID_CUSTOMERS: ${{ inputs.mid_customers || '10000' }}
+      PERF_ITERATIONS: ${{ inputs.iterations || '30' }}
+      PERF_IMPORT_ROWS: ${{ inputs.import_rows || '10000' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Measure on the baseline schema
+        if: ${{ env.MODE != 'current-only' }}
+        env:
+          SPRING_FLYWAY_TARGET: ${{ inputs.baseline_flyway_target || '19' }}
+          PERF_IMPORT_ROWS: ${{ inputs.import_rows || '3000' }}
+          PERF_RESULT_DIR: build/perf-results-baseline
+        run: ./gradlew perfTest --no-daemon
+
+      - name: Measure on the current schema
+        if: ${{ env.MODE != 'baseline-only' }}
+        env:
+          PERF_RESULT_DIR: build/perf-results-current
+        run: ./gradlew perfTest --no-daemon
+
+      - name: Table and index sizes
+        if: always()
+        run: |
+          mkdir -p build/perf-results-current
+          PGHOST=localhost PGUSER=postgres psql -d sairo -c "SELECT relname, pg_size_pretty(pg_total_relation_size(oid)) AS total, pg_size_pretty(pg_indexes_size(oid)) AS indexes FROM pg_class WHERE relkind = 'r' AND relnamespace = 'public'::regnamespace ORDER BY pg_total_relation_size(oid) DESC LIMIT 25" > build/perf-results-current/sizes.txt || true
+
+      - name: Publish summary
+        if: always()
+        run: |
+          for dir in build/perf-results-baseline build/perf-results-current; do
+            if [ -f "$dir/summary.md" ]; then
+              echo "# ${dir#build/perf-results-}" >> "$GITHUB_STEP_SUMMARY"
+              cat "$dir/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scale-performance-results
+          path: |
+            build/perf-results-baseline
+            build/perf-results-current
+          if-no-files-found: warn
