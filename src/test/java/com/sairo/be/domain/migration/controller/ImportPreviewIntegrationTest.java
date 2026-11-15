@@ -95,14 +95,14 @@ class ImportPreviewIntegrationTest extends ImportIntegrationTestBase {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.rows[0].warnings[0].code").value("INVALID_PHONE_FORMAT"))
         .andExpect(jsonPath("$.rows[0].warnings[0].field").value("customerPhone"))
-        .andExpect(jsonPath("$.rows[0].warnings[0].severity").value("WARNING"))
+        .andExpect(jsonPath("$.rows[0].warnings[0].severity").value("ERROR"))
         .andExpect(jsonPath("$.rows[1].warnings[0].code").value("INVALID_EMAIL_FORMAT"))
         .andExpect(jsonPath("$.rows[1].warnings[0].severity").value("ERROR"))
         .andExpect(jsonPath("$.rows[2].warnings[0].code").value("REQUIRED_VALUE_MISSING"))
         .andExpect(jsonPath("$.rows[2].warnings[0].field").value("customerName"))
         .andExpect(jsonPath("$.rows[3].warnings.length()").value(0))
-        .andExpect(jsonPath("$.summary.errorRowCount").value(2))
-        .andExpect(jsonPath("$.summary.warningCount").value(1));
+        .andExpect(jsonPath("$.summary.errorRowCount").value(3))
+        .andExpect(jsonPath("$.summary.warningCount").value(0));
   }
 
   @Test

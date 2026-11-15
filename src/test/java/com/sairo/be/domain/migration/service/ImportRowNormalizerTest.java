@@ -167,7 +167,7 @@ class ImportRowNormalizerTest {
   }
 
   @Test
-  void 필수_값이_비면_오류이고_고객_연락처_형식은_경고다() {
+  void 필수_값이_비면_오류이고_숫자가_7자_미만인_고객_연락처도_오류다() {
     NormalizedRow row =
         normalizer.normalize(
             ImportTargetType.CUSTOMER,
@@ -180,10 +180,47 @@ class ImportRowNormalizerTest {
 
     assertThat(warning(row, "REQUIRED_VALUE_MISSING").field())
         .isEqualTo(ImportTargetFields.CUSTOMER_SOURCE_ID);
-    assertThat(warning(row, "INVALID_PHONE_FORMAT").severity()).isEqualTo(Severity.WARNING);
+    assertThat(warning(row, "INVALID_PHONE_FORMAT").severity()).isEqualTo(Severity.ERROR);
     assertThat(row.values().get(ImportTargetFields.CUSTOMER_IS_CORPORATION)).isEqualTo(true);
     assertThat(row.values().get(ImportTargetFields.CUSTOMER_PHONE)).isEqualTo("02-123");
     assertThat(row.sourceId()).isNull();
+  }
+
+  @Test
+  void 숫자가_7자_이상이면_유선_국제_번호도_형식_경고_없이_받는다() {
+    for (String phone : new String[] {"02-1234-5678", "+82 (2) 123-4567", "1234567"}) {
+      NormalizedRow row =
+          normalizer.normalize(
+              ImportTargetType.CUSTOMER,
+              raw(
+                  ImportTargetFields.CUSTOMER_SOURCE_ID, "1",
+                  ImportTargetFields.CUSTOMER_NAME, "홍길동",
+                  ImportTargetFields.CUSTOMER_PHONE, phone,
+                  ImportTargetFields.CUSTOMER_IS_CORPORATION, "개인"),
+              Map.of());
+
+      assertThat(row.hasError()).as(phone).isFalse();
+      assertThat(row.values().get(ImportTargetFields.CUSTOMER_PHONE)).as(phone).isEqualTo(phone);
+    }
+  }
+
+  @Test
+  void 숫자가_없는_연락처와_부호만_있는_연락처는_오류다() {
+    for (String phone : new String[] {"---", "전화번호없음", "+(  )"}) {
+      NormalizedRow row =
+          normalizer.normalize(
+              ImportTargetType.CUSTOMER,
+              raw(
+                  ImportTargetFields.CUSTOMER_SOURCE_ID, "1",
+                  ImportTargetFields.CUSTOMER_NAME, "홍길동",
+                  ImportTargetFields.CUSTOMER_SECONDARY_PHONE, phone,
+                  ImportTargetFields.CUSTOMER_IS_CORPORATION, "개인"),
+              Map.of());
+
+      assertThat(row.hasError()).as(phone).isTrue();
+      assertThat(warning(row, "INVALID_PHONE_FORMAT").field())
+          .isEqualTo(ImportTargetFields.CUSTOMER_SECONDARY_PHONE);
+    }
   }
 
   @Test

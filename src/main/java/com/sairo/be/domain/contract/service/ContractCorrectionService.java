@@ -95,6 +95,7 @@ public class ContractCorrectionService {
     List<PartyRow> current = parties.current(contractId);
     Map<Long, PartyRow> byId = new HashMap<>();
     current.forEach(party -> byId.put(party.id(), party));
+    ContractInput.requirePartyPhones(parsed, current);
     Set<Long> kept = new HashSet<>();
     checkParties(PartySide.SELLER_LANDLORD, parsed.sellers(), byId, kept);
     checkParties(PartySide.BUYER_TENANT, parsed.buyers(), byId, kept);
