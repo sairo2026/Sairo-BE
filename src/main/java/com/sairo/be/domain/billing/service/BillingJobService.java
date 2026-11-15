@@ -146,7 +146,7 @@ public class BillingJobService {
   }
 
   public void runFirstCharges(Instant now) {
-    if (!liveChargingGuard.canCharge()) {
+    if (liveChargingGuard.isBlockedForScheduledRun("billing-first-charge")) {
       return;
     }
     for (Subscription subscription :
@@ -167,7 +167,7 @@ public class BillingJobService {
   }
 
   public void runRenewals(Instant now) {
-    if (!liveChargingGuard.canCharge()) {
+    if (liveChargingGuard.isBlockedForScheduledRun("billing-renewal")) {
       return;
     }
     for (Subscription subscription :
@@ -188,7 +188,7 @@ public class BillingJobService {
   }
 
   public void runRetries(Instant now) {
-    if (!liveChargingGuard.canCharge()) {
+    if (liveChargingGuard.isBlockedForScheduledRun("billing-retry")) {
       return;
     }
     for (BillingInvoice invoice :

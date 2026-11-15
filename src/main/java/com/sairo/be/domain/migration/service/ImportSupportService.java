@@ -1,5 +1,6 @@
 package com.sairo.be.domain.migration.service;
 
+import com.sairo.be.domain.billing.service.LiveChargingGuard;
 import com.sairo.be.domain.migration.dto.request.ImportSupportCreateRequest;
 import com.sairo.be.domain.migration.dto.request.ImportSupportPaymentConfirmRequest;
 import com.sairo.be.domain.migration.dto.request.ImportSupportReasonRequest;
@@ -66,6 +67,7 @@ public class ImportSupportService {
   private final ImportRowResultRepository rowResultRepository;
   private final ImportPreviewService previewService;
   private final PaymentGateway paymentGateway;
+  private final LiveChargingGuard liveChargingGuard;
   private final Clock clock;
 
   public ImportSupportService(
@@ -78,6 +80,7 @@ public class ImportSupportService {
       ImportRowResultRepository rowResultRepository,
       ImportPreviewService previewService,
       PaymentGateway paymentGateway,
+      LiveChargingGuard liveChargingGuard,
       Clock clock) {
     this.requestRepository = requestRepository;
     this.linkRepository = linkRepository;
@@ -88,6 +91,7 @@ public class ImportSupportService {
     this.rowResultRepository = rowResultRepository;
     this.previewService = previewService;
     this.paymentGateway = paymentGateway;
+    this.liveChargingGuard = liveChargingGuard;
     this.clock = clock;
   }
 
@@ -152,6 +156,7 @@ public class ImportSupportService {
   @Transactional
   public ImportSupportPaymentConfirmResponse confirmPayment(
       StaffPrincipal principal, Long requestId, JsonNode body) {
+    liveChargingGuard.requireChargeAllowed();
     ImportSupportPaymentConfirmRequest command = ImportSupportRequestParser.paymentConfirm(body);
     ImportSupportRequest request = lock(principal, requestId);
     if (request.getStatus() != ImportSupportStatus.ACCEPTED) {
