@@ -96,7 +96,33 @@ public abstract class VisitOutcomeTestBase extends VisitSelectionTestBase {
 
   protected ResultActions patchResult(Cookie cookie, long itemId, String body, Object version)
       throws Exception {
+    if (!body.contains("CANCELLED")) {
+      startVisit(itemId);
+    }
+    return patchResultAsScheduled(cookie, itemId, body, version);
+  }
+
+  protected ResultActions patchResultAsScheduled(
+      Cookie cookie, long itemId, String body, Object version) throws Exception {
     return mockMvc.perform(jsonPatchAs(itemUrl(itemId) + "/result", body, cookie, version));
+  }
+
+  protected void startVisit(long itemId) {
+    jdbcTemplate.update(
+        "UPDATE visit_schedule_item SET scheduled_start_at = now() - interval '2 hours',"
+            + " scheduled_end_at = now() - interval '90 minutes' WHERE id = ?",
+        itemId);
+  }
+
+  protected void scheduleVisit(long itemId, java.time.Duration fromNow, int minutes) {
+    java.sql.Timestamp start = java.sql.Timestamp.from(java.time.Instant.now().plus(fromNow));
+    jdbcTemplate.update(
+        "UPDATE visit_schedule_item SET scheduled_start_at = ?,"
+            + " scheduled_end_at = ?::timestamptz + (? * interval '1 minute') WHERE id = ?",
+        start,
+        start,
+        minutes,
+        itemId);
   }
 
   protected ResultActions recordResult(SelectionFixture s, long itemId, String body)

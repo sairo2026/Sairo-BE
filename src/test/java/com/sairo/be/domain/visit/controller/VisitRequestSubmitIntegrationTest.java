@@ -303,6 +303,32 @@ class VisitRequestSubmitIntegrationTest extends VisitRequestIntegrationTestBase 
   }
 
   @Test
+  void 예상_소요시간이_희망_시간대보다_길면_400이고_같거나_짧으면_접수한다() throws Exception {
+    RequestFixture f = requestFixture();
+    String url = requestUrl(f.coordinationId());
+    long c = f.candidateId();
+    var day = today().plusDays(3);
+
+    assertFieldError(
+        mockMvc.perform(
+            jsonPostAs(url, requestBody(c, day, "10:00", "10:30", "45", ""), f.cookie())),
+        "expectedDurationMinutes",
+        "OUT_OF_RANGE");
+    assertFieldError(
+        mockMvc.perform(
+            jsonPostAs(url, requestBody(c, day, "10:00", "10:30", "31", ""), f.cookie())),
+        "expectedDurationMinutes",
+        "OUT_OF_RANGE");
+    assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM visit_request", Integer.class))
+        .isZero();
+
+    mockMvc
+        .perform(jsonPostAs(url, requestBody(c, day, "10:00", "10:30", "20", ""), f.cookie()))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.expectedDurationMinutes").value(20));
+  }
+
+  @Test
   void 입력_검증_실패는_400이다() throws Exception {
     RequestFixture f = requestFixture();
     String url = requestUrl(f.coordinationId());
