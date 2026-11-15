@@ -48,6 +48,7 @@ public class BillingJobService {
   private final AuthSuspensionService authSuspensionService;
   private final BillingNoticeDispatcher noticeDispatcher;
   private final BillingReconciliationService reconciliationService;
+  private final LiveChargingGuard liveChargingGuard;
 
   public BillingJobService(
       SubscriptionRepository subscriptionRepository,
@@ -64,7 +65,8 @@ public class BillingJobService {
       TransactionTemplate transactionTemplate,
       AuthSuspensionService authSuspensionService,
       BillingNoticeDispatcher noticeDispatcher,
-      BillingReconciliationService reconciliationService) {
+      BillingReconciliationService reconciliationService,
+      LiveChargingGuard liveChargingGuard) {
     this.subscriptionRepository = subscriptionRepository;
     this.invoiceRepository = invoiceRepository;
     this.customerRepository = customerRepository;
@@ -80,6 +82,7 @@ public class BillingJobService {
     this.authSuspensionService = authSuspensionService;
     this.noticeDispatcher = noticeDispatcher;
     this.reconciliationService = reconciliationService;
+    this.liveChargingGuard = liveChargingGuard;
   }
 
   public void runAll(Instant now) {
@@ -143,6 +146,9 @@ public class BillingJobService {
   }
 
   public void runFirstCharges(Instant now) {
+    if (!liveChargingGuard.canCharge()) {
+      return;
+    }
     for (Subscription subscription :
         subscriptionRepository.findByStatusAndFirstBillingScheduledAtLessThanEqual(
             SubscriptionStatus.TRIAL, now)) {
@@ -161,6 +167,9 @@ public class BillingJobService {
   }
 
   public void runRenewals(Instant now) {
+    if (!liveChargingGuard.canCharge()) {
+      return;
+    }
     for (Subscription subscription :
         subscriptionRepository.findByStatusAndCurrentPeriodEndLessThanEqual(
             SubscriptionStatus.ACTIVE, now)) {
@@ -179,6 +188,9 @@ public class BillingJobService {
   }
 
   public void runRetries(Instant now) {
+    if (!liveChargingGuard.canCharge()) {
+      return;
+    }
     for (BillingInvoice invoice :
         invoiceRepository.findByStatusAndNextRetryAtLessThanEqual(InvoiceStatus.FAILED, now)) {
       String key = "retry:" + invoice.getId() + ":" + invoice.getNextRetryAt().getEpochSecond();
@@ -251,6 +263,9 @@ public class BillingJobService {
    * 키를 해석할 수 없으면 비어 있다.
    */
   public Optional<Runnable> rerunWork(String jobName, String idempotencyKey, Instant now) {
+    if (!liveChargingGuard.canCharge()) {
+      return Optional.empty();
+    }
     String[] parts = idempotencyKey.split(":");
     if (parts.length != 3) {
       return Optional.empty();

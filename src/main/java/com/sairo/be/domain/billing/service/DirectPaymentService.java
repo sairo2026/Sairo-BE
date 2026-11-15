@@ -42,6 +42,7 @@ public class DirectPaymentService {
   private final InvoiceIssuer invoiceIssuer;
   private final ConsentChecker consentChecker;
   private final BillingChargeService chargeService;
+  private final LiveChargingGuard liveChargingGuard;
   private final AdvisoryLock advisoryLock;
   private final TransactionTemplate transactionTemplate;
   private final Clock clock;
@@ -55,6 +56,7 @@ public class DirectPaymentService {
       InvoiceIssuer invoiceIssuer,
       ConsentChecker consentChecker,
       BillingChargeService chargeService,
+      LiveChargingGuard liveChargingGuard,
       AdvisoryLock advisoryLock,
       TransactionTemplate transactionTemplate,
       Clock clock) {
@@ -66,12 +68,14 @@ public class DirectPaymentService {
     this.invoiceIssuer = invoiceIssuer;
     this.consentChecker = consentChecker;
     this.chargeService = chargeService;
+    this.liveChargingGuard = liveChargingGuard;
     this.advisoryLock = advisoryLock;
     this.transactionTemplate = transactionTemplate;
     this.clock = clock;
   }
 
   public SubscriptionStateResponse firstPayment(StaffPrincipal principal) {
+    liveChargingGuard.requireChargeAllowed();
     Long invoiceId =
         transactionTemplate.execute(
             status -> {
@@ -85,6 +89,7 @@ public class DirectPaymentService {
   }
 
   public SubscriptionStateResponse retryPayment(StaffPrincipal principal) {
+    liveChargingGuard.requireChargeAllowed();
     Long invoiceId =
         transactionTemplate.execute(
             status -> {
