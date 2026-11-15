@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.sairo.be.domain.home.entity.NotificationType;
 import com.sairo.be.domain.home.repository.NotificationDeliveryRepository;
 import com.sairo.be.domain.home.repository.NotificationDeliveryRepository.DueRow;
 import com.sairo.be.global.port.MailSender;
@@ -19,6 +20,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class NotificationDeliveryServiceTest {
 
@@ -43,11 +45,53 @@ class NotificationDeliveryServiceTest {
   }
 
   @Test
-  void 제목은_첫_줄을_쓰고_예순_자로_자른다() {
-    assertThat(NotificationDeliveryService.subjectOf("약관이 바뀝니다.\n자세한 내용"))
-        .isEqualTo("[사이로] 약관이 바뀝니다.");
-    assertThat(NotificationDeliveryService.subjectOf("가".repeat(100)))
-        .isEqualTo("[사이로] " + "가".repeat(60));
+  void 이메일로_전달하는_알림_종류마다_전용_제목이_있다() {
+    for (NotificationType type : NotificationType.values()) {
+      if (type.deliversByEmail()) {
+        assertThat(NotificationDeliveryService.subjectOf(type.name()))
+            .startsWith("[사이로] ")
+            .isNotEqualTo(NotificationDeliveryService.DEFAULT_SUBJECT);
+      }
+    }
+  }
+
+  @Test
+  void 종류별_제목은_정해진_문구다() {
+    assertThat(NotificationDeliveryService.subjectOf("OFFICE_REVIEW")).isEqualTo("[사이로] 사무소 인증 안내");
+    assertThat(NotificationDeliveryService.subjectOf("MEMBERSHIP_APPROVAL_NEEDED"))
+        .isEqualTo("[사이로] 사무소 참여 승인 요청이 도착했습니다");
+    assertThat(NotificationDeliveryService.subjectOf("TRIAL_ENDING"))
+        .isEqualTo("[사이로] 무료 체험 종료 안내");
+    assertThat(NotificationDeliveryService.subjectOf("PLAN_CHANGED")).isEqualTo("[사이로] 구독 변경 안내");
+    assertThat(NotificationDeliveryService.subjectOf("PAYMENT")).isEqualTo("[사이로] 결제·환불 안내");
+    assertThat(NotificationDeliveryService.subjectOf("RETURN_SCHEDULED"))
+        .isEqualTo("[사이로] 데이터 반환 예정 안내");
+    assertThat(NotificationDeliveryService.subjectOf("DELETION_SCHEDULED"))
+        .isEqualTo("[사이로] 삭제 예정 안내");
+    assertThat(NotificationDeliveryService.subjectOf("TERMS_CHANGED")).isEqualTo("[사이로] 약관 변경 안내");
+  }
+
+  @Test
+  void 알_수_없는_종류와_이메일_대상이_아닌_종류는_서비스_안내_제목을_쓴다() {
+    assertThat(NotificationDeliveryService.subjectOf("UNKNOWN_TYPE")).isEqualTo("[사이로] 서비스 안내");
+    assertThat(NotificationDeliveryService.subjectOf("NOTICE")).isEqualTo("[사이로] 서비스 안내");
+    assertThat(NotificationDeliveryService.subjectOf(null)).isEqualTo("[사이로] 서비스 안내");
+  }
+
+  @Test
+  void 메일_제목은_본문을_자르지_않고_종류_제목을_쓰며_본문은_그대로_보낸다() {
+    when(repository.claimDue(NOW, NotificationDeliveryService.BATCH_LIMIT))
+        .thenReturn(List.of(row(0)));
+    when(repository.recipientEmail(3L)).thenReturn(Optional.of("user@example.com"));
+
+    service.deliverDue();
+
+    ArgumentCaptor<MailSender.MailMessage> captor =
+        ArgumentCaptor.forClass(MailSender.MailMessage.class);
+    verify(mailSender).send(captor.capture());
+    assertThat(captor.getValue().subject()).isEqualTo("[사이로] 약관 변경 안내");
+    assertThat(captor.getValue().body())
+        .isEqualTo("약관이 바뀝니다.\n자세한 내용" + NotificationDeliveryService.FOOTER);
   }
 
   @Test

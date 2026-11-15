@@ -1,5 +1,6 @@
 package com.sairo.be.domain.home.service;
 
+import com.sairo.be.domain.home.entity.NotificationType;
 import com.sairo.be.domain.home.repository.NotificationDeliveryRepository;
 import com.sairo.be.domain.home.repository.NotificationDeliveryRepository.DueRow;
 import com.sairo.be.global.port.MailSender;
@@ -7,7 +8,9 @@ import com.sairo.be.global.port.MailSender.MailMessage;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +31,8 @@ public class NotificationDeliveryService {
   static final List<Duration> RETRY_DELAYS =
       List.of(Duration.ofMinutes(5), Duration.ofMinutes(30), Duration.ofHours(2));
   static final String SUBJECT_PREFIX = "[사이로] ";
+  static final String DEFAULT_SUBJECT = SUBJECT_PREFIX + "서비스 안내";
+  static final Map<NotificationType, String> SUBJECTS = subjects();
   static final String FOOTER = "\n\n이 메일은 서비스 이용에 필요한 안내입니다. 알림함에서도 같은 내용을 볼 수 있습니다.";
 
   private static final Logger log = LoggerFactory.getLogger(NotificationDeliveryService.class);
@@ -51,10 +56,26 @@ public class NotificationDeliveryService {
         : Optional.empty();
   }
 
-  static String subjectOf(String message) {
-    String firstLine = message.lines().findFirst().orElse(message).strip();
-    String title = firstLine.length() <= 60 ? firstLine : firstLine.substring(0, 60);
-    return SUBJECT_PREFIX + title;
+  private static Map<NotificationType, String> subjects() {
+    Map<NotificationType, String> subjects = new EnumMap<>(NotificationType.class);
+    subjects.put(NotificationType.OFFICE_REVIEW, "사무소 인증 안내");
+    subjects.put(NotificationType.MEMBERSHIP_APPROVAL_NEEDED, "사무소 참여 승인 요청이 도착했습니다");
+    subjects.put(NotificationType.TRIAL_ENDING, "무료 체험 종료 안내");
+    subjects.put(NotificationType.PLAN_CHANGED, "구독 변경 안내");
+    subjects.put(NotificationType.PAYMENT, "결제·환불 안내");
+    subjects.put(NotificationType.RETURN_SCHEDULED, "데이터 반환 예정 안내");
+    subjects.put(NotificationType.DELETION_SCHEDULED, "삭제 예정 안내");
+    subjects.put(NotificationType.TERMS_CHANGED, "약관 변경 안내");
+    subjects.replaceAll((type, title) -> SUBJECT_PREFIX + title);
+    return subjects;
+  }
+
+  static String subjectOf(String type) {
+    try {
+      return SUBJECTS.getOrDefault(NotificationType.valueOf(type), DEFAULT_SUBJECT);
+    } catch (IllegalArgumentException | NullPointerException e) {
+      return DEFAULT_SUBJECT;
+    }
   }
 
   @Transactional
@@ -75,8 +96,7 @@ public class NotificationDeliveryService {
       return;
     }
     try {
-      mailSender.send(
-          new MailMessage(email.get(), subjectOf(row.message()), row.message() + FOOTER));
+      mailSender.send(new MailMessage(email.get(), subjectOf(row.type()), row.message() + FOOTER));
       repository.markDelivered(row.id(), attempt, now);
     } catch (RuntimeException e) {
       log.warn("알림 이메일 전달 실패 deliveryId={} attempt={}", row.id(), attempt);
