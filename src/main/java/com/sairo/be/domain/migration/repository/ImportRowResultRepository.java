@@ -16,8 +16,13 @@ public interface ImportRowResultRepository extends JpaRepository<ImportRowResult
 
   @Query(
       "select r.sourceRowNumber from ImportRowResult r"
-          + " where r.batchId = :batchId and r.result = 'SUCCEEDED'")
-  List<Integer> findSucceededRowNumbers(@Param("batchId") Long batchId);
+          + " where r.batchId = :batchId and r.result <> 'FAILED'")
+  List<Integer> findFinishedRowNumbers(@Param("batchId") Long batchId);
+
+  @Query(
+      "select r.skipReason, count(r) from ImportRowResult r"
+          + " where r.batchId = :batchId and r.result = 'SKIPPED' group by r.skipReason")
+  List<Object[]> countSkippedByReason(@Param("batchId") Long batchId);
 
   @Query(
       "select r from ImportRowResult r where r.batchId = :batchId and r.result = 'FAILED'"
