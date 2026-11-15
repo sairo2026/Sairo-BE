@@ -10,6 +10,7 @@ import com.sairo.be.domain.customer.service.CustomerQueryService;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.access.AccessPermission;
 import com.sairo.be.global.security.access.RequiresAccess;
+import com.sairo.be.global.support.IdempotentRequests;
 import com.sairo.be.global.support.IfMatchVersion;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.PageResponse;
@@ -59,13 +60,19 @@ public class CustomerController {
     return queryService.list(principal, keyword, role, archived, PageQuery.of(page, size));
   }
 
-  @Operation(summary = "고객 등록", description = "수집 근거·목적·보유기한이 필수이며 같은 이름·번호가 있어도 자동 병합하지 않는다.")
+  @Operation(
+      summary = "고객 등록",
+      description =
+          "수집 근거·목적·보유기한이 필수이며 같은 이름·번호가 있어도 자동 병합하지 않는다."
+              + " Idempotency-Key 헤더를 보내면 같은 키의 재요청은 새로 만들지 않고 첫 응답을 돌려준다.")
   @PostMapping
   @RequiresAccess(AccessPermission.AGENT_OR_OWNER)
   @ResponseStatus(HttpStatus.CREATED)
   public CustomerCreateResponse create(
-      @RequestBody JsonNode body, @AuthenticationPrincipal StaffPrincipal principal) {
-    return commandService.create(principal, body);
+      @RequestBody JsonNode body,
+      @RequestHeader(value = IdempotentRequests.HEADER, required = false) String idempotencyKey,
+      @AuthenticationPrincipal StaffPrincipal principal) {
+    return commandService.create(principal, body, idempotencyKey);
   }
 
   @Operation(summary = "같은 이름·전화번호 고객 후보 조회")

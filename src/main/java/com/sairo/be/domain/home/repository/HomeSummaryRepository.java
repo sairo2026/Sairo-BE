@@ -26,7 +26,7 @@ public class HomeSummaryRepository {
       String propertyName,
       String customerName) {}
 
-  public record FollowupRow(Long id, LocalDate dueDate) {}
+  public record FollowupRow(Long id, Long contractId, LocalDate dueDate) {}
 
   public record OpenTaskRow(
       Long id,
@@ -75,7 +75,7 @@ public class HomeSummaryRepository {
   public List<FollowupRow> openFollowups(Long officeId) {
     return jdbcClient
         .sql(
-            "SELECT f.id, COALESCE(f.report_deadline, c.lease_end_date, (f.created_at AT TIME"
+            "SELECT f.id, f.contract_id, COALESCE(f.report_deadline, c.lease_end_date, (f.created_at AT TIME"
                 + " ZONE 'Asia/Seoul')::date) AS due_date FROM contract_followup_task f JOIN"
                 + " contract c ON c.id = f.contract_id WHERE c.office_id = :office AND"
                 + " f.submitted = false AND c.contract_status = 'SIGNED' AND"
@@ -83,7 +83,10 @@ public class HomeSummaryRepository {
         .param("office", officeId)
         .query(
             (rs, rowNum) ->
-                new FollowupRow(rs.getLong("id"), rs.getObject("due_date", LocalDate.class)))
+                new FollowupRow(
+                    rs.getLong("id"),
+                    rs.getLong("contract_id"),
+                    rs.getObject("due_date", LocalDate.class)))
         .list();
   }
 

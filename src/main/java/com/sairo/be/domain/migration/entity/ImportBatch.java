@@ -61,6 +61,9 @@ public class ImportBatch {
   @Column(name = "failed_count")
   private Integer failedCount;
 
+  @Column(name = "skipped_duplicate_count")
+  private Integer skippedDuplicateCount;
+
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 12)
   private ImportBatchStatus status;
@@ -127,9 +130,11 @@ public class ImportBatch {
     this.failureReason = null;
   }
 
-  public void finishExecution(int succeeded, int failed, Instant now, boolean createdAny) {
+  public void finishExecution(
+      int succeeded, int failed, int skippedDuplicate, Instant now, boolean createdAny) {
     this.succeededCount = succeeded;
     this.failedCount = failed;
+    this.skippedDuplicateCount = skippedDuplicate;
     this.executedAt = now;
     boolean allFailed = succeeded == 0 && failed > 0;
     this.status = allFailed ? ImportBatchStatus.FAILED : ImportBatchStatus.COMPLETED;
@@ -137,9 +142,11 @@ public class ImportBatch {
     this.failureReason = failed > 0 ? failed + "건이 처리에 실패했습니다." : null;
   }
 
-  public void failExecution(int succeeded, int failed, Instant now, boolean createdAny) {
+  public void failExecution(
+      int succeeded, int failed, int skippedDuplicate, Instant now, boolean createdAny) {
     this.succeededCount = succeeded;
     this.failedCount = failed;
+    this.skippedDuplicateCount = skippedDuplicate;
     this.executedAt = now;
     this.status = ImportBatchStatus.FAILED;
     this.cancellableUntil = createdAny ? now.plus(CANCEL_WINDOW) : null;

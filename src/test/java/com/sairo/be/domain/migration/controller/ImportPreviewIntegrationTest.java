@@ -165,7 +165,12 @@ class ImportPreviewIntegrationTest extends ImportIntegrationTestBase {
         .andExpect(jsonPath("$.duplicateWarnings[0].existingTargetId").value(existing))
         .andExpect(jsonPath("$.rows[2].warnings[0].code").value("DUPLICATE_SOURCE_ID_IN_FILE"))
         .andExpect(jsonPath("$.rows[2].warnings[0].severity").value("WARNING"))
-        .andExpect(jsonPath("$.summary.duplicateCount").value(1))
+        .andExpect(jsonPath("$.duplicateWarnings[0].reason").value("ALREADY_IMPORTED"))
+        .andExpect(jsonPath("$.rows[0].duplicateJudgement").value("ALREADY_IMPORTED"))
+        .andExpect(jsonPath("$.rows[2].duplicateJudgement").value("DUPLICATE_IN_FILE"))
+        .andExpect(jsonPath("$.summary.duplicateCount").value(2))
+        .andExpect(jsonPath("$.summary.alreadyImportedCount").value(1))
+        .andExpect(jsonPath("$.summary.duplicateInFileCount").value(1))
         .andExpect(jsonPath("$.summary.warningCount").value(1));
   }
 
@@ -191,7 +196,7 @@ class ImportPreviewIntegrationTest extends ImportIntegrationTestBase {
   }
 
   @Test
-  void 같은_이름과_전화번호의_기존_고객과_같은_주소의_기존_매물을_관계_후보로_보여준다() throws Exception {
+  void 같은_이름의_기존_고객과_같은_주소의_기존_매물을_관계_후보로_보여준다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     Cookie cookie = cookieOf(owner);
     long existingCustomer =
@@ -200,14 +205,16 @@ class ImportPreviewIntegrationTest extends ImportIntegrationTestBase {
 
     mockMvc
         .perform(authedGet("/api/import-batches/" + customerBatch + "/preview", cookie))
-        .andExpect(jsonPath("$.rows[0].relationMatches.length()").value(1))
-        .andExpect(jsonPath("$.rows[0].relationMatches[0].sourceField").value("성명"))
-        .andExpect(jsonPath("$.rows[0].relationMatches[0].targetType").value("CUSTOMER"))
-        .andExpect(jsonPath("$.rows[0].relationMatches[0].targetId").value(existingCustomer))
-        .andExpect(jsonPath("$.rows[0].relationMatches[0].confidence").value(0.9))
+        .andExpect(jsonPath("$.rows[0].duplicateJudgement").value("DUPLICATE_EXISTING"))
+        .andExpect(jsonPath("$.rows[0].matchedTargetId").value(existingCustomer))
+        .andExpect(jsonPath("$.rows[0].relationMatches.length()").value(0))
+        .andExpect(jsonPath("$.rows[1].duplicateJudgement").value("NEW"))
+        .andExpect(jsonPath("$.rows[1].relationMatches[0].sourceField").value("성명"))
+        .andExpect(jsonPath("$.rows[1].relationMatches[0].targetType").value("CUSTOMER"))
+        .andExpect(jsonPath("$.rows[1].relationMatches[0].targetId").value(existingCustomer))
         .andExpect(jsonPath("$.rows[1].relationMatches[0].confidence").value(0.5))
         .andExpect(jsonPath("$.rows[2].relationMatches.length()").value(0))
-        .andExpect(jsonPath("$.summary.relationMatchCount").value(2));
+        .andExpect(jsonPath("$.summary.relationMatchCount").value(1));
 
     mockMvc.perform(
         jsonPostAs(

@@ -16,6 +16,7 @@ import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.error.FieldErrorItem;
 import com.sairo.be.global.security.StaffPrincipal;
+import com.sairo.be.global.support.IdempotentRequests;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -35,23 +36,33 @@ public class PropertyCommandService {
   private final PropertyReadRepository readRepository;
   private final PropertyGuard guard;
   private final PropertyViewAssembler assembler;
+  private final IdempotentRequests idempotentRequests;
 
   public PropertyCommandService(
       PropertyRepository propertyRepository,
       EntityLifecycleEventRepository lifecycleEventRepository,
       PropertyReadRepository readRepository,
       PropertyGuard guard,
-      PropertyViewAssembler assembler) {
+      PropertyViewAssembler assembler,
+      IdempotentRequests idempotentRequests) {
     this.propertyRepository = propertyRepository;
     this.lifecycleEventRepository = lifecycleEventRepository;
     this.readRepository = readRepository;
     this.guard = guard;
     this.assembler = assembler;
+    this.idempotentRequests = idempotentRequests;
   }
 
   @Transactional
-  public PropertyCreateResponse create(StaffPrincipal principal, JsonNode body) {
-    return register(principal, body, LifecycleCreationSource.MANUAL);
+  public PropertyCreateResponse create(
+      StaffPrincipal principal, JsonNode body, String idempotencyKey) {
+    return idempotentRequests.execute(
+        principal,
+        "POST /api/properties",
+        idempotencyKey,
+        body,
+        PropertyCreateResponse.class,
+        () -> register(principal, body, LifecycleCreationSource.MANUAL));
   }
 
   @Transactional

@@ -18,6 +18,13 @@ public class CustomerImportService {
   public record MatchCandidate(
       long customerId, String normalizedName, String phoneDigits, String secondaryPhoneDigits) {}
 
+  public record ExistingMatch(
+      long customerId,
+      String normalizedName,
+      String phoneDigits,
+      String secondaryPhoneDigits,
+      boolean archived) {}
+
   private final CustomerCommandService commandService;
   private final CustomerImportRepository importRepository;
   private final CustomerReadRepository readRepository;
@@ -46,6 +53,20 @@ public class CustomerImportService {
                     row.normalizedName(),
                     row.phoneDigits(),
                     row.secondaryPhoneDigits()))
+        .toList();
+  }
+
+  @Transactional(readOnly = true)
+  public List<ExistingMatch> findExistingMatches(long officeId, Collection<String> names) {
+    return importRepository.findExistingMatches(officeId, names).stream()
+        .map(
+            row ->
+                new ExistingMatch(
+                    row.customerId(),
+                    row.normalizedName(),
+                    row.phoneDigits(),
+                    row.secondaryPhoneDigits(),
+                    row.archived()))
         .toList();
   }
 

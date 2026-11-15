@@ -205,7 +205,10 @@ class ImportExecuteIntegrationTest extends ImportIntegrationTestBase {
                 String.class))
         .isEqualTo("홍길동");
     JsonNode detail = detail(cookie, second);
-    assertThat(detail.get("counts").get("succeeded").asInt()).isEqualTo(2);
+    assertThat(detail.get("counts").get("succeeded").asInt()).isEqualTo(1);
+    assertThat(detail.get("counts").get("skippedDuplicate").asInt()).isEqualTo(1);
+    assertThat(detail.get("counts").get("skippedByReason").get("alreadyImported").asInt())
+        .isEqualTo(1);
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM import_record_link WHERE batch_id = ?", Long.class, second))
@@ -221,7 +224,10 @@ class ImportExecuteIntegrationTest extends ImportIntegrationTestBase {
     executeBatch(cookie, batchId);
 
     assertThat(count("customer")).isEqualTo(1);
-    assertThat(detail(cookie, batchId).get("counts").get("succeeded").asInt()).isEqualTo(2);
+    JsonNode counts = detail(cookie, batchId).get("counts");
+    assertThat(counts.get("succeeded").asInt()).isEqualTo(1);
+    assertThat(counts.get("skippedDuplicate").asInt()).isEqualTo(1);
+    assertThat(counts.get("skippedByReason").get("duplicateInFile").asInt()).isEqualTo(1);
   }
 
   @Test

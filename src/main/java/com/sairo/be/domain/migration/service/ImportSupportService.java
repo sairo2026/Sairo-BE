@@ -299,10 +299,12 @@ public class ImportSupportService {
           rowResultRepository.countByBatchIdAndResult(batch.getId(), ImportRowOutcome.SUCCEEDED);
       long failed =
           rowResultRepository.countByBatchIdAndResult(batch.getId(), ImportRowOutcome.FAILED);
+      long skipped =
+          rowResultRepository.countByBatchIdAndResult(batch.getId(), ImportRowOutcome.SKIPPED);
       long total = batch.getRowCount() == null ? 0 : batch.getRowCount();
       execution =
           new ImportSupportDetailResponse.ExecutionResult(
-              succeeded, failed, Math.max(0, total - succeeded - failed));
+              succeeded, failed, skipped, Math.max(0, total - succeeded - failed - skipped));
     }
     List<String> actions = new ArrayList<>();
     if (status.isCancellableByOwner()) {
