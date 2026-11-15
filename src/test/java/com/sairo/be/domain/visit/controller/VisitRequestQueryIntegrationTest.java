@@ -171,6 +171,7 @@ class VisitRequestQueryIntegrationTest extends VisitRequestIntegrationTestBase {
         .andExpect(jsonPath("$.items.length()").value(2))
         .andExpect(jsonPath("$.items[0].requestId").value(second))
         .andExpect(jsonPath("$.items[0].status").value("PENDING"))
+        .andExpect(jsonPath("$.items[0].requestKind").value("NEW"))
         .andExpect(jsonPath("$.items[0].crossOffice").value(false))
         .andExpect(jsonPath("$.items[0].propertyId").value(f.propertyId()))
         .andExpect(jsonPath("$.items[0].propertyOfficeId").value(f.owner().office().getId()))

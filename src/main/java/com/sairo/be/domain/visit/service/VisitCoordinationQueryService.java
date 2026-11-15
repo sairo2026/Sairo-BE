@@ -180,6 +180,14 @@ public class VisitCoordinationQueryService {
                     grants.put(candidate.getId(), new CandidateGrant(grant.id(), grant.state())));
       }
     }
+    Map<Long, Long> approvalIds = new LinkedHashMap<>();
+    for (VisitCandidateProperty candidate : candidates) {
+      if (!candidate.isCrossOffice()) {
+        approvalRepository.findUsablePrimaries(candidate.getPropertyId(), clock.instant()).stream()
+            .findFirst()
+            .ifPresent(approval -> approvalIds.put(candidate.getId(), approval.getId()));
+      }
+    }
     Optional<VisitCustomerLink> link =
         linkRepository.findFirstByCoordinationIdOrderByIdDesc(coordinationId);
     List<VisitCustomerTimeSlot> slots =
@@ -234,7 +242,8 @@ public class VisitCoordinationQueryService {
         applicable,
         states,
         alternatives,
-        grants);
+        grants,
+        approvalIds);
   }
 
   private Map<Long, List<Slot>> applicableSlots(

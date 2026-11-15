@@ -10,6 +10,7 @@ import com.sairo.be.domain.office.repository.OwnerTransferRepository;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
+import com.sairo.be.global.port.NotificationPublisher;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StepUpState;
 import com.sairo.be.global.support.AdvisoryLock;
@@ -35,6 +36,7 @@ public class OwnerTransferService {
   private final StepUpState stepUpState;
   private final AdvisoryLock advisoryLock;
   private final JdbcClient jdbcClient;
+  private final NotificationPublisher notificationPublisher;
   private final Clock clock;
 
   public OwnerTransferService(
@@ -44,6 +46,7 @@ public class OwnerTransferService {
       StepUpState stepUpState,
       AdvisoryLock advisoryLock,
       JdbcClient jdbcClient,
+      NotificationPublisher notificationPublisher,
       Clock clock) {
     this.transferRepository = transferRepository;
     this.membershipRepository = membershipRepository;
@@ -51,6 +54,7 @@ public class OwnerTransferService {
     this.stepUpState = stepUpState;
     this.advisoryLock = advisoryLock;
     this.jdbcClient = jdbcClient;
+    this.notificationPublisher = notificationPublisher;
     this.clock = clock;
   }
 
@@ -89,6 +93,10 @@ public class OwnerTransferService {
       throw new BusinessException(ErrorCode.TRANSFER_IN_PROGRESS);
     }
     stepUpState.consume(session);
+    notify(
+        target.id(),
+        owner.officeId(),
+        displayName(owner.membershipId()) + "님이 대표 이전을 요청했습니다. 7일 안에 수락 여부를 정해 주세요.");
     return response(transferRepository.find(id).orElseThrow());
   }
 
@@ -118,6 +126,10 @@ public class OwnerTransferService {
     var row = lockLive(principal, transferId);
     requireCandidate(principal, row);
     transferRepository.markAccepted(transferId, clock.instant());
+    notify(
+        row.fromMembershipId(),
+        row.officeId(),
+        displayName(row.toMembershipId()) + "님이 대표 이전을 수락했습니다. 운영자 승인을 기다립니다.");
     return response(transferRepository.find(transferId).orElseThrow());
   }
 
@@ -127,6 +139,10 @@ public class OwnerTransferService {
     requireCandidate(principal, row);
     transferRepository.markRejected(
         transferId, reason == null || reason.isBlank() ? null : reason.strip(), clock.instant());
+    notify(
+        row.fromMembershipId(),
+        row.officeId(),
+        displayName(row.toMembershipId()) + "님이 대표 이전을 거절했습니다.");
     return response(transferRepository.find(transferId).orElseThrow());
   }
 
@@ -194,6 +210,12 @@ public class OwnerTransferService {
       expired++;
     }
     return expired;
+  }
+
+  private void notify(long membershipId, long officeId, String message) {
+    notificationPublisher.publishToMembership(
+        membershipId,
+        new NotificationPublisher.Notice(officeId, null, "OWNER_TRANSFER", message, "NONE", null));
   }
 
   private OwnerTransferRepository.Row lockLive(StaffPrincipal principal, Long transferId) {

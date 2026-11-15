@@ -126,15 +126,7 @@ public class AuthController {
     AccessConditionResponse judgement =
         com.sairo.be.domain.auth.mapper.AuthMapper.toAccessCondition(
             accessContextService.judge(outcome.principal().userId()));
-    return switch (judgement.accessCondition()) {
-      case "ACTIVE" -> "/";
-      case "PRE_VERIFICATION" -> "/office/start";
-      case "OFFICE_UNDER_REVIEW" -> "/office/review";
-      case "VERIFIED_UNPAID", "PAYMENT_OVERDUE" -> "/billing";
-      case "AUTH_REVOKED" -> "/office/verification";
-      case "REMOVED" -> "/removed";
-      default -> "/return";
-    };
+    return KakaoLandingPath.of(judgement.accessCondition(), judgement.role());
   }
 
   private KakaoAuthFlow resolveFlow(String purpose) {

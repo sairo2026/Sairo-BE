@@ -34,7 +34,9 @@ public record HomeSummaryResponse(
       String status,
       Long assigneeMembershipId,
       String assigneeName,
-      boolean overdue) {}
+      boolean overdue,
+      String sourceType,
+      @Schema(nullable = true) Long sourceId) {}
 
   public record VisitRequestSummary(
       long pendingCount, long revalidationFailedCount, long timeClosedCount) {}

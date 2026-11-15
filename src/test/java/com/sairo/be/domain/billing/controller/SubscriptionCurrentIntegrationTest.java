@@ -101,7 +101,7 @@ class SubscriptionCurrentIntegrationTest extends BillingIntegrationTestBase {
   }
 
   @Test
-  void 결제_전_상태는_결제_전_시작_시각을_주고_다음_청구가_없다() throws Exception {
+  void 결제_전_상태는_결제_전_시작_시각을_주고_예정_청구_시각은_없고_현재_인원_기준_예상_금액을_준다() throws Exception {
     TestData.Staff owner = owner();
     fixtures
         .subscription(owner.office().getId())
@@ -113,7 +113,7 @@ class SubscriptionCurrentIntegrationTest extends BillingIntegrationTestBase {
         .andExpect(jsonPath("$.status").value("PRE_PAYMENT"))
         .andExpect(jsonPath("$.prePaymentSince").exists())
         .andExpect(jsonPath("$.nextChargeAt").value(nullValue()))
-        .andExpect(jsonPath("$.nextChargeAmount").value(nullValue()))
+        .andExpect(jsonPath("$.nextChargeAmount").value(39_900))
         .andExpect(jsonPath("$.trialEndsAt").value(nullValue()))
         .andExpect(jsonPath("$.currentPeriodEnd").exists());
   }

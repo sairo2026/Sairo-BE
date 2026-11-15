@@ -147,10 +147,10 @@ public class DirectPaymentService {
     if (outcome.invoiceStatus() == InvoiceStatus.FAILED) {
       throw new BusinessException(ErrorCode.PAYMENT_FAILED);
     }
-    return state(officeId);
+    return state(officeId, outcome);
   }
 
-  public SubscriptionStateResponse state(Long officeId) {
+  private SubscriptionStateResponse state(Long officeId, ChargeOutcome outcome) {
     Subscription subscription = context.requireSubscription(officeId);
     Instant now = clock.instant();
     Optional<Instant> cancellation =
@@ -176,6 +176,8 @@ public class DirectPaymentService {
         toDisplayOffset(subscription.getCreatedAt()),
         toDisplayOffset(subscription.getUpdatedAt()),
         subscription.getVersion(),
-        subscription.getId());
+        subscription.getId(),
+        outcome.invoiceId(),
+        outcome.invoiceStatus().name());
   }
 }

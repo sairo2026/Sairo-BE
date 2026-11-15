@@ -195,6 +195,27 @@ class ApproverConditionIntegrationTest extends ApproverIntegrationTestBase {
         "NOT_ALLOWED");
   }
 
+  @Test
+  void 가능_시간대가_하나도_없으면_windows_필드_오류로_거절하고_저장하지_않는다() throws Exception {
+    Fixture f = fixture(null);
+    String url = conditionsUrl(f.token());
+    for (String windows :
+        List.of(
+            "[]",
+            "[{\"windowType\":\"WEEKDAY\",\"weekday\":2,\"startsTime\":\"09:00\","
+                + "\"endsTime\":\"12:00\",\"isException\":true}]")) {
+      assertFieldError(
+          mockMvc.perform(
+              jsonPutAs(url, conditionJson(false, Map.of("windows", windows)), null, null)),
+          "windows",
+          "REQUIRED");
+    }
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM visit_approver_condition", Integer.class))
+        .isZero();
+  }
+
   private static String window(
       String type, String extra, String start, String end, String exception) {
     return "[{\"windowType\":\""

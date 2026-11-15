@@ -23,6 +23,7 @@ import com.sairo.be.support.fixture.AppUserBuilder;
 import com.sairo.be.support.fixture.TestData;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -115,6 +116,14 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
             .andExpect(status().isCreated())
             .andReturn();
     return AuthFlowSupport.json(result).get("transferId").asLong();
+  }
+
+  private List<String> transferNotices(TestData.Staff recipient) {
+    return jdbcTemplate.queryForList(
+        "SELECT message FROM notification WHERE recipient_user_id = ? AND notification_type ="
+            + " 'OWNER_TRANSFER' AND target_type = 'NONE' AND target_id IS NULL ORDER BY id",
+        String.class,
+        recipient.user().getId());
   }
 
   private String transferStatus(long id) {
@@ -339,11 +348,19 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
                 id))
         .startsWith("7 days");
     Cookie agentCookie = cookieOf(agent);
+    assertThat(transferNotices(agent)).hasSize(1);
+    assertThat(transferNotices(agent).get(0)).contains("대표 이전을 요청했습니다");
+    assertThat(transferNotices(owner)).isEmpty();
     post("/api/owner-transfers/" + id + "/accept", "", agentCookie)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("UNDER_REVIEW"))
         .andExpect(jsonPath("$.acceptedAt").exists())
         .andExpect(jsonPath("$.toDisplayName").exists());
+    assertThat(transferNotices(owner)).hasSize(1);
+    assertThat(transferNotices(owner).get(0)).contains("대표 이전을 수락했습니다");
+    assertThat(
+            jdbcTemplate.queryForObject("SELECT count(*) FROM notification_delivery", Long.class))
+        .isZero();
     mockMvc
         .perform(get("/api/offices/current/owner-transfer").cookie(agentCookie))
         .andExpect(jsonPath("$.status").value("UNDER_REVIEW"))
@@ -422,6 +439,8 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("REJECTED"))
         .andExpect(jsonPath("$.rejectedAt").exists());
+    assertThat(transferNotices(owner)).hasSize(1);
+    assertThat(transferNotices(owner).get(0)).contains("대표 이전을 거절했습니다");
     assertError(post(accept, "", agentCookie), ErrorCode.INVALID_TRANSITION);
     assertError(post(reject, "", agentCookie), ErrorCode.INVALID_TRANSITION);
     long second = transferTo(agent);

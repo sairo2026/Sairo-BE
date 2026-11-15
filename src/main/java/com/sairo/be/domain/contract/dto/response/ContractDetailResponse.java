@@ -39,6 +39,7 @@ public record ContractDetailResponse(
     List<PartyResponse> sellerLandlordParties,
     List<PartyResponse> buyerTenantParties,
     List<Document> documents,
+    @Schema(description = "아직 제출하지 않은 후속업무 건수") long openFollowupTaskCount,
     Long officeId,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt,

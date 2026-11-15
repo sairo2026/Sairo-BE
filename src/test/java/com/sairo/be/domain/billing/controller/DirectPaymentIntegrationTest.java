@@ -76,6 +76,8 @@ class DirectPaymentIntegrationTest extends PaymentTestBase {
         .andExpect(jsonPath("$.outstandingAmount").value(0))
         .andExpect(jsonPath("$.isInReturnPeriod").value(false))
         .andExpect(jsonPath("$.subscriptionId").value(ready.subscriptionId()))
+        .andExpect(jsonPath("$.paymentStatus").value("PAID"))
+        .andExpect(jsonPath("$.invoiceId").isNumber())
         .andExpect(jsonPath("$.officeId").value(ready.owner().office().getId()));
     Map<String, Object> invoice =
         jdbcTemplate.queryForMap(
@@ -231,7 +233,8 @@ class DirectPaymentIntegrationTest extends PaymentTestBase {
     mockMvc
         .perform(postRequest(FIRST, "").apply(cookieOf(ready.owner())))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.status").value("PRE_PAYMENT"));
+        .andExpect(jsonPath("$.status").value("PRE_PAYMENT"))
+        .andExpect(jsonPath("$.paymentStatus").value("VERIFYING"));
     assertThat(jdbcTemplate.queryForObject("SELECT status FROM billing_invoice", String.class))
         .isEqualTo("VERIFYING");
     assertThat(
@@ -301,6 +304,8 @@ class DirectPaymentIntegrationTest extends PaymentTestBase {
         .perform(postRequest(RETRY, "").apply(cookieOf(ready.owner())))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("ACTIVE"))
+        .andExpect(jsonPath("$.paymentStatus").value("PAID"))
+        .andExpect(jsonPath("$.invoiceId").value(invoiceId))
         .andExpect(jsonPath("$.pastDueSince").value(nullValue()))
         .andExpect(jsonPath("$.outstandingAmount").value(0));
     Map<String, Object> subscription =

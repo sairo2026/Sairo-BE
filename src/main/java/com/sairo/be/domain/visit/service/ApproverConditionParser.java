@@ -94,6 +94,9 @@ public final class ApproverConditionParser {
             : CustomerInput.enumValue(body, "groupingPreference", GroupingPreference.class);
 
     List<Window> rawWindows = parseWindows(body);
+    if (rawWindows.stream().allMatch(Window::exception)) {
+      throw CustomerInput.invalid("windows", FieldErrorCode.REQUIRED, "가능 시간대가 1개 이상 필요합니다.");
+    }
     List<Window> normalizedRanges = new ArrayList<>();
     List<Window> windows = normalize(rawWindows, normalizedRanges);
 

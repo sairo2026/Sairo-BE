@@ -125,6 +125,22 @@ class VisitScheduleIntegrationTest extends VisitSelectionTestBase {
         .containsEntry("visit_duration_minutes", 45)
         .containsEntry("travel_duration_minutes", 10);
     assertThat(coordinationStatus(f.coordinationId())).isEqualTo("FINAL_CONFIRMATION_REQUIRED");
+    JsonNode detail =
+        AuthFlowSupport.json(
+            mockMvc
+                .perform(authedGet("/api/visit-coordinations/" + f.coordinationId(), f.cookie()))
+                .andExpect(status().isOk())
+                .andReturn());
+    JsonNode saved = null;
+    for (JsonNode candidate : detail.get("candidateProperties")) {
+      if (candidate.get("candidatePropertyId").longValue() == extra.candidateId()) {
+        saved = candidate;
+      }
+    }
+    assertThat(saved).isNotNull();
+    assertThat(saved.get("visitDurationMinutes").intValue()).isEqualTo(45);
+    assertThat(saved.get("travelDurationMinutes").intValue()).isEqualTo(10);
+    assertThat(saved.get("approvalId").longValue()).isEqualTo(extra.approvalId());
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM visit_coordination_status_history WHERE coordination_id = ?"
@@ -157,21 +173,44 @@ class VisitScheduleIntegrationTest extends VisitSelectionTestBase {
   void 출입승인이_없거나_허용_구간이_없으면_422다() throws Exception {
     RequestFixture noApproval = requestFixture(newStaff(OfficeMembershipRole.OWNER), false, false);
     assertError(
-        put(
-            noApproval,
-            items(item(noApproval.candidateId(), 1, 30, 15)),
-            coordinationVersion(noApproval.coordinationId())),
-        ErrorCode.TIME_OUT_OF_RANGE);
+            put(
+                noApproval,
+                items(item(noApproval.candidateId(), 1, 30, 15)),
+                coordinationVersion(noApproval.coordinationId())),
+            ErrorCode.TIME_OUT_OF_RANGE)
+        .andExpect(jsonPath("$.candidatePropertyIds.length()").value(1))
+        .andExpect(jsonPath("$.candidatePropertyIds[0]").value(noApproval.candidateId()));
 
     RequestFixture f = requestFixture();
     ExtraCandidate extra = addCandidateWithApproval(f);
     assertError(
-        put(
-            f,
-            items(item(f.candidateId(), 1, 240, 15), item(extra.candidateId(), 2, 240, 0)),
-            coordinationVersion(f.coordinationId())),
-        ErrorCode.TIME_OUT_OF_RANGE);
+            put(
+                f,
+                items(item(f.candidateId(), 1, 240, 15), item(extra.candidateId(), 2, 240, 0)),
+                coordinationVersion(f.coordinationId())),
+            ErrorCode.TIME_OUT_OF_RANGE)
+        .andExpect(jsonPath("$.candidatePropertyIds.length()").value(1))
+        .andExpect(jsonPath("$.candidatePropertyIds[0]").value(extra.candidateId()));
     assertThat(coordinationStatus(f.coordinationId())).isEqualTo("FINAL_CONFIRMATION_REQUIRED");
+  }
+
+  @Test
+  void 조건이_없는_후보가_여럿이면_일정_저장_실패_응답에_모두_담는다() throws Exception {
+    RequestFixture f = requestFixture();
+    ExtraCandidate extra = addCandidateWithApproval(f);
+    jdbcTemplate.update(
+        "UPDATE visit_approver_condition SET status = 'SUPERSEDED', superseded_at = now()"
+            + " WHERE status = 'ACTIVE'");
+
+    assertError(
+            put(
+                f,
+                items(item(f.candidateId(), 1, 30, 15), item(extra.candidateId(), 2, 30, 0)),
+                coordinationVersion(f.coordinationId())),
+            ErrorCode.TIME_OUT_OF_RANGE)
+        .andExpect(jsonPath("$.candidatePropertyIds.length()").value(2))
+        .andExpect(jsonPath("$.candidatePropertyIds[0]").value(f.candidateId()))
+        .andExpect(jsonPath("$.candidatePropertyIds[1]").value(extra.candidateId()));
   }
 
   @Test

@@ -160,6 +160,50 @@ class VisitSelectionIntegrationTest extends VisitSelectionTestBase {
   }
 
   @Test
+  void 연속_선호는_같은_날_확정_방문과_가까운_신청을_먼저_분산_선호는_먼_신청을_먼저_둔다() throws Exception {
+    SelectionFixture s = selectionFixture();
+    var agent = staffIn(s.base().owner().office(), OfficeMembershipRole.AGENT);
+    SecondRequest second = secondRequest(s.base(), cookieOf(agent), "11:00", "11:30", 9, 17);
+    SecondRequest third = secondRequest(s.base(), s.cookie(), "14:00", "14:30", 9, 17);
+    long itemId =
+        insertBusyItem(
+            third.coordinationId(),
+            third.candidateId(),
+            s.base().owner().office().getId(),
+            today().plusDays(3),
+            "15:00",
+            "15:30",
+            null);
+    jdbcTemplate.update(
+        "UPDATE visit_schedule_item SET confirmed_request_id = ? WHERE id = ?",
+        s.requestId(),
+        itemId);
+
+    compare(s.token())
+        .andExpect(jsonPath("$.items[0].requestId").value(s.requestId()))
+        .andExpect(jsonPath("$.items[1].requestId").value(second.requestId()))
+        .andExpect(jsonPath("$.items[2].requestId").value(third.requestId()));
+
+    for (var entry :
+        Map.of(
+                "CONSECUTIVE",
+                List.of(third.requestId(), second.requestId(), s.requestId()),
+                "SPREAD",
+                List.of(s.requestId(), second.requestId(), third.requestId()))
+            .entrySet()) {
+      jdbcTemplate.update(
+          "UPDATE visit_approver_condition SET grouping_preference = ? WHERE approval_id = ? AND"
+              + " status = 'ACTIVE'",
+          entry.getKey(),
+          s.base().approvalId());
+      compare(s.token())
+          .andExpect(jsonPath("$.items[0].requestId").value(entry.getValue().get(0)))
+          .andExpect(jsonPath("$.items[1].requestId").value(entry.getValue().get(1)))
+          .andExpect(jsonPath("$.items[2].requestId").value(entry.getValue().get(2)));
+    }
+  }
+
+  @Test
   void 신뢰_요약은_표본이_부족하면_구간을_숨기고_표시_순서는_제출_시각을_따른다() throws Exception {
     SelectionFixture s = selectionFixture();
     var agent = staffIn(s.base().owner().office(), OfficeMembershipRole.AGENT);
@@ -512,7 +556,9 @@ class VisitSelectionIntegrationTest extends VisitSelectionTestBase {
 
     selectNow(s.token(), s.requestId())
         .andExpect(jsonPath("$.requestStatus").value("REVALIDATION_FAILED"))
-        .andExpect(jsonPath("$.revalidation.failureCode").value("CUSTOMER_CONFLICT"));
+        .andExpect(jsonPath("$.revalidation.failureCode").value("CUSTOMER_CONFLICT"))
+        .andExpect(
+            jsonPath("$.revalidation.failureDetail").value("신청한 사무소 또는 고객 쪽 사정으로 확정할 수 없다."));
   }
 
   @Test
@@ -543,7 +589,9 @@ class VisitSelectionIntegrationTest extends VisitSelectionTestBase {
 
     selectNow(s.token(), s.requestId())
         .andExpect(jsonPath("$.requestStatus").value("REVALIDATION_FAILED"))
-        .andExpect(jsonPath("$.revalidation.failureCode").value("BROKER_CONFLICT"));
+        .andExpect(jsonPath("$.revalidation.failureCode").value("BROKER_CONFLICT"))
+        .andExpect(
+            jsonPath("$.revalidation.failureDetail").value("신청한 사무소 또는 고객 쪽 사정으로 확정할 수 없다."));
   }
 
   @Test
@@ -574,7 +622,9 @@ class VisitSelectionIntegrationTest extends VisitSelectionTestBase {
 
     selectNow(s.token(), s.requestId())
         .andExpect(jsonPath("$.requestStatus").value("REVALIDATION_FAILED"))
-        .andExpect(jsonPath("$.revalidation.failureCode").value("TRAVEL_CONFLICT"));
+        .andExpect(jsonPath("$.revalidation.failureCode").value("TRAVEL_CONFLICT"))
+        .andExpect(
+            jsonPath("$.revalidation.failureDetail").value("신청한 사무소 또는 고객 쪽 사정으로 확정할 수 없다."));
   }
 
   @Test
@@ -611,7 +661,9 @@ class VisitSelectionIntegrationTest extends VisitSelectionTestBase {
 
     selectNow(s.token(), s.requestId())
         .andExpect(jsonPath("$.requestStatus").value("REVALIDATION_FAILED"))
-        .andExpect(jsonPath("$.revalidation.failureCode").value("PROPERTY_CONFLICT"));
+        .andExpect(jsonPath("$.revalidation.failureCode").value("PROPERTY_CONFLICT"))
+        .andExpect(
+            jsonPath("$.revalidation.failureDetail").value("신청한 사무소 또는 고객 쪽 사정으로 확정할 수 없다."));
   }
 
   @Test
