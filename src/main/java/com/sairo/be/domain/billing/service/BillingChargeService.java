@@ -6,6 +6,7 @@ import com.sairo.be.domain.billing.entity.BillingInvoice;
 import com.sairo.be.domain.billing.entity.FailureCategory;
 import com.sairo.be.domain.billing.entity.InvoiceStatus;
 import com.sairo.be.domain.billing.entity.Subscription;
+import com.sairo.be.domain.billing.entity.SubscriptionStatus;
 import com.sairo.be.domain.billing.repository.BillingChargeAttemptRepository;
 import com.sairo.be.domain.billing.repository.BillingCustomerRepository;
 import com.sairo.be.domain.billing.repository.BillingInvoiceRepository;
@@ -190,7 +191,14 @@ public class BillingChargeService {
         category = FailureCategories.from(result.failureCode());
         attempt.markFailed(category, result.failureCode(), now);
         invoice.markFailed(null);
+        boolean wasTrial = subscription.getStatus() == SubscriptionStatus.TRIAL;
         transitions.onFailed(subscription, invoice, now);
+        if (wasTrial && subscription.getStatus() == SubscriptionStatus.ENDED) {
+          noticeDispatcher.trialEndedPaymentFailed(
+              invoice.getOfficeId(),
+              BillingPeriods.returnPeriodEnd(subscription.getEndedAt()),
+              FailureCategories.label(category));
+        }
         if (transitions.isPastDue(subscription)) {
           invoice.markFailed(
               FailureCategories.nextRetryAt(invoice.getDueAt(), attempt.getAttemptNo(), category));

@@ -163,6 +163,16 @@ public class BillingQueryRepository {
         .optional();
   }
 
+  public Optional<Long> findRegistrationIdByOffice(long officeId) {
+    return jdbcClient
+        .sql(
+            "SELECT id FROM office_registration WHERE resulting_office_id = :officeId"
+                + " ORDER BY id DESC LIMIT 1")
+        .param("officeId", officeId)
+        .query(Long.class)
+        .optional();
+  }
+
   public boolean officeExists(long officeId) {
     return jdbcClient
             .sql("SELECT count(*) FROM office WHERE id = :id")

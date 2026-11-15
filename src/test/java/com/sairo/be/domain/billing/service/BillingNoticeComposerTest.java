@@ -130,4 +130,30 @@ class BillingNoticeComposerTest {
         .contains("[종료 예정 일시]까지 결제하지 않으면 미납 청구를 취소하고 구독이 종료됩니다.");
     assertThat(ended.body()).contains("종료 후 30일 동안([반환 기간 종료 일시]까지)");
   }
+
+  @Test
+  void 알림_공백을_메우는_새_안내는_사실만_쓰고_빠진_값은_문장째_뺀다() {
+    BillingNotice failed =
+        BillingNoticeComposer.compose(
+            BillingNoticeTemplate.TRIAL_ENDED_PAYMENT_FAILED, allValues());
+    BillingNotice revoked =
+        BillingNoticeComposer.compose(BillingNoticeTemplate.CANCELLATION_REVOKED, allValues());
+    BillingNotice reconfirm =
+        BillingNoticeComposer.compose(
+            BillingNoticeTemplate.PURCHASE_CONSENT_RECONFIRM, allValues());
+
+    assertThat(failed.title()).isEqualTo("[사이로] 결제가 완료되지 않아 체험이 종료되었습니다");
+    assertThat(failed.body()).contains("실패 사유 [실패 사유].").contains("([반환 기간 종료 일시]까지)");
+    assertThat(revoked.title()).isEqualTo("[사이로] 해지 예약이 취소되었습니다");
+    assertThat(reconfirm.title()).isEqualTo("[사이로] 구독 구매 동의를 다시 해 주세요");
+    assertThat(reconfirm.inAppText()).contains("구독 구매 동의를 다시 해 주세요");
+
+    java.util.Map<String, String> noReason = allValues();
+    noReason.remove("실패 사유");
+    assertThat(
+            BillingNoticeComposer.compose(
+                    BillingNoticeTemplate.TRIAL_ENDED_PAYMENT_FAILED, noReason)
+                .body())
+        .doesNotContain("실패 사유");
+  }
 }

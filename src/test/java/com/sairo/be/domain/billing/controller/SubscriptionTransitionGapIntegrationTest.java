@@ -54,6 +54,38 @@ class SubscriptionTransitionGapIntegrationTest extends PaymentTestBase {
         userId);
   }
 
+  private List<String> noticeMessages(long userId, String type) {
+    return jdbcTemplate.queryForList(
+        "SELECT message FROM notification WHERE recipient_user_id = ? AND notification_type = ?"
+            + " ORDER BY id",
+        String.class,
+        userId,
+        type);
+  }
+
+  private List<String> emailChannels(long userId, String type) {
+    return jdbcTemplate.queryForList(
+        "SELECT d.channel FROM notification_delivery d JOIN notification n ON n.id ="
+            + " d.notification_id WHERE n.recipient_user_id = ? AND n.notification_type = ?",
+        String.class,
+        userId,
+        type);
+  }
+
+  private void approvedRegistration(Ready ready) {
+    jdbcTemplate.update(
+        "INSERT INTO office_registration (applicant_user_id, status, entity_type,"
+            + " registration_authority, real_estate_license_number,"
+            + " business_registration_number, requested_office_name,"
+            + " requested_representative_name, requested_representative_phone, requested_address,"
+            + " applicant_registration_relation, reviewed_at, resulting_office_id) VALUES (?,"
+            + " 'APPROVED', 'INDIVIDUAL', '서울', ?, '1234567890', '사무소', '홍대표',"
+            + " '010-0000-0000', '서울', '대표', now(), ?)",
+        ready.owner().user().getId(),
+        "LIC-" + ready.owner().office().getId(),
+        ready.owner().office().getId());
+  }
+
   private Ready trialDue() {
     long event =
         fixtures.trialEvent(
@@ -68,14 +100,21 @@ class SubscriptionTransitionGapIntegrationTest extends PaymentTestBase {
   }
 
   @Test
-  void 첫_결제가_확정_실패해_체험이_끝나면_구독은_종료되고_반환기간이_시작되며_대표_알림함에는_알림이_없다() {
+  void 첫_결제가_확정_실패해_체험이_끝나면_구독은_종료되고_대표에게_결제_알림을_한_번만_보낸다() {
     Ready ready = trialDue();
     paymentGateway.respondWith(PaymentStatus.FAILED);
     jobService.runFirstCharges(Instant.now());
     Map<String, Object> sub = subscription(ready.subscriptionId());
     assertThat(sub.get("status")).isEqualTo("ENDED");
     assertThat(sub.get("ended_at")).isNotNull();
-    assertThat(noticeCount(ready.owner().user().getId())).isZero();
+    long userId = ready.owner().user().getId();
+    assertThat(noticeTypes(userId)).containsExactly("PAYMENT");
+    assertThat(noticeMessages(userId, "PAYMENT").getFirst())
+        .contains("결제가 완료되지 않아 체험이 종료되었습니다")
+        .contains("다시 결제할 수 있습니다");
+    assertThat(emailChannels(userId, "PAYMENT")).containsExactly("EMAIL");
+    jobService.runFirstCharges(Instant.now());
+    assertThat(noticeCount(userId)).isEqualTo(1L);
   }
 
   @Test
@@ -105,7 +144,7 @@ class SubscriptionTransitionGapIntegrationTest extends PaymentTestBase {
   }
 
   @Test
-  void 해지_예약은_구독_변경_안내를_한_번_남기고_철회는_알림을_남기지_않으며_예약을_거둔다() throws Exception {
+  void 해지_예약은_구독_변경_안내를_남기고_철회는_취소_안내를_한_번_남기며_예약을_거둔다() throws Exception {
     Ready ready = active();
     mockMvc
         .perform(postRequest(CANCEL, "").apply(cookieWithStepUp(ready.owner())))
@@ -116,7 +155,13 @@ class SubscriptionTransitionGapIntegrationTest extends PaymentTestBase {
         .perform(postRequest(WITHDRAW, "").apply(cookieOf(ready.owner())))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.withdrawn").value(true));
-    assertThat(noticeTypes(userId)).containsExactly("PLAN_CHANGED");
+    assertThat(noticeTypes(userId)).containsExactly("PLAN_CHANGED", "PLAN_CHANGED");
+    assertThat(noticeMessages(userId, "PLAN_CHANGED").getLast()).contains("해지 예약이 취소되었습니다");
+    assertThat(emailChannels(userId, "PLAN_CHANGED")).containsExactly("EMAIL", "EMAIL");
+    mockMvc
+        .perform(postRequest(WITHDRAW, "").apply(cookieOf(ready.owner())))
+        .andExpect(status().isConflict());
+    assertThat(noticeTypes(userId)).hasSize(2);
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT revoked_at IS NOT NULL FROM subscription_cancellation WHERE subscription_id"
@@ -127,20 +172,31 @@ class SubscriptionTransitionGapIntegrationTest extends PaymentTestBase {
   }
 
   @Test
-  void 인증_중단_재개와_중단_만료_종료는_대표_알림함에_알림을_남기지_않는다() {
+  void 인증_중단_재개와_중단_만료_종료는_대표에게_사무소_인증_알림을_한_번씩_남긴다() {
     Ready resumed = active();
+    approvedRegistration(resumed);
     Instant suspendedAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
     suspensionService.suspend(resumed.owner().office().getId(), suspendedAt);
     suspensionService.resume(resumed.owner().office().getId(), suspendedAt.plusSeconds(60));
     assertThat(subscription(resumed.subscriptionId()).get("status")).isEqualTo("PRE_PAYMENT");
-    assertThat(noticeCount(resumed.owner().user().getId())).isZero();
+    long resumedUser = resumed.owner().user().getId();
+    assertThat(noticeTypes(resumedUser)).containsExactly("OFFICE_REVIEW");
+    assertThat(noticeMessages(resumedUser, "OFFICE_REVIEW").getFirst()).contains("인증 중단이 해제되었습니다");
+    assertThat(emailChannels(resumedUser, "OFFICE_REVIEW")).containsExactly("EMAIL");
 
     Ready expired = active();
+    approvedRegistration(expired);
     suspensionService.suspend(expired.owner().office().getId(), suspendedAt);
     assertThat(suspensionService.expireSuspensions(suspendedAt.plusSeconds(30L * 86_400)))
         .isEqualTo(1);
     assertThat(subscription(expired.subscriptionId()).get("status")).isEqualTo("ENDED");
-    assertThat(noticeCount(expired.owner().user().getId())).isZero();
+    long expiredUser = expired.owner().user().getId();
+    assertThat(noticeTypes(expiredUser)).containsExactly("OFFICE_REVIEW");
+    assertThat(noticeMessages(expiredUser, "OFFICE_REVIEW").getFirst())
+        .contains("구독이 종료되었습니다")
+        .contains("30일 동안");
+    assertThat(suspensionService.expireSuspensions(suspendedAt.plusSeconds(31L * 86_400))).isZero();
+    assertThat(noticeCount(expiredUser)).isEqualTo(1L);
   }
 
   @Test

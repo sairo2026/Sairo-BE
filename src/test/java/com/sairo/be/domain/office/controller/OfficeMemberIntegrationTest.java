@@ -536,28 +536,37 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
     assertThat(transferStatus(id)).isEqualTo("REJECTED");
   }
 
-  @Test
-  void 대표_이전이_완료돼도_구독과_기존_동의는_그대로이고_새_대표가_구독과_구매_동의_미리보기를_이어받는다() throws Exception {
+  private long subscriptionWithConsent(String status) {
     var fixtures = new com.sairo.be.support.fixture.BillingFixtures(jdbcTemplate);
     fixtures.standardPrice("2026-12-STD", Instant.now().minus(java.time.Duration.ofDays(60)));
     fixtures.purchaseTerms(com.sairo.be.support.fixture.BillingFixtures.PURCHASE_TERMS_VERSION);
     long subscriptionId =
         fixtures
             .subscription(office.getId())
-            .status("ACTIVE")
+            .status(status)
             .period(
                 Instant.now().minus(java.time.Duration.ofDays(5)),
                 Instant.now().plus(java.time.Duration.ofDays(25)))
             .insert();
     fixtures.consent(subscriptionId, owner.user().getId(), office.getId(), 39_900, 3_627, 39_900);
+    return subscriptionId;
+  }
+
+  private void completeTransfer(TestData.Staff agent, String operatorNo) throws Exception {
+    long id = transferTo(agent);
+    post("/api/owner-transfers/" + id + "/accept", "", cookieOf(agent));
+    Cookie operator = operatorSession(createOperator(operatorNo, "김운영", OperatorRole.OPS));
+    post("/api/ops/owner-transfers/" + id + "/approve", "", operator).andExpect(status().isOk());
+  }
+
+  @Test
+  void 대표_이전이_완료되면_구독_상태는_그대로이고_구매_동의는_철회되며_새_대표에게_재동의를_안내한다() throws Exception {
+    long subscriptionId = subscriptionWithConsent("ACTIVE");
     java.util.Map<String, Object> before =
         jdbcTemplate.queryForMap("SELECT * FROM subscription WHERE id = ?", subscriptionId);
     var agent = staffIn(OfficeMembershipRole.AGENT);
-    long id = transferTo(agent);
     Cookie agentCookie = cookieOf(agent);
-    post("/api/owner-transfers/" + id + "/accept", "", agentCookie);
-    Cookie operator = operatorSession(createOperator("9001003", "김운영", OperatorRole.OPS));
-    post("/api/ops/owner-transfers/" + id + "/approve", "", operator).andExpect(status().isOk());
+    completeTransfer(agent, "9001003");
 
     java.util.Map<String, Object> after =
         jdbcTemplate.queryForMap("SELECT * FROM subscription WHERE id = ?", subscriptionId);
@@ -565,21 +574,83 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
     assertThat(after.get("current_period_start")).isEqualTo(before.get("current_period_start"));
     assertThat(after.get("current_period_end")).isEqualTo(before.get("current_period_end"));
     assertThat(
+            jdbcTemplate.queryForList(
+                "SELECT agreed FROM subscription_purchase_consent WHERE subscription_id = ?"
+                    + " ORDER BY id",
+                Boolean.class,
+                subscriptionId))
+        .containsExactly(true, false);
+    mockMvc
+        .perform(get("/api/subscriptions/current").cookie(agentCookie))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("ACTIVE"))
+        .andExpect(jsonPath("$.readiness.hasValidConsent").value(false));
+    mockMvc
+        .perform(get("/api/subscriptions/purchase-consent/preview").cookie(agentCookie))
+        .andExpect(status().isOk());
+    List<String> notices =
+        jdbcTemplate.queryForList(
+            "SELECT message FROM notification WHERE recipient_user_id = ? AND notification_type ="
+                + " 'PLAN_CHANGED'",
+            String.class,
+            agent.user().getId());
+    assertThat(notices).hasSize(1);
+    assertThat(notices.getFirst()).contains("구독 구매 동의를 다시 해 주세요");
+    assertThat(
+            jdbcTemplate.queryForList(
+                "SELECT d.channel FROM notification_delivery d JOIN notification n ON n.id ="
+                    + " d.notification_id WHERE n.recipient_user_id = ? AND n.notification_type ="
+                    + " 'PLAN_CHANGED'",
+                String.class,
+                agent.user().getId()))
+        .containsExactly("EMAIL");
+    assertError(
+        mockMvc.perform(get("/api/subscriptions/current").cookie(ownerCookie)),
+        ErrorCode.FORBIDDEN);
+  }
+
+  @Test
+  void 대표_이전은_진행_중인_청구서를_바꾸지_않는다() throws Exception {
+    long subscriptionId = subscriptionWithConsent("ACTIVE");
+    var fixtures = new com.sairo.be.support.fixture.BillingFixtures(jdbcTemplate);
+    long consentId =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM subscription_purchase_consent WHERE subscription_id = ?",
+            Long.class,
+            subscriptionId);
+    long invoiceId =
+        fixtures.invoice(office.getId(), subscriptionId, consentId).status("PROCESSING").insert();
+    completeTransfer(staffIn(OfficeMembershipRole.AGENT), "9001004");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM billing_invoice WHERE id = ?", String.class, invoiceId))
+        .isEqualTo("PROCESSING");
+  }
+
+  @Test
+  void 철회할_구매_동의가_없던_사무소의_대표_이전은_동의_행도_재동의_안내도_만들지_않는다() throws Exception {
+    var fixtures = new com.sairo.be.support.fixture.BillingFixtures(jdbcTemplate);
+    long subscriptionId =
+        fixtures
+            .subscription(office.getId())
+            .status("PRE_PAYMENT")
+            .prePaymentSince(Instant.now().minus(java.time.Duration.ofDays(1)))
+            .insert();
+    var agent = staffIn(OfficeMembershipRole.AGENT);
+    completeTransfer(agent, "9001005");
+    assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM subscription_purchase_consent WHERE subscription_id = ?",
                 Long.class,
                 subscriptionId))
-        .isEqualTo(1L);
-    mockMvc
-        .perform(get("/api/subscriptions/current").cookie(agentCookie))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.status").value("ACTIVE"));
-    mockMvc
-        .perform(get("/api/subscriptions/purchase-consent/preview").cookie(agentCookie))
-        .andExpect(status().isOk());
-    assertError(
-        mockMvc.perform(get("/api/subscriptions/current").cookie(ownerCookie)),
-        ErrorCode.FORBIDDEN);
+        .isZero();
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM notification WHERE recipient_user_id = ? AND"
+                    + " notification_type = 'PLAN_CHANGED'",
+                Long.class,
+                agent.user().getId()))
+        .isZero();
   }
 
   @Test

@@ -33,6 +33,7 @@ public class AuthSuspensionService {
   private final RemainingPeriodRefunds remainingPeriodRefunds;
   private final BillingQueryRepository queryRepository;
   private final ConsentWithdrawals consentWithdrawals;
+  private final BillingNoticeDispatcher noticeDispatcher;
   private final AdvisoryLock advisoryLock;
 
   public AuthSuspensionService(
@@ -41,12 +42,14 @@ public class AuthSuspensionService {
       RemainingPeriodRefunds remainingPeriodRefunds,
       BillingQueryRepository queryRepository,
       ConsentWithdrawals consentWithdrawals,
+      BillingNoticeDispatcher noticeDispatcher,
       AdvisoryLock advisoryLock) {
     this.subscriptionRepository = subscriptionRepository;
     this.invoiceRepository = invoiceRepository;
     this.remainingPeriodRefunds = remainingPeriodRefunds;
     this.queryRepository = queryRepository;
     this.consentWithdrawals = consentWithdrawals;
+    this.noticeDispatcher = noticeDispatcher;
     this.advisoryLock = advisoryLock;
   }
 
@@ -91,7 +94,10 @@ public class AuthSuspensionService {
     } else {
       subscription.resumeToPrePayment(now);
     }
-    return subscriptionRepository.save(subscription);
+    Subscription saved = subscriptionRepository.save(subscription);
+    noticeDispatcher.authResumed(
+        officeId, queryRepository.findRegistrationIdByOffice(officeId).orElse(null));
+    return saved;
   }
 
   @Transactional
@@ -104,6 +110,11 @@ public class AuthSuspensionService {
         advisoryLock.lockForTransaction("billing:subscription:" + subscription.getId());
         subscription.end(deadline);
         subscriptionRepository.save(subscription);
+        noticeDispatcher.authSuspensionExpired(
+            subscription.getOfficeId(),
+            queryRepository.findRegistrationIdByOffice(subscription.getOfficeId()).orElse(null),
+            deadline,
+            BillingPeriods.returnPeriodEnd(deadline));
         ended++;
       }
     }

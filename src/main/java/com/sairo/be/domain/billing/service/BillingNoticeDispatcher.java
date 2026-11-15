@@ -181,6 +181,58 @@ public class BillingNoticeDispatcher {
         new Notice(officeId, null, "OFFICE_REVIEW", inApp, "OFFICE_REGISTRATION", registrationId));
   }
 
+  /** 사무소 인증 중단 해제 안내(OFFICE_REVIEW)다. */
+  public List<Long> authResumed(Long officeId, Long registrationId) {
+    return sendOfficeReview(
+        officeId, registrationId, BillingNoticeTemplate.AUTH_RESUMED, base(officeId));
+  }
+
+  /** 인증 중단이 재개 기한까지 이어져 구독이 끝난 안내(OFFICE_REVIEW)다. */
+  public List<Long> authSuspensionExpired(
+      Long officeId, Long registrationId, Instant endedAt, Instant returnEndsAt) {
+    Map<String, String> values = base(officeId);
+    values.put("종료 예정 일시", format(endedAt));
+    values.put("반환 기간 종료 일시", format(returnEndsAt));
+    return sendOfficeReview(
+        officeId, registrationId, BillingNoticeTemplate.AUTH_SUSPENSION_EXPIRED, values);
+  }
+
+  /** 무료 이용 뒤 첫 결제가 실패해 체험이 끝난 안내(PAYMENT)다. */
+  public List<Long> trialEndedPaymentFailed(
+      Long officeId, Instant returnEndsAt, String failureLabel) {
+    Map<String, String> values = base(officeId);
+    values.put("반환 기간 종료 일시", format(returnEndsAt));
+    values.put("실패 사유", failureLabel);
+    return send(officeId, "PAYMENT", BillingNoticeTemplate.TRIAL_ENDED_PAYMENT_FAILED, values);
+  }
+
+  /** 해지 예약 취소 안내(PLAN_CHANGED)다. */
+  public List<Long> cancellationRevoked(Long officeId) {
+    return send(
+        officeId, "PLAN_CHANGED", BillingNoticeTemplate.CANCELLATION_REVOKED, base(officeId));
+  }
+
+  /** 대표 이전으로 구매 동의가 철회된 뒤 새 대표에게 다시 동의를 요청하는 안내(PLAN_CHANGED)다. */
+  public List<Long> purchaseConsentReconfirm(Long officeId) {
+    return send(
+        officeId, "PLAN_CHANGED", BillingNoticeTemplate.PURCHASE_CONSENT_RECONFIRM, base(officeId));
+  }
+
+  private List<Long> sendOfficeReview(
+      Long officeId,
+      Long registrationId,
+      BillingNoticeTemplate template,
+      Map<String, String> values) {
+    if (registrationId == null) {
+      return List.of();
+    }
+    BillingNotice notice = BillingNoticeComposer.compose(template, values);
+    String inApp = notice.inAppText() != null ? notice.inAppText() : inAppTitle(notice.title());
+    return publisher.publishToOwners(
+        officeId,
+        new Notice(officeId, null, "OFFICE_REVIEW", inApp, "OFFICE_REGISTRATION", registrationId));
+  }
+
   private List<Long> send(
       Long officeId, String type, BillingNoticeTemplate template, Map<String, String> values) {
     BillingNotice notice = BillingNoticeComposer.compose(template, values);
