@@ -28,12 +28,15 @@ class ResendMailSender implements MailSender {
   private final URI endpoint;
   private final String apiKey;
   private final String from;
+  private final HtmlMailRenderer htmlRenderer;
 
   ResendMailSender(
       @Value("${sairo.delivery.mail.resend.base-url:https://api.resend.com}") String baseUrl,
       @Value("${sairo.delivery.mail.resend.api-key}") String apiKey,
       @Value("${sairo.delivery.mail.from}") String from,
-      @Value("${sairo.delivery.mail.from-name:사이로(SAIRO)}") String fromName) {
+      @Value("${sairo.delivery.mail.from-name:사이로(SAIRO)}") String fromName,
+      HtmlMailRenderer htmlRenderer) {
+    this.htmlRenderer = htmlRenderer;
     this.endpoint = URI.create(baseUrl.replaceAll("/+$", "") + "/emails");
     this.apiKey = apiKey;
     this.from = MailFromFormatter.display(from, fromName);
@@ -47,6 +50,7 @@ class ResendMailSender implements MailSender {
                 "from", from,
                 "to", List.of(message.to()),
                 "subject", message.subject(),
+                "html", htmlRenderer.render(message.body()),
                 "text", message.body()));
     HttpRequest request =
         HttpRequest.newBuilder(endpoint)

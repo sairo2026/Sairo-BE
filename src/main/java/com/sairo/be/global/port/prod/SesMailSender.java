@@ -22,12 +22,15 @@ import software.amazon.awssdk.services.sesv2.model.SendEmailRequest;
 class SesMailSender implements MailSender {
   private final SesV2Client client;
   private final String from;
+  private final HtmlMailRenderer htmlRenderer;
 
   SesMailSender(
       SesV2Client client,
       @Value("${sairo.delivery.mail.from}") String from,
-      @Value("${sairo.delivery.mail.from-name:사이로(SAIRO)}") String fromName) {
+      @Value("${sairo.delivery.mail.from-name:사이로(SAIRO)}") String fromName,
+      HtmlMailRenderer htmlRenderer) {
     this.client = client;
+    this.htmlRenderer = htmlRenderer;
     this.from = MailFromFormatter.asciiDisplay(from, fromName);
   }
 
@@ -48,6 +51,11 @@ class SesMailSender implements MailSender {
                                     .text(
                                         Content.builder()
                                             .data(message.body())
+                                            .charset("UTF-8")
+                                            .build())
+                                    .html(
+                                        Content.builder()
+                                            .data(htmlRenderer.render(message.body()))
                                             .charset("UTF-8")
                                             .build())
                                     .build())
