@@ -81,6 +81,9 @@ class ContractFollowupIntegrationTest extends ContractIntegrationTestBase {
     long farProperty = addressedProperty(ownerCookie, "먼 만기 매물", "서울시 마포구 합정동 2");
     long far = createJeonse(farProperty, today().minusDays(5), today().plusYears(2));
     assertThat(followups(far)).isZero();
+    mockMvc
+        .perform(authedGet("/api/contracts/" + far, ownerCookie))
+        .andExpect(jsonPath("$.openFollowupTaskCount").value(0));
     assertThat(taskStatus("CONTRACT_MATURITY", far)).isNull();
     assertThat(
             getJson("/api/contracts/" + far + "/followup-tasks", ownerCookie).get("items").size())
@@ -162,6 +165,9 @@ class ContractFollowupIntegrationTest extends ContractIntegrationTestBase {
     long id = createJeonse(property, today().minusDays(5), today().plusDays(40));
     long taskId = longValue("SELECT id FROM contract_followup_task WHERE contract_id = ?", id);
     String url = "/api/contract-followup-tasks/" + taskId;
+    mockMvc
+        .perform(authedGet("/api/contracts/" + id, ownerCookie))
+        .andExpect(jsonPath("$.openFollowupTaskCount").value(1));
     assertFieldError(
         mockMvc.perform(jsonPatchAs(url, "{\"submitted\":true}", ownerCookie, null)),
         "If-Match",
@@ -196,6 +202,9 @@ class ContractFollowupIntegrationTest extends ContractIntegrationTestBase {
     mockMvc
         .perform(authedGet("/api/contracts/" + id + "/followup-tasks", ownerCookie))
         .andExpect(jsonPath("$.items[0].submitted").value(true));
+    mockMvc
+        .perform(authedGet("/api/contracts/" + id, ownerCookie))
+        .andExpect(jsonPath("$.openFollowupTaskCount").value(0));
   }
 
   @Test

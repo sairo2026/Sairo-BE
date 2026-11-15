@@ -106,7 +106,9 @@ public class HomeSummaryService {
                         row.status(),
                         row.assigneeId(),
                         row.assigneeName(),
-                        row.dueDate().isBefore(today)))
+                        row.dueDate().isBefore(today),
+                        row.sourceType(),
+                        row.sourceId()))
             .toList();
 
     Map<String, Long> counts = repository.coordinationStatusCounts(officeId, scope);

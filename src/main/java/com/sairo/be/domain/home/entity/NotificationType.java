@@ -3,7 +3,7 @@ package com.sairo.be.domain.home.entity;
 import java.util.EnumSet;
 import java.util.Set;
 
-/** 알림함 알림 종류 19가지와 수신 설정 키, 이동 대상 종류의 대응이다(API 명세서 17장 NotificationListResponse). */
+/** 알림함 알림 종류 20가지와 수신 설정 키, 이동 대상 종류의 대응이다(API 명세서 17장 NotificationListResponse). */
 public enum NotificationType {
   OFFICE_REVIEW(null, EnumSet.of(NotificationTargetType.OFFICE_REGISTRATION)),
   MEMBERSHIP_APPROVAL_NEEDED(null, EnumSet.of(NotificationTargetType.MEMBERSHIP)),
@@ -29,7 +29,8 @@ public enum NotificationType {
   DELETION_SCHEDULED(null, EnumSet.of(NotificationTargetType.DATA_RETURN)),
   SUPPORT_REPLY(null, EnumSet.of(NotificationTargetType.SUPPORT_TICKET)),
   TERMS_CHANGED(null, EnumSet.of(NotificationTargetType.NONE)),
-  CONTRACT_EXPIRY(null, EnumSet.of(NotificationTargetType.CONTRACT));
+  CONTRACT_EXPIRY(null, EnumSet.of(NotificationTargetType.CONTRACT)),
+  OWNER_TRANSFER(null, EnumSet.of(NotificationTargetType.NONE));
 
   private static final Set<NotificationType> EMAIL_DELIVERED =
       EnumSet.of(

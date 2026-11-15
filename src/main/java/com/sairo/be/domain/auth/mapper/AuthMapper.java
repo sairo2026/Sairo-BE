@@ -37,10 +37,11 @@ public final class AuthMapper {
   }
 
   public static AuthContextResponse toAuthContext(
-      AccessJudgement judgement, boolean reconsentRequired) {
+      AccessJudgement judgement, String officeName, boolean reconsentRequired) {
     return new AuthContextResponse(
         judgement.accessCondition().name(),
         judgement.officeId(),
+        officeName,
         judgement.role(),
         judgement.pendingRegistrationId(),
         judgement.pendingMembershipId(),

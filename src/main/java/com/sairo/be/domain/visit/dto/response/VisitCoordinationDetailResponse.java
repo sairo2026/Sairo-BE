@@ -56,7 +56,10 @@ public record VisitCoordinationDetailResponse(
       @Schema(nullable = true) String propertyAddressDetail,
       @Schema(nullable = true) OffsetDateTime approverRespondedAt,
       List<TimeSlot> approverTimeSlots,
-      List<TimeSlot> applicableSlots) {}
+      List<TimeSlot> applicableSlots,
+      int visitDurationMinutes,
+      int travelDurationMinutes,
+      @Schema(nullable = true) Long approvalId) {}
 
   public record ScheduleItem(
       Long itemId,

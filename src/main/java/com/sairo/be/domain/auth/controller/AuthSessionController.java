@@ -15,6 +15,7 @@ import com.sairo.be.domain.auth.dto.response.RecoveryOptionsResponse;
 import com.sairo.be.domain.auth.dto.response.VerificationSendResponse;
 import com.sairo.be.domain.auth.mapper.AuthMapper;
 import com.sairo.be.domain.auth.service.AccessContextService;
+import com.sairo.be.domain.auth.service.AccessJudgement;
 import com.sairo.be.domain.auth.service.EmailLoginService;
 import com.sairo.be.domain.auth.service.EmailSignupService;
 import com.sairo.be.domain.auth.service.EmailVerificationService;
@@ -22,6 +23,7 @@ import com.sairo.be.domain.auth.service.KakaoSignupService;
 import com.sairo.be.domain.auth.service.PhoneVerificationService;
 import com.sairo.be.domain.auth.service.ReconsentService;
 import com.sairo.be.domain.auth.service.RecoveryOptionsService;
+import com.sairo.be.global.port.OfficeDirectory;
 import com.sairo.be.global.security.MemberSessionManager;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.access.AccessPermission;
@@ -58,6 +60,7 @@ public class AuthSessionController {
   private final ReconsentService reconsentService;
   private final MemberSessionManager sessionManager;
   private final KakaoSignupService kakaoSignupService;
+  private final OfficeDirectory officeDirectory;
 
   public AuthSessionController(
       EmailLoginService emailLoginService,
@@ -68,7 +71,8 @@ public class AuthSessionController {
       AccessContextService accessContextService,
       ReconsentService reconsentService,
       MemberSessionManager sessionManager,
-      KakaoSignupService kakaoSignupService) {
+      KakaoSignupService kakaoSignupService,
+      OfficeDirectory officeDirectory) {
     this.emailLoginService = emailLoginService;
     this.emailSignupService = emailSignupService;
     this.emailVerificationService = emailVerificationService;
@@ -78,15 +82,23 @@ public class AuthSessionController {
     this.reconsentService = reconsentService;
     this.sessionManager = sessionManager;
     this.kakaoSignupService = kakaoSignupService;
+    this.officeDirectory = officeDirectory;
   }
 
   @Operation(summary = "접근 상태 판정 조회", description = "접근 상태 8조건 판정 결과와 약관 재동의 필요 여부를 돌려준다.")
   @RequiresAccess(AccessPermission.AUTHENTICATED)
   @GetMapping("/context")
   public AuthContextResponse context(@AuthenticationPrincipal StaffPrincipal principal) {
+    AccessJudgement judgement = accessContextService.judge(principal.userId());
+    String officeName =
+        judgement.officeId() == null
+            ? null
+            : officeDirectory
+                .find(judgement.officeId())
+                .map(OfficeDirectory.OfficeSummary::name)
+                .orElse(null);
     return AuthMapper.toAuthContext(
-        accessContextService.judge(principal.userId()),
-        reconsentService.isReconsentRequired(principal.userId()));
+        judgement, officeName, reconsentService.isReconsentRequired(principal.userId()));
   }
 
   @Operation(summary = "이메일 로그인", description = "이메일과 비밀번호로 로그인하고 세션을 발급한다.")

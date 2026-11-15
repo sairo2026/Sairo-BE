@@ -173,6 +173,9 @@ class VisitCoordinationQueryIntegrationTest extends VisitIntegrationTestBase {
     assertThat(candidate.get("ownerOfficeName").asString()).isNotBlank();
     assertThat(candidate.get("applicableSlots")).isEmpty();
     assertThat(candidate.get("approverTimeSlots")).isEmpty();
+    assertThat(candidate.get("visitDurationMinutes").intValue()).isEqualTo(30);
+    assertThat(candidate.get("travelDurationMinutes").intValue()).isEqualTo(15);
+    assertThat(candidate.get("approvalId").isNull()).isTrue();
 
     String token = issueToken(cookie, id);
     String detail =

@@ -343,6 +343,7 @@ class HomeTaskNotificationIntegrationTest extends VisitOutcomeTestBase {
     mockMvc
         .perform(authedGet("/api/tasks", cookie))
         .andExpect(jsonPath("$.items[0].sourceType").value("VISIT"))
+        .andExpect(jsonPath("$.items[0].sourceId").value(item))
         .andExpect(jsonPath("$.items[0].dueTime").value("10:00"));
     assertError(
         mockMvc.perform(deleteAs("/api/tasks/" + taskId, cookie)), ErrorCode.AUTO_TASK_IMMUTABLE);
@@ -509,6 +510,8 @@ class HomeTaskNotificationIntegrationTest extends VisitOutcomeTestBase {
         .andExpect(jsonPath("$.openTasks.length()").value(1))
         .andExpect(jsonPath("$.openTasks[0].taskId").value(overdue))
         .andExpect(jsonPath("$.openTasks[0].overdue").value(true))
+        .andExpect(jsonPath("$.openTasks[0].sourceType").value("MANUAL"))
+        .andExpect(jsonPath("$.openTasks[0].sourceId").isEmpty())
         .andExpect(jsonPath("$.openTasks[0].assigneeMembershipId").value(ownerMembership))
         .andExpect(jsonPath("$.openFollowupTasks.length()").value(0))
         .andExpect(jsonPath("$.leaseExpiringWithin90DaysCount").value(0))

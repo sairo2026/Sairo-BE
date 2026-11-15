@@ -18,4 +18,10 @@ public record SubscriptionStateResponse(
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt,
     Long version,
-    Long subscriptionId) {}
+    Long subscriptionId,
+    @Schema(description = "이번 결제 요청으로 처리한 청구서 번호", nullable = true) Long invoiceId,
+    @Schema(
+            description = "이번 결제 요청으로 처리한 청구서 상태. 결제사 확인 중이면 VERIFYING이다",
+            nullable = true,
+            allowableValues = {"PAID", "PROCESSING", "VERIFYING"})
+        String paymentStatus) {}

@@ -12,6 +12,7 @@ import com.sairo.be.domain.visit.entity.PropertyAccessApproval;
 import com.sairo.be.domain.visit.entity.VisitApproverCondition;
 import com.sairo.be.domain.visit.repository.ApproverSelectionRepository;
 import com.sairo.be.domain.visit.repository.ApproverSelectionRepository.PendingRow;
+import com.sairo.be.domain.visit.repository.ConfirmedVisitRepository;
 import com.sairo.be.domain.visit.repository.MembershipNameRepository;
 import com.sairo.be.domain.visit.repository.PropertyAccessApprovalRepository;
 import com.sairo.be.domain.visit.repository.TrustSummaryRepository;
@@ -25,7 +26,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +47,7 @@ public class ApproverRequestCompareService {
   private final PropertyAccessApprovalRepository approvalRepository;
   private final VisitApproverConditionRepository conditionRepository;
   private final ApproverSelectionRepository selectionRepository;
+  private final ConfirmedVisitRepository confirmedVisits;
   private final TrustSummaryRepository trustRepository;
   private final MembershipNameRepository nameRepository;
   private final OfficeDirectory officeDirectory;
@@ -61,6 +62,7 @@ public class ApproverRequestCompareService {
       PropertyAccessApprovalRepository approvalRepository,
       VisitApproverConditionRepository conditionRepository,
       ApproverSelectionRepository selectionRepository,
+      ConfirmedVisitRepository confirmedVisits,
       TrustSummaryRepository trustRepository,
       MembershipNameRepository nameRepository,
       OfficeDirectory officeDirectory,
@@ -73,6 +75,7 @@ public class ApproverRequestCompareService {
     this.approvalRepository = approvalRepository;
     this.conditionRepository = conditionRepository;
     this.selectionRepository = selectionRepository;
+    this.confirmedVisits = confirmedVisits;
     this.trustRepository = trustRepository;
     this.nameRepository = nameRepository;
     this.officeDirectory = officeDirectory;
@@ -116,8 +119,11 @@ public class ApproverRequestCompareService {
     }
     Set<Long> preferred = selectionRepository.preferredMembers(approval.getId());
 
-    List<PendingRow> ordered = new ArrayList<>(rows);
-    ordered.sort(Comparator.comparing(PendingRow::submittedAt).thenComparing(PendingRow::id));
+    List<PendingRow> ordered =
+        RequestGroupingOrder.sort(
+            rows,
+            condition.map(VisitApproverCondition::getGroupingPreference).orElse(null),
+            confirmedVisits.findByApproval(approval.getId()));
 
     List<Item> items = new ArrayList<>();
     for (PendingRow row : ordered) {
