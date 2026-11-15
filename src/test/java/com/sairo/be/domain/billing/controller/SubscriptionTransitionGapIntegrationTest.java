@@ -63,7 +63,8 @@ class SubscriptionTransitionGapIntegrationTest extends PaymentTestBase {
   }
 
   private Ready active() {
-    return ready(seed -> seed.status("ACTIVE").period(daysFromNow(-5), daysFromNow(25)), true, true);
+    return ready(
+        seed -> seed.status("ACTIVE").period(daysFromNow(-5), daysFromNow(25)), true, true);
   }
 
   @Test
@@ -211,7 +212,8 @@ class SubscriptionTransitionGapIntegrationTest extends PaymentTestBase {
     Map<String, Object> sub = subscription(ready.subscriptionId());
     assertThat(sub.get("status")).isEqualTo("ACTIVE");
     assertThat(sub.get("past_due_since")).isNull();
-    assertThat(sub.get("current_period_start")).isEqualTo(invoiceBefore.get("billing_period_start"));
+    assertThat(sub.get("current_period_start"))
+        .isEqualTo(invoiceBefore.get("billing_period_start"));
     assertThat(sub.get("current_period_end")).isEqualTo(invoiceBefore.get("billing_period_end"));
     assertThat(
             jdbcTemplate.queryForObject(

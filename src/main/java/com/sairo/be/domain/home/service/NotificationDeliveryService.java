@@ -66,6 +66,7 @@ public class NotificationDeliveryService {
     subjects.put(NotificationType.RETURN_SCHEDULED, "데이터 반환 예정 안내");
     subjects.put(NotificationType.DELETION_SCHEDULED, "삭제 예정 안내");
     subjects.put(NotificationType.TERMS_CHANGED, "약관 변경 안내");
+    subjects.put(NotificationType.OWNER_TRANSFER, "대표 이전 안내");
     subjects.replaceAll((type, title) -> SUBJECT_PREFIX + title);
     return subjects;
   }

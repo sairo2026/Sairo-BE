@@ -41,7 +41,8 @@ public enum NotificationType {
           PAYMENT,
           RETURN_SCHEDULED,
           DELETION_SCHEDULED,
-          TERMS_CHANGED);
+          TERMS_CHANGED,
+          OWNER_TRANSFER);
 
   private final String preferenceKey;
   private final Set<NotificationTargetType> targets;

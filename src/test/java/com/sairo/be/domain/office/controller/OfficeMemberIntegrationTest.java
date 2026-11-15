@@ -549,8 +549,7 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
                 Instant.now().minus(java.time.Duration.ofDays(5)),
                 Instant.now().plus(java.time.Duration.ofDays(25)))
             .insert();
-    fixtures.consent(
-        subscriptionId, owner.user().getId(), office.getId(), 39_900, 3_627, 39_900);
+    fixtures.consent(subscriptionId, owner.user().getId(), office.getId(), 39_900, 3_627, 39_900);
     java.util.Map<String, Object> before =
         jdbcTemplate.queryForMap("SELECT * FROM subscription WHERE id = ?", subscriptionId);
     var agent = staffIn(OfficeMembershipRole.AGENT);
@@ -581,5 +580,20 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
     assertError(
         mockMvc.perform(get("/api/subscriptions/current").cookie(ownerCookie)),
         ErrorCode.FORBIDDEN);
+  }
+
+  @Test
+  void 대표_이전_알림은_알림함과_함께_이메일_전달_대기를_만든다() throws Exception {
+    var agent = staffIn(OfficeMembershipRole.AGENT);
+    transferTo(agent);
+    assertThat(transferNotices(agent)).hasSize(1);
+    assertThat(
+            jdbcTemplate.queryForList(
+                "SELECT d.channel FROM notification_delivery d JOIN notification n ON n.id ="
+                    + " d.notification_id WHERE n.recipient_user_id = ? AND n.notification_type ="
+                    + " 'OWNER_TRANSFER'",
+                String.class,
+                agent.user().getId()))
+        .containsExactly("EMAIL");
   }
 }
