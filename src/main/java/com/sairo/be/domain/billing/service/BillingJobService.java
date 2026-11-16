@@ -204,6 +204,9 @@ public class BillingJobService {
   }
 
   public void runDelinquency(Instant now) {
+    if (liveChargingGuard.isBlockedForScheduledRun("billing-delinquency")) {
+      return;
+    }
     for (Subscription subscription :
         subscriptionRepository.findByStatusIn(
             List.of(SubscriptionStatus.PAST_DUE_GRACE, SubscriptionStatus.PAST_DUE_RESTRICTED))) {
@@ -236,6 +239,9 @@ public class BillingJobService {
   }
 
   public void runPrePaymentExpiry(Instant now) {
+    if (liveChargingGuard.isBlockedForScheduledRun("billing-pre-payment-end")) {
+      return;
+    }
     for (Subscription subscription :
         subscriptionRepository.findByStatusAndPrePaymentSinceLessThanEqual(
             SubscriptionStatus.PRE_PAYMENT, now.minus(BillingPeriods.PRE_PAYMENT_LIMIT))) {
