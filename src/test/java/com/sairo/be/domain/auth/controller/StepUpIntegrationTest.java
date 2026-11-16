@@ -86,6 +86,26 @@ class StepUpIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
+  void 로그인_실패와_재인증_실패는_같은_계정_횟수로_합산된다() throws Exception {
+    saveEmailUser(EMAIL, null);
+    Cookie session = login(EMAIL, PASSWORD);
+    for (int i = 0; i < 3; i++) {
+      mockMvc.perform(
+          jsonPost("/api/auth/step-up/password", passwordBody("wrong-password"), session));
+    }
+    for (int i = 0; i < 2; i++) {
+      mockMvc.perform(
+          jsonPost(
+              "/api/auth/login",
+              "{\"email\":\"" + EMAIL + "\",\"password\":\"wrong-password\"}"));
+    }
+
+    assertError(
+        mockMvc.perform(jsonPost("/api/auth/step-up/password", passwordBody(PASSWORD), session)),
+        ErrorCode.LOGIN_LOCKED);
+  }
+
+  @Test
   void 카카오_전용_계정은_비밀번호_재인증을_할_수_없다() throws Exception {
     AppUser user =
         appUserRepository.saveAndFlush(

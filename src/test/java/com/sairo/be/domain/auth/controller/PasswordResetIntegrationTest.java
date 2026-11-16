@@ -156,6 +156,23 @@ class PasswordResetIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
+  void 잠긴_계정도_이메일로_재설정하면_새_비밀번호로_바로_로그인할_수_있다() throws Exception {
+    saveEmailUser(EMAIL, null);
+    String token = requestToken();
+    for (int i = 0; i < 5; i++) {
+      mockMvc.perform(
+          jsonPost(
+              "/api/auth/login", "{\"email\":\"" + EMAIL + "\",\"password\":\"wrong-password\"}"));
+    }
+
+    mockMvc
+        .perform(jsonPost("/api/auth/password/reset", resetBody(token, "Newpass#12")))
+        .andExpect(status().isNoContent());
+
+    assertThat(login(EMAIL, "Newpass#12")).isNotNull();
+  }
+
+  @Test
   void 재설정_토큰은_한_번만_쓸_수_있다() throws Exception {
     saveEmailUser(EMAIL, null);
     String token = requestToken();
