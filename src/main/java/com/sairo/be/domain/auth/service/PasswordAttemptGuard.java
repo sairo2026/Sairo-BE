@@ -11,9 +11,8 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
- * 이메일 비밀번호 대입 시도를 정규화된 이메일 계정 단위로 세어 5회 실패 시 15분 잠근다. 로그인, 재인증,
- * 권한 재확인이 같은 카운터를 공유하므로 접속 IP를 바꾸거나 다른 경로를 써도 우회할 수 없다. 미가입
- * 이메일도 같은 방식으로 세어 계정 존재 여부가 드러나지 않는다.
+ * 이메일 비밀번호 대입 시도를 정규화된 이메일 계정 단위로 세어 5회 실패 시 15분 잠근다. 로그인, 재인증, 권한 재확인이 같은 카운터를 공유하므로 접속 IP를 바꾸거나
+ * 다른 경로를 써도 우회할 수 없다. 미가입 이메일도 같은 방식으로 세어 계정 존재 여부가 드러나지 않는다.
  */
 @Profile("!migrate")
 @Component

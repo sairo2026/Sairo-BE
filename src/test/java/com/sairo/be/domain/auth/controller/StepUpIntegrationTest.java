@@ -96,8 +96,7 @@ class StepUpIntegrationTest extends AuthIntegrationTestBase {
     for (int i = 0; i < 2; i++) {
       mockMvc.perform(
           jsonPost(
-              "/api/auth/login",
-              "{\"email\":\"" + EMAIL + "\",\"password\":\"wrong-password\"}"));
+              "/api/auth/login", "{\"email\":\"" + EMAIL + "\",\"password\":\"wrong-password\"}"));
     }
 
     assertError(

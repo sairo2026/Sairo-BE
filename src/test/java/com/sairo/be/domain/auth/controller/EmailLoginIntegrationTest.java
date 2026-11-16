@@ -187,8 +187,7 @@ class EmailLoginIntegrationTest extends AuthIntegrationTestBase {
     }
 
     assertError(
-            mockMvc.perform(fromIp("10.0.0.3", loginBody(EMAIL, PASSWORD))),
-            ErrorCode.LOGIN_LOCKED)
+            mockMvc.perform(fromIp("10.0.0.3", loginBody(EMAIL, PASSWORD))), ErrorCode.LOGIN_LOCKED)
         .andExpect(jsonPath("$.retryAfterSeconds").isNumber());
   }
 
