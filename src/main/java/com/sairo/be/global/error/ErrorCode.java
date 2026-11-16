@@ -170,7 +170,9 @@ public enum ErrorCode {
   VISIT_REQUEST_QUOTA_EXCEEDED(
       HttpStatus.TOO_MANY_REQUESTS, "구성원 또는 출입승인의 동시 신청(신청 대기와 선택됨) 한도 초과"),
   INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "일시적인 오류가 발생했습니다."),
-  SMS_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "문자 발송 수단이 구성되지 않아 휴대폰 인증번호를 보낼 수 없음");
+  SMS_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "문자 발송 수단이 구성되지 않아 휴대폰 인증번호를 보낼 수 없음"),
+  PAYMENT_SYSTEM_UNAVAILABLE(
+      HttpStatus.SERVICE_UNAVAILABLE, "결제 시스템 점검 중이라 카드 등록을 처리할 수 없음. 잠시 뒤 다시 시도");
 
   private final HttpStatus status;
   private final String message;

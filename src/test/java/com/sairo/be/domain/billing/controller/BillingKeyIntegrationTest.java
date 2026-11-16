@@ -255,6 +255,24 @@ class BillingKeyIntegrationTest extends BillingIntegrationTestBase {
   }
 
   @Test
+  void 결제_시스템이_요청을_받지_않으면_503_PAYMENT_SYSTEM_UNAVAILABLE이고_저장하지_않는다() throws Exception {
+    TestData.Staff owner = ownerWithSubscription();
+    Cookie cookie = cookieWithStepUp(owner);
+    String customerKey = openSession(cookie);
+    paymentGateway.blockNextBillingKeyIssue();
+    assertError(
+        mockMvc.perform(
+            postRequest(KEY_URL, registerBody(customerKey, "2026-12-01")).apply(cookie)),
+        ErrorCode.PAYMENT_SYSTEM_UNAVAILABLE);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT billing_key_encrypted FROM billing_customer WHERE office_id = ?",
+                String.class,
+                owner.office().getId()))
+        .isNull();
+  }
+
+  @Test
   void 카드_등록은_필수_필드가_없거나_비어_있으면_400이다() throws Exception {
     TestData.Staff owner = ownerWithSubscription();
     Cookie cookie = cookieWithStepUp(owner);

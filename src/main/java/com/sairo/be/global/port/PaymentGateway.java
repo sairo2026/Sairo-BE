@@ -31,6 +31,14 @@ public interface PaymentGateway {
     }
   }
 
+  /** 결제 대행사가 키·IP 정책 등으로 요청을 받지 않아 카드 실패와 구분해야 하는 상태다. */
+  class PaymentGatewayUnavailableException extends RuntimeException {
+
+    public PaymentGatewayUnavailableException(String message) {
+      super(message);
+    }
+  }
+
   enum PaymentStatus {
     SUCCEEDED,
     FAILED,

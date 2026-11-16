@@ -1,6 +1,7 @@
 package com.sairo.be.global.port.toss;
 
 import com.sairo.be.global.port.PaymentGateway;
+import com.sairo.be.global.port.PaymentGateway.PaymentGatewayUnavailableException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -13,6 +14,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Profile;
@@ -20,6 +22,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+@Slf4j
 @Profile("!migrate")
 @ConditionalOnExpression("'${sairo.toss.secret-key:}'.trim() != ''")
 @EnableConfigurationProperties(TossProperties.class)
@@ -35,6 +38,9 @@ public class TossPaymentGateway implements PaymentGateway {
           "IDEMPOTENT_REQUEST_PROCESSING",
           "FAILED_INTERNAL_SYSTEM_PROCESSING",
           "UNKNOWN_PAYMENT_ERROR");
+
+  private static final Set<String> ACCESS_POLICY_CODES =
+      Set.of("API_KEY_ACCESS_DENIED", "UNAUTHORIZED_KEY", "INVALID_API_KEY", "FORBIDDEN_REQUEST");
 
   private final HttpClient httpClient;
   private final ObjectMapper objectMapper;
@@ -64,6 +70,10 @@ public class TossPaymentGateway implements PaymentGateway {
     body.put("authKey", authKey);
     body.put("customerKey", customerKey);
     Reply reply = post("/v1/billing/authorizations/issue", body, null, requestTimeout);
+    if (reply.isAccessPolicyDenied()) {
+      logAccessPolicyDenied("issueBillingKey", reply);
+      throw new PaymentGatewayUnavailableException(reply.code("API_KEY_ACCESS_DENIED"));
+    }
     if (reply.status() != 200 || reply.body().path("billingKey").asString("").isBlank()) {
       throw new BillingKeyIssueException(reply.code("BILLING_KEY_ISSUE_FAILED"));
     }
@@ -82,6 +92,9 @@ public class TossPaymentGateway implements PaymentGateway {
   @Override
   public void deleteBillingKey(String billingKey) {
     Reply reply = send(newRequest("/v1/billing/" + encode(billingKey), requestTimeout).DELETE());
+    if (reply.isAccessPolicyDenied()) {
+      logAccessPolicyDenied("deleteBillingKey", reply);
+    }
     if (reply.status() != 200 && reply.status() != 404) {
       throw new TossGatewayException("billing key delete failed: " + reply.code("UNKNOWN"));
     }
@@ -198,14 +211,27 @@ public class TossPaymentGateway implements PaymentGateway {
   }
 
   private PaymentResult failureOrVerifying(Reply reply, String paymentKey) {
+    if (reply.isAccessPolicyDenied()) {
+      logAccessPolicyDenied("payment", reply);
+    }
     boolean undetermined =
-        reply.status() >= 500
+        reply.isAccessPolicyDenied()
+            || reply.status() >= 500
             || reply.status() == 429
             || UNDETERMINED_CODES.contains(reply.code(""));
     if (undetermined) {
       return new PaymentResult(PaymentStatus.VERIFYING, paymentKey, null);
     }
     return new PaymentResult(PaymentStatus.FAILED, paymentKey, reply.code("UNKNOWN"));
+  }
+
+  private static void logAccessPolicyDenied(String operation, Reply reply) {
+    log.error(
+        "Toss API key access policy denied: operation={}, status={}, code={}, message={}",
+        operation,
+        reply.status(),
+        reply.code("UNKNOWN"),
+        reply.body().path("message").asString(""));
   }
 
   private Reply post(String path, Object body, String idempotencyKey, Duration timeout) {
@@ -264,6 +290,10 @@ public class TossPaymentGateway implements PaymentGateway {
   }
 
   private record Reply(int status, JsonNode body) {
+
+    boolean isAccessPolicyDenied() {
+      return status == 401 || ACCESS_POLICY_CODES.contains(code(""));
+    }
 
     String code(String fallback) {
       String code = body.path("code").asString("");
