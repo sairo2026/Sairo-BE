@@ -30,6 +30,7 @@ public class StubPaymentGateway implements PaymentGateway {
   private final List<CancelCommand> cancels = new CopyOnWriteArrayList<>();
   private final AtomicReference<PaymentStatus> nextCancelStatus =
       new AtomicReference<>(PaymentStatus.SUCCEEDED);
+  private final AtomicBoolean blockNextIssue = new AtomicBoolean();
   private final AtomicReference<RuntimeException> cancelFailure = new AtomicReference<>();
   private final Map<String, Long> approvedAmounts = new ConcurrentHashMap<>();
   private final Map<String, Long> cancelledAmounts = new ConcurrentHashMap<>();
@@ -41,6 +42,10 @@ public class StubPaymentGateway implements PaymentGateway {
 
   public void failNextBillingKeyIssue() {
     failNextIssue.set(true);
+  }
+
+  public void blockNextBillingKeyIssue() {
+    blockNextIssue.set(true);
   }
 
   public void failWithCode(String code) {
@@ -110,11 +115,15 @@ public class StubPaymentGateway implements PaymentGateway {
     chargeFailure.set(null);
     failureCode.set("STUB_DECLINED");
     failNextIssue.set(false);
+    blockNextIssue.set(false);
     nextStatus.set(PaymentStatus.SUCCEEDED);
   }
 
   @Override
   public BillingKeyResult issueBillingKey(String authKey, String customerKey) {
+    if (blockNextIssue.getAndSet(false)) {
+      throw new PaymentGatewayUnavailableException("API_KEY_ACCESS_DENIED");
+    }
     if (failNextIssue.getAndSet(false)) {
       throw new BillingKeyIssueException("stub issue failure");
     }

@@ -23,6 +23,7 @@ import com.sairo.be.global.error.FieldErrorItem;
 import com.sairo.be.global.port.PaymentGateway;
 import com.sairo.be.global.port.PaymentGateway.BillingKeyIssueException;
 import com.sairo.be.global.port.PaymentGateway.BillingKeyResult;
+import com.sairo.be.global.port.PaymentGateway.PaymentGatewayUnavailableException;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StepUpState;
 import com.sairo.be.global.support.AdvisoryLock;
@@ -123,6 +124,8 @@ public class BillingKeyService {
     BillingKeyResult issued;
     try {
       issued = paymentGateway.issueBillingKey(request.authKey(), customer.getTossCustomerKey());
+    } catch (PaymentGatewayUnavailableException e) {
+      throw new BusinessException(ErrorCode.PAYMENT_SYSTEM_UNAVAILABLE);
     } catch (BillingKeyIssueException e) {
       throw new BusinessException(ErrorCode.BILLING_KEY_ISSUE_FAILED);
     }
