@@ -500,6 +500,34 @@ class MembershipIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
+  void 초대와_재발송은_미납_제한_사무소에서_403이고_정상_구독이면_통과한다() throws Exception {
+    AppUser target = plainUser();
+    String invite = "{\"email\":\"" + target.getEmail() + "\",\"role\":\"AGENT\"}";
+    jdbcTemplate.update(
+        "INSERT INTO subscription (office_id, plan, status, past_due_since) VALUES (?, 'SOLO',"
+            + " 'PAST_DUE_RESTRICTED', now() - interval '9 days')",
+        office.getId());
+    assertError(
+        post("/api/offices/current/memberships/invite", invite, ownerCookie), ErrorCode.FORBIDDEN);
+    long pending = invitation(plainUser(), false, 24);
+    assertError(
+        post("/api/memberships/" + pending + "/invitation/resend", "", ownerCookie),
+        ErrorCode.FORBIDDEN);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM office_membership WHERE user_id = ?",
+                Long.class,
+                target.getId()))
+        .isZero();
+
+    jdbcTemplate.update(
+        "UPDATE subscription SET status = 'ACTIVE', past_due_since = NULL WHERE office_id = ?",
+        office.getId());
+    post("/api/offices/current/memberships/invite", invite, ownerCookie)
+        .andExpect(status().isCreated());
+  }
+
+  @Test
   void 초대는_없는_계정이면_404_이미_소속이_있으면_409_대표_역할이면_400_권한이_없으면_403이다() throws Exception {
     AppUser target = plainUser();
     String url = "/api/offices/current/memberships/invite";
