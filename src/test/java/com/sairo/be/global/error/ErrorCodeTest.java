@@ -29,9 +29,9 @@ class ErrorCodeTest {
 
   @Test
   void 문서가_정한_오류_코드를_모두_정의한다() {
-    assertThat(ErrorCode.values()).hasSize(149);
+    assertThat(ErrorCode.values()).hasSize(150);
     assertThat(Arrays.stream(ErrorCode.values()).filter(c -> c != ErrorCode.INTERNAL_ERROR))
-        .hasSize(148);
+        .hasSize(149);
   }
 
   @Test
@@ -64,7 +64,7 @@ class ErrorCodeTest {
     assertThat(countOf(HttpStatus.TOO_MANY_REQUESTS)).isEqualTo(5);
     assertThat(countOf(HttpStatus.CONTENT_TOO_LARGE)).isEqualTo(1);
     assertThat(countOf(HttpStatus.GONE)).isEqualTo(1);
-    assertThat(countOf(HttpStatus.SERVICE_UNAVAILABLE)).isEqualTo(1);
+    assertThat(countOf(HttpStatus.SERVICE_UNAVAILABLE)).isEqualTo(2);
   }
 
   private long countOf(HttpStatus status) {

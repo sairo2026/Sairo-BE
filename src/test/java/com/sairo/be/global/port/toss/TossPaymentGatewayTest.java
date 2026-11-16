@@ -7,6 +7,7 @@ import com.sairo.be.global.port.PaymentGateway.BillingKeyIssueException;
 import com.sairo.be.global.port.PaymentGateway.BillingKeyResult;
 import com.sairo.be.global.port.PaymentGateway.CancelCommand;
 import com.sairo.be.global.port.PaymentGateway.ChargeCommand;
+import com.sairo.be.global.port.PaymentGateway.PaymentGatewayUnavailableException;
 import com.sairo.be.global.port.PaymentGateway.PaymentResult;
 import com.sairo.be.global.port.PaymentGateway.PaymentStatus;
 import com.sun.net.httpserver.HttpServer;
@@ -142,6 +143,39 @@ class TossPaymentGatewayTest {
 
     assertThat(result)
         .isEqualTo(new PaymentResult(PaymentStatus.FAILED, null, "REJECT_CARD_PAYMENT"));
+  }
+
+  private static final String ACCESS_DENIED =
+      "{\"code\":\"API_KEY_ACCESS_DENIED\",\"message\":\"API 키 접근 정책에 의해 허용되지 않은 요청입니다. 요청 IP: 203.0.113.7\"}";
+
+  @Test
+  void API_키_접근_정책_거절은_승인에서_확정_실패가_아니라_확인_중이다() {
+    respond(403, ACCESS_DENIED);
+
+    PaymentResult result =
+        gateway.charge(new ChargeCommand("bk", "ck", "order-000001", 100, "상품", "idem-4"));
+
+    assertThat(result.status()).isEqualTo(PaymentStatus.VERIFYING);
+    assertThat(result.failureCode()).isNull();
+  }
+
+  @Test
+  void API_키_접근_정책_거절은_취소와_조회에서도_확인_중이다() {
+    respond(403, ACCESS_DENIED);
+
+    assertThat(gateway.cancel(new CancelCommand("pk_1", "사유", null, "idem-5")).status())
+        .isEqualTo(PaymentStatus.VERIFYING);
+    assertThat(gateway.inquire("order-000001").status()).isEqualTo(PaymentStatus.VERIFYING);
+    assertThat(gateway.lookup("order-000001").status()).isEqualTo(PaymentStatus.VERIFYING);
+  }
+
+  @Test
+  void API_키_접근_정책_거절은_빌링키_발급에서_카드_실패와_다른_예외다() {
+    respond(403, ACCESS_DENIED);
+
+    assertThatThrownBy(() -> gateway.issueBillingKey("auth-1", "customer-key-0000000001"))
+        .isInstanceOf(PaymentGatewayUnavailableException.class)
+        .hasMessage("API_KEY_ACCESS_DENIED");
   }
 
   @Test
