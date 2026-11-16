@@ -28,6 +28,16 @@ class EmailLoginIntegrationTest extends AuthIntegrationTestBase {
     return "{\"email\":" + quote(email) + ",\"password\":" + quote(password) + "}";
   }
 
+  private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder fromIp(
+      String ip, String body) {
+    return jsonPost("/api/auth/login", body)
+        .with(
+            request -> {
+              request.setRemoteAddr(ip);
+              return request;
+            });
+  }
+
   @Test
   void 로그인에_성공하면_세션을_발급하고_접근_상태_판정을_돌려준다() throws Exception {
     saveEmailUser(EMAIL, "010-1234-5678");
@@ -150,7 +160,7 @@ class EmailLoginIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
-  void 잠금은_IP와_계정_조합_기준이라_다른_계정은_영향받지_않는다() throws Exception {
+  void 잠금은_계정_기준이라_다른_계정은_영향받지_않는다() throws Exception {
     saveEmailUser(EMAIL, null);
     saveEmailUser("other@example.com", null);
     for (int i = 0; i < 5; i++) {
@@ -160,6 +170,38 @@ class EmailLoginIntegrationTest extends AuthIntegrationTestBase {
     mockMvc
         .perform(jsonPost("/api/auth/login", loginBody("other@example.com", PASSWORD)))
         .andExpect(status().isOk());
+  }
+
+  @Test
+  void IP를_바꿔도_같은_계정은_5회_실패_뒤_잠긴다() throws Exception {
+    saveEmailUser(EMAIL, null);
+    for (int i = 0; i < 3; i++) {
+      assertError(
+          mockMvc.perform(fromIp("10.0.0.1", loginBody(EMAIL, "wrong-password"))),
+          ErrorCode.INVALID_CREDENTIALS);
+    }
+    for (int i = 0; i < 2; i++) {
+      assertError(
+          mockMvc.perform(fromIp("10.0.0.2", loginBody(EMAIL, "wrong-password"))),
+          ErrorCode.INVALID_CREDENTIALS);
+    }
+
+    assertError(
+            mockMvc.perform(fromIp("10.0.0.3", loginBody(EMAIL, PASSWORD))), ErrorCode.LOGIN_LOCKED)
+        .andExpect(jsonPath("$.retryAfterSeconds").isNumber());
+  }
+
+  @Test
+  void 미가입_이메일은_IP를_바꿔도_같은_방식으로_잠근다() throws Exception {
+    for (int i = 0; i < 5; i++) {
+      assertError(
+          mockMvc.perform(fromIp("10.0.1." + i, loginBody("none@example.com", "x"))),
+          ErrorCode.INVALID_CREDENTIALS);
+    }
+
+    assertError(
+        mockMvc.perform(fromIp("10.0.1.99", loginBody("none@example.com", "x"))),
+        ErrorCode.LOGIN_LOCKED);
   }
 
   @Test

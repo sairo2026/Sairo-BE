@@ -29,6 +29,7 @@ public class PasswordResetService {
   private final SessionTerminator sessionTerminator;
   private final AuthMailComposer mailComposer;
   private final RequestRateLimiter rateLimiter;
+  private final PasswordAttemptGuard attemptGuard;
   private final Clock clock;
 
   public PasswordResetService(
@@ -40,6 +41,7 @@ public class PasswordResetService {
       SessionTerminator sessionTerminator,
       AuthMailComposer mailComposer,
       RequestRateLimiter rateLimiter,
+      PasswordAttemptGuard attemptGuard,
       Clock clock) {
     this.appUserRepository = appUserRepository;
     this.tokenRepository = tokenRepository;
@@ -49,6 +51,7 @@ public class PasswordResetService {
     this.sessionTerminator = sessionTerminator;
     this.mailComposer = mailComposer;
     this.rateLimiter = rateLimiter;
+    this.attemptGuard = attemptGuard;
     this.clock = clock;
   }
 
@@ -87,5 +90,6 @@ public class PasswordResetService {
             .orElseThrow(() -> new BusinessException(ErrorCode.TOKEN_INVALID));
     user.changePassword(passwordHasher.hash(newPassword));
     sessionTerminator.terminateAll(user.getId());
+    attemptGuard.reset(user.getEmail());
   }
 }

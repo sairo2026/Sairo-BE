@@ -67,6 +67,24 @@ class GrantAuthIntegrationTest extends GrantTestBase {
   }
 
   @Test
+  void 이메일_재확인도_연속_5회_틀리면_정답이어도_429_LOGIN_LOCKED다() throws Exception {
+    Holder holder = emailHolder();
+    long grantId = returnGrant(holder);
+    for (int i = 0; i < 5; i++) {
+      assertError(
+          mockMvc.perform(
+              postRequest(RETURN, grantAuthBody(grantId, "EMAIL", "wrong-password")).apply(null)),
+          ErrorCode.INVALID_CREDENTIALS);
+    }
+
+    assertError(
+            mockMvc.perform(
+                postRequest(RETURN, grantAuthBody(grantId, "EMAIL", PASSWORD)).apply(null)),
+            ErrorCode.LOGIN_LOCKED)
+        .andExpect(jsonPath("$.retryAfterSeconds").isNumber());
+  }
+
+  @Test
   void 카카오_재인증은_인증_완료_코드를_한_번만_소비하고_같은_사용자일_때만_허용한다() throws Exception {
     TestDataKakao kakao = kakaoHolder("kakao-key-holder");
     redisTemplate

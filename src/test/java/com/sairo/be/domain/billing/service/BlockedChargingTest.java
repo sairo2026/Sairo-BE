@@ -112,8 +112,26 @@ class BlockedChargingTest {
     service.runFirstCharges(NOW);
     service.runRenewals(NOW);
     service.runRetries(NOW);
+    service.runDelinquency(NOW);
+    service.runPrePaymentExpiry(NOW);
 
     assertNoRepositoryOrGatewayUse();
+  }
+
+  @Test
+  void delinquencyAndPrePaymentExpiryQueryTargetsOnceSwitchIsOn() {
+    BillingJobService service = jobService(liveGuard(true));
+
+    service.runDelinquency(NOW);
+    service.runPrePaymentExpiry(NOW);
+
+    verify(subscriptionRepository)
+        .findByStatusIn(
+            java.util.List.of(
+                SubscriptionStatus.PAST_DUE_GRACE, SubscriptionStatus.PAST_DUE_RESTRICTED));
+    verify(subscriptionRepository)
+        .findByStatusAndPrePaymentSinceLessThanEqual(
+            SubscriptionStatus.PRE_PAYMENT, NOW.minus(BillingPeriods.PRE_PAYMENT_LIMIT));
   }
 
   @Test

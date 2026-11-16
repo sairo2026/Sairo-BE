@@ -20,6 +20,7 @@ import com.sairo.be.global.port.MailSender.MailMessage;
 import com.sairo.be.global.port.MemberWorkHandover.WorkKind;
 import com.sairo.be.global.port.NotificationPublisher;
 import com.sairo.be.global.port.NotificationPublisher.Notice;
+import com.sairo.be.global.port.OfficeWriteRestriction;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.AdvisoryLock;
 import com.sairo.be.global.support.AfterCommit;
@@ -48,6 +49,7 @@ public class MembershipDecisionService {
   private final NotificationPublisher notificationPublisher;
   private final ContractAssignments contractAssignments;
   private final MemberWorkHandoverService workHandoverService;
+  private final OfficeWriteRestriction writeRestriction;
   private final Clock clock;
   private final String frontendBaseUrl;
 
@@ -63,6 +65,7 @@ public class MembershipDecisionService {
       Clock clock,
       ContractAssignments contractAssignments,
       MemberWorkHandoverService workHandoverService,
+      OfficeWriteRestriction writeRestriction,
       @Value("${app.frontend-base-url:http://localhost:3000}") String frontendBaseUrl) {
     this.repository = repository;
     this.historyRepository = historyRepository;
@@ -75,6 +78,7 @@ public class MembershipDecisionService {
     this.clock = clock;
     this.contractAssignments = contractAssignments;
     this.workHandoverService = workHandoverService;
+    this.writeRestriction = writeRestriction;
     this.frontendBaseUrl = frontendBaseUrl;
   }
 
@@ -125,6 +129,7 @@ public class MembershipDecisionService {
   @Transactional
   public MembershipInvitationResponse invite(
       StaffPrincipal owner, MembershipInviteRequest request) {
+    requireWritable(owner);
     OfficeMembershipRole role = MembershipRules.requestedRole(request.role());
     Long targetUserId =
         jdbcClient
@@ -174,6 +179,12 @@ public class MembershipDecisionService {
     return MembershipMapper.toInvitation(repository.find(id).orElseThrow());
   }
 
+  private void requireWritable(StaffPrincipal owner) {
+    if (writeRestriction.restricted(owner.officeId())) {
+      throw new BusinessException(ErrorCode.FORBIDDEN);
+    }
+  }
+
   @Transactional
   public MembershipResultResponse cancelInvitation(StaffPrincipal owner, Long membershipId) {
     Row row = lockInOffice(owner, membershipId);
@@ -194,6 +205,7 @@ public class MembershipDecisionService {
 
   @Transactional
   public MembershipInvitationResponse resendInvitation(StaffPrincipal owner, Long membershipId) {
+    requireWritable(owner);
     Row row = lockInOffice(owner, membershipId);
     requireInvitePending(row);
     Instant now = clock.instant();

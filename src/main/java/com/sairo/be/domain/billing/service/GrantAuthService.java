@@ -5,6 +5,7 @@ import static com.sairo.be.global.support.TimeRules.toDisplayOffset;
 import com.sairo.be.domain.auth.entity.AppUser;
 import com.sairo.be.domain.auth.repository.AppUserRepository;
 import com.sairo.be.domain.auth.service.KakaoLoginService;
+import com.sairo.be.domain.auth.service.PasswordAttemptGuard;
 import com.sairo.be.domain.auth.service.PasswordHasher;
 import com.sairo.be.domain.billing.dto.request.GrantAuthRequest;
 import com.sairo.be.domain.billing.dto.response.GrantAuthResponse;
@@ -35,6 +36,7 @@ public class GrantAuthService {
   private final ArchiveGrantRepository archiveGrantRepository;
   private final AppUserRepository appUserRepository;
   private final PasswordHasher passwordHasher;
+  private final PasswordAttemptGuard attemptGuard;
   private final StringRedisTemplate redis;
   private final RequestRateLimiter rateLimiter;
   private final GrantSessionManager sessionManager;
@@ -45,6 +47,7 @@ public class GrantAuthService {
       ArchiveGrantRepository archiveGrantRepository,
       AppUserRepository appUserRepository,
       PasswordHasher passwordHasher,
+      PasswordAttemptGuard attemptGuard,
       StringRedisTemplate redis,
       RequestRateLimiter rateLimiter,
       GrantSessionManager sessionManager,
@@ -53,6 +56,7 @@ public class GrantAuthService {
     this.archiveGrantRepository = archiveGrantRepository;
     this.appUserRepository = appUserRepository;
     this.passwordHasher = passwordHasher;
+    this.attemptGuard = attemptGuard;
     this.redis = redis;
     this.rateLimiter = rateLimiter;
     this.sessionManager = sessionManager;
@@ -112,12 +116,15 @@ public class GrantAuthService {
 
   private void verifyCredential(AppUser user, GrantAuthRequest request) {
     if (request.authMethod() == GrantAuthRequest.AuthMethod.EMAIL) {
-      boolean matches =
-          user.getPasswordHash() != null
-              && passwordHasher.matches(request.credential(), user.getPasswordHash());
-      if (!matches) {
+      if (user.getPasswordHash() == null) {
         throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
       }
+      attemptGuard.assertNotLocked(user.getEmail());
+      if (!passwordHasher.matches(request.credential(), user.getPasswordHash())) {
+        attemptGuard.recordFailure(user.getEmail());
+        throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+      }
+      attemptGuard.reset(user.getEmail());
       return;
     }
     String providerKey =

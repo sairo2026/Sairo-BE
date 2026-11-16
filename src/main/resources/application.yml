@@ -67,7 +67,7 @@ sairo:
   billing:
     vat-rate-bp: 1000
     customer-key-ttl: PT15M
-    charging-started: false
+    charging-started: ${SAIRO_BILLING_CHARGING_STARTED:false}
     key-encryption-secret: ${BILLING_KEY_ENCRYPTION_SECRET:sairo-local-dev-billing-key-encryption-do-not-use-in-prod}
   bootstrap:
     operator:
