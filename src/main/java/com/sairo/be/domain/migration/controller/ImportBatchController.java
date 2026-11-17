@@ -8,11 +8,13 @@ import com.sairo.be.domain.migration.dto.response.ImportExecuteResponse;
 import com.sairo.be.domain.migration.dto.response.ImportMappingConfirmResponse;
 import com.sairo.be.domain.migration.dto.response.ImportMappingSuggestionResponse;
 import com.sairo.be.domain.migration.dto.response.ImportPreviewResponse;
+import com.sairo.be.domain.migration.dto.response.ImportRowResultsResponse;
 import com.sairo.be.domain.migration.service.ImportCancelService;
 import com.sairo.be.domain.migration.service.ImportExecutionService;
 import com.sairo.be.domain.migration.service.ImportMappingService;
 import com.sairo.be.domain.migration.service.ImportPreviewService;
 import com.sairo.be.domain.migration.service.ImportQueryService;
+import com.sairo.be.domain.migration.service.ImportRowResultService;
 import com.sairo.be.domain.migration.service.ImportUploadService;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.access.AccessPermission;
@@ -20,8 +22,12 @@ import com.sairo.be.global.security.access.RequiresAccess;
 import com.sairo.be.global.support.IfMatchVersion;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.nio.charset.StandardCharsets;
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -48,6 +54,7 @@ public class ImportBatchController {
   private final ImportExecutionService executionService;
   private final ImportCancelService cancelService;
   private final ImportQueryService queryService;
+  private final ImportRowResultService rowResultService;
 
   public ImportBatchController(
       ImportUploadService uploadService,
@@ -55,13 +62,15 @@ public class ImportBatchController {
       ImportPreviewService previewService,
       ImportExecutionService executionService,
       ImportCancelService cancelService,
-      ImportQueryService queryService) {
+      ImportQueryService queryService,
+      ImportRowResultService rowResultService) {
     this.uploadService = uploadService;
     this.mappingService = mappingService;
     this.previewService = previewService;
     this.executionService = executionService;
     this.cancelService = cancelService;
     this.queryService = queryService;
+    this.rowResultService = rowResultService;
   }
 
   @Operation(
@@ -164,6 +173,54 @@ public class ImportBatchController {
       @RequestHeader(value = "If-Match", required = false) String ifMatch,
       @AuthenticationPrincipal StaffPrincipal principal) {
     return executionService.retryFailed(principal, batchId, optionalVersion(ifMatch));
+  }
+
+  @Operation(
+      summary = "줄별 이전 결과",
+      description =
+          "성공, 실패, 제외한 줄을 줄 번호 순으로 돌려준다. outcome으로 SUCCEEDED, FAILED, SKIPPED를 고른다."
+              + " 실패한 줄에는 원인과 고치는 방법, 앱에서 고칠 수 있는 항목이 들어 있다.")
+  @GetMapping("/{batchId}/rows")
+  @RequiresAccess(AccessPermission.OWNER)
+  public ImportRowResultsResponse rows(
+      @PathVariable Long batchId,
+      @RequestParam(required = false) String outcome,
+      @RequestParam(required = false) Integer page,
+      @RequestParam(required = false) Integer size,
+      @AuthenticationPrincipal StaffPrincipal principal) {
+    return rowResultService.list(principal, batchId, outcome, page, size);
+  }
+
+  @Operation(
+      summary = "실패한 줄 고치기",
+      description = "완료되거나 실패로 끝난 묶음의 실패한 줄에 고친 값을 저장한다. 저장만 하며 이어서 실패한 줄만 다시 처리를 호출해야 반영된다.")
+  @PutMapping("/{batchId}/rows/{rowNumber}/correction")
+  @RequiresAccess(AccessPermission.OWNER)
+  public ImportRowResultsResponse.Row correctRow(
+      @PathVariable Long batchId,
+      @PathVariable int rowNumber,
+      @RequestBody JsonNode body,
+      @AuthenticationPrincipal StaffPrincipal principal) {
+    return rowResultService.correct(principal, batchId, rowNumber, body);
+  }
+
+  @Operation(
+      summary = "실패한 줄 내려받기",
+      description = "원본 열에 실패 원인과 고치는 방법을 붙인 CSV. 고쳐서 새 파일로 올릴 때 쓴다.")
+  @GetMapping("/{batchId}/failed-rows.csv")
+  @RequiresAccess(AccessPermission.OWNER)
+  public ResponseEntity<byte[]> failedRowsCsv(
+      @PathVariable Long batchId, @AuthenticationPrincipal StaffPrincipal principal) {
+    return ResponseEntity.ok()
+        .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+        .header(
+            HttpHeaders.CONTENT_DISPOSITION,
+            ContentDisposition.attachment()
+                .filename("이전_실패한_줄.csv", StandardCharsets.UTF_8)
+                .build()
+                .toString())
+        .header(HttpHeaders.CACHE_CONTROL, "no-store")
+        .body(rowResultService.failedRowsCsv(principal, batchId));
   }
 
   private static Long optionalVersion(String ifMatch) {
