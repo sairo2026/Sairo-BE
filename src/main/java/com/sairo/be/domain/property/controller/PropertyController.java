@@ -64,7 +64,10 @@ public class PropertyController {
     this.fieldValueService = fieldValueService;
   }
 
-  @Operation(summary = "매물 목록", description = "키워드, 카테고리, 거래유형, 가격·면적 범위, 담당자, 등록 단계, 보관 여부로 거른다.")
+  @Operation(
+      summary = "매물 목록",
+      description =
+          "키워드, 카테고리, 거래유형, 가격·면적 범위, 담당자, 등록 단계, 보관 여부로 거르고 sort(updatedAt, name, createdAt 뒤에 ,asc 또는 ,desc)로 정렬한다.")
   @GetMapping
   @RequiresAccess(AccessPermission.AGENT_OR_OWNER)
   public PageResponse<PropertyListItemResponse> list(
@@ -79,6 +82,7 @@ public class PropertyController {
       @RequestParam(required = false) Long managingMembershipId,
       @RequestParam(required = false) String registrationStage,
       @RequestParam(required = false) Boolean archived,
+      @RequestParam(required = false) String sort,
       @RequestParam(required = false) Integer page,
       @RequestParam(required = false) Integer size,
       @AuthenticationPrincipal StaffPrincipal principal) {
@@ -95,7 +99,8 @@ public class PropertyController {
             areaMax,
             managingMembershipId,
             registrationStage,
-            archived),
+            archived,
+            sort),
         PageQuery.of(page, size));
   }
 
