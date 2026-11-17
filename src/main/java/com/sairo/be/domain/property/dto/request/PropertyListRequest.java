@@ -13,4 +13,5 @@ public record PropertyListRequest(
     BigDecimal areaMax,
     Long managingMembershipId,
     String registrationStage,
-    Boolean archived) {}
+    Boolean archived,
+    String sort) {}

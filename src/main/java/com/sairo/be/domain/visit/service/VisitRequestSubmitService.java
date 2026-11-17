@@ -223,6 +223,11 @@ public class VisitRequestSubmitService {
         candidate.getId(), RequestStatus.ACTIVE)) {
       throw new BusinessException(ErrorCode.VISIT_REQUEST_DUPLICATE_ACTIVE);
     }
+    if (replacedItemId == null
+        && resultRepository.scheduledOf(coordinationId).stream()
+            .anyMatch(item -> candidate.getId().equals(item.candidatePropertyId()))) {
+      throw new BusinessException(ErrorCode.VISIT_REQUEST_INVALID_STATE);
+    }
     long memberActive =
         requestRepository.countByApplicantMembershipIdAndStatusIn(
             principal.membershipId(), RequestStatus.ACTIVE);

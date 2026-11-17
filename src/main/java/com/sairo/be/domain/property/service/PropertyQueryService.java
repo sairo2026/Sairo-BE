@@ -17,6 +17,7 @@ import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.error.FieldErrorItem;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.InputRules;
+import com.sairo.be.global.support.ListSort;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.PageResponse;
 import com.sairo.be.global.support.TimeRules;
@@ -107,6 +108,9 @@ public class PropertyQueryService {
             .toList());
   }
 
+  private static final Map<String, String> SORT_COLUMNS =
+      Map.of("updatedAt", "p.updated_at", "name", "p.name", "createdAt", "p.created_at");
+
   private PropertyReadRepository.ListFilter toFilter(PropertyListRequest request) {
     String keyword = request.keyword() == null ? null : request.keyword().strip();
     if (keyword != null && keyword.isEmpty()) {
@@ -154,7 +158,8 @@ public class PropertyQueryService {
         request.areaMax(),
         request.managingMembershipId(),
         stage,
-        Boolean.TRUE.equals(request.archived()));
+        Boolean.TRUE.equals(request.archived()),
+        ListSort.parse(request.sort(), SORT_COLUMNS));
   }
 
   private static <E extends Enum<E>> E enumValue(String field, String raw, Class<E> type) {

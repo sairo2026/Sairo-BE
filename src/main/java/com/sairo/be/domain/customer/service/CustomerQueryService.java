@@ -14,6 +14,7 @@ import com.sairo.be.global.port.AssistantAssignments;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StaffRole;
 import com.sairo.be.global.support.InputRules;
+import com.sairo.be.global.support.ListSort;
 import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.PageResponse;
 import com.sairo.be.global.support.TimeRules;
@@ -52,8 +53,16 @@ public class CustomerQueryService {
     this.clock = clock;
   }
 
+  private static final Map<String, String> SORT_COLUMNS =
+      Map.of("updatedAt", "c.updated_at", "name", "c.name", "createdAt", "c.created_at");
+
   public PageResponse<CustomerListItemResponse> list(
-      StaffPrincipal principal, String keyword, String role, Boolean archived, PageQuery page) {
+      StaffPrincipal principal,
+      String keyword,
+      String role,
+      Boolean archived,
+      String sort,
+      PageQuery page) {
     String normalizedKeyword = keyword == null ? null : keyword.strip();
     if (normalizedKeyword != null && normalizedKeyword.isEmpty()) {
       normalizedKeyword = null;
@@ -66,7 +75,10 @@ public class CustomerQueryService {
     }
     CustomerReadRepository.ListFilter filter =
         new CustomerReadRepository.ListFilter(
-            normalizedKeyword, role, Boolean.TRUE.equals(archived));
+            normalizedKeyword,
+            role,
+            Boolean.TRUE.equals(archived),
+            ListSort.parse(sort, SORT_COLUMNS));
     LocalDate today = TimeRules.displayDate(clock.instant());
     long total = readRepository.countList(principal.officeId(), filter);
     List<CustomerReadRepository.ListRow> rows =
