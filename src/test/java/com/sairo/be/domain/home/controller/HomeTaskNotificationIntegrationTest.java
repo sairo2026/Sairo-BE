@@ -480,6 +480,35 @@ class HomeTaskNotificationIntegrationTest extends VisitOutcomeTestBase {
   }
 
   @Test
+  void 알림_모두_읽음_처리는_본인_알림만_바꾸고_반복해도_같다() throws Exception {
+    TestData.Staff owner = newStaff(OfficeMembershipRole.OWNER);
+    TestData.Staff agent = staffIn(owner.office(), OfficeMembershipRole.AGENT);
+    Cookie cookie = cookieOf(owner);
+    long officeId = owner.office().getId();
+    long userId = owner.user().getId();
+    insertNotification(officeId, userId, "PAYMENT", "SUBSCRIPTION", null);
+    insertNotification(null, userId, "SECURITY_ALERT", "NONE", null);
+    long agents = insertNotification(officeId, agent.user().getId(), "NOTICE", "NONE", null);
+
+    assertError(
+        mockMvc.perform(jsonPostAs("/api/notifications/read-all", "", null)),
+        ErrorCode.UNAUTHENTICATED);
+    mockMvc
+        .perform(jsonPostAs("/api/notifications/read-all", "", cookie))
+        .andExpect(status().isNoContent());
+    mockMvc
+        .perform(jsonPostAs("/api/notifications/read-all", "", cookie))
+        .andExpect(status().isNoContent());
+    mockMvc
+        .perform(authedGet("/api/notifications?unreadOnly=true", cookie))
+        .andExpect(jsonPath("$.totalElements").value(0));
+    mockMvc
+        .perform(authedGet("/api/notifications?unreadOnly=true", cookieOf(agent)))
+        .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.items[0].notificationId").value(agents));
+  }
+
+  @Test
   void 홈은_오늘_방문과_조율_상태별_건수와_미완료_업무와_캘린더를_돌려준다() throws Exception {
     SelectionFixture s = confirmed();
     long item = scheduledItem(s.coordinationId());
