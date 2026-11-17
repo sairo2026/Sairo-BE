@@ -18,6 +18,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class PasswordAttemptGuard {
 
+  private static final int MAX_ATTEMPTS = AuthRateLimits.LOGIN_FAILURE.limit();
+
   private final RequestRateLimiter rateLimiter;
   private final Clock clock;
 
@@ -37,19 +39,41 @@ public class PasswordAttemptGuard {
     }
   }
 
+  /** 한 번의 실패 기록 결과다. failedCount는 이번 실패까지 연속 실패 횟수이며 잠금이 걸린 실패에서는 최대 횟수와 같다. */
+  public record FailureState(int failedCount, Instant lockedUntil) {
+
+    public int remainingAttempts() {
+      return Math.max(0, MAX_ATTEMPTS - failedCount);
+    }
+  }
+
   /** 실패를 기록하고, 이번 실패로 잠겼으면 잠금 해제 시각을 돌려준다. 잠기지 않았으면 null이다. */
   public Instant recordFailure(String rawEmail) {
+    FailureState state = recordFailureState(rawEmail);
+    return state == null ? null : state.lockedUntil();
+  }
+
+  /** 실패를 기록하고 현재 연속 실패 횟수와 잠금 해제 시각을 돌려준다. 이메일이 없으면 null이다. */
+  public FailureState recordFailureState(String rawEmail) {
     if (rawEmail == null) {
       return null;
     }
     String key = key(rawEmail);
     Result result = rateLimiter.increment(AuthRateLimits.LOGIN_FAILURE, key);
-    if (result.count() < AuthRateLimits.LOGIN_FAILURE.limit()) {
-      return null;
+    if (result.count() < MAX_ATTEMPTS) {
+      return new FailureState(result.count(), null);
     }
     rateLimiter.increment(AuthRateLimits.LOGIN_LOCK, key);
     rateLimiter.reset(AuthRateLimits.LOGIN_FAILURE, key);
-    return clock.instant().plus(AuthRateLimits.LOGIN_LOCK.window());
+    return new FailureState(MAX_ATTEMPTS, clock.instant().plus(AuthRateLimits.LOGIN_LOCK.window()));
+  }
+
+  public static int maxAttempts() {
+    return MAX_ATTEMPTS;
+  }
+
+  public static long lockMinutes() {
+    return AuthRateLimits.LOGIN_LOCK.window().toMinutes();
   }
 
   public void reset(String rawEmail) {
