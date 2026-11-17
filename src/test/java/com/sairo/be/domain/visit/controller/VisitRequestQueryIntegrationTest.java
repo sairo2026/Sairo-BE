@@ -383,6 +383,32 @@ class VisitRequestQueryIntegrationTest extends VisitRequestIntegrationTestBase {
   }
 
   @Test
+  void 방문_신청_알림_모두_읽음_처리는_본인_수신분만_바꾸고_반복해도_같다() throws Exception {
+    RequestFixture f = requestFixture();
+    long requestId = submit(f);
+    var agent = staffIn(f.owner().office(), OfficeMembershipRole.AGENT);
+    long membership = f.owner().membership().getId();
+    insertNotice(requestId, membership, "SELECTED", "now()");
+    insertNotice(requestId, membership, "CONFIRMED", "now()");
+    long others = insertNotice(requestId, agent.membership().getId(), "SELECTED", "now()");
+    String url = "/api/visit-request-notices/read-all";
+
+    assertError(mockMvc.perform(jsonPostAs(url, "", null)), ErrorCode.UNAUTHENTICATED);
+    mockMvc.perform(jsonPostAs(url, "", f.cookie())).andExpect(status().isNoContent());
+    mockMvc.perform(jsonPostAs(url, "", f.cookie())).andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(authedGet("/api/visit-request-notices?unread=true", f.cookie()))
+        .andExpect(jsonPath("$.items.length()").value(0));
+    Integer othersUnread =
+        jdbcTemplate.queryForObject(
+            "SELECT count(*) FROM visit_request_notice WHERE id = ? AND read_at IS NULL",
+            Integer.class,
+            others);
+    assertThat(othersUnread).isEqualTo(1);
+  }
+
+  @Test
   void 알림_목록은_중개보조원도_본인_수신분을_볼_수_있다() throws Exception {
     RequestFixture f = requestFixture();
     long requestId = submit(f);

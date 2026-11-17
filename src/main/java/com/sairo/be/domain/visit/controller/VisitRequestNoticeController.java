@@ -45,6 +45,16 @@ public class VisitRequestNoticeController {
     return noticeService.list(principal, unread, page, size);
   }
 
+  @Operation(
+      summary = "방문 신청 알림 모두 확인 처리",
+      description = "본인의 읽지 않은 방문 신청 알림을 한 번에 확인 처리한다. 읽지 않은 알림이 없어도 같은 결과로 처리한다.")
+  @PostMapping("/read-all")
+  @RequiresAccess(AccessPermission.STAFF)
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void readAll(@AuthenticationPrincipal StaffPrincipal principal) {
+    noticeService.markAllRead(principal);
+  }
+
   @Operation(summary = "방문 신청 알림 확인 처리", description = "이미 확인한 알림도 같은 결과로 처리한다.")
   @PostMapping("/{noticeId}/read")
   @RequiresAccess(AccessPermission.STAFF)

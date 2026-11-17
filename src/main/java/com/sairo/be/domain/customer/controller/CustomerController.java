@@ -47,17 +47,21 @@ public class CustomerController {
     this.commandService = commandService;
   }
 
-  @Operation(summary = "고객 목록", description = "병합된 고객은 제외하고 병합 이력의 원래 이름·연락처도 검색한다.")
+  @Operation(
+      summary = "고객 목록",
+      description =
+          "병합된 고객은 제외하고 병합 이력의 원래 이름·연락처도 검색한다. sort(updatedAt, name, createdAt 뒤에 ,asc 또는 ,desc)로 정렬한다.")
   @GetMapping
   @RequiresAccess(AccessPermission.AGENT_OR_OWNER)
   public PageResponse<CustomerListItemResponse> list(
       @RequestParam(required = false) String keyword,
       @RequestParam(required = false) String role,
       @RequestParam(required = false) Boolean archived,
+      @RequestParam(required = false) String sort,
       @RequestParam(required = false) Integer page,
       @RequestParam(required = false) Integer size,
       @AuthenticationPrincipal StaffPrincipal principal) {
-    return queryService.list(principal, keyword, role, archived, PageQuery.of(page, size));
+    return queryService.list(principal, keyword, role, archived, sort, PageQuery.of(page, size));
   }
 
   @Operation(
