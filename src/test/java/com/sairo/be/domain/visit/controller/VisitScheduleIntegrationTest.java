@@ -154,6 +154,33 @@ class VisitScheduleIntegrationTest extends VisitSelectionTestBase {
   }
 
   @Test
+  void 같은_버전으로_일정을_동시에_저장하면_한_건만_저장되고_나머지는_409다() throws Exception {
+    RequestFixture f = requestFixture();
+    setCoordinationStatus(f.coordinationId(), "COORDINATABLE");
+    long version = coordinationVersion(f.coordinationId());
+    String body = items(item(f.candidateId(), 1, 30, 0));
+    var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+    List<java.util.concurrent.Future<Integer>> results = new ArrayList<>();
+    for (int i = 0; i < 4; i++) {
+      results.add(pool.submit(() -> put(f, body, version).andReturn().getResponse().getStatus()));
+    }
+    int saved = 0;
+    int conflicts = 0;
+    for (var result : results) {
+      int code = result.get();
+      if (code == 200) {
+        saved++;
+      } else if (code == 409) {
+        conflicts++;
+      }
+    }
+    pool.shutdown();
+
+    assertThat(saved).isEqualTo(1);
+    assertThat(conflicts).isEqualTo(3);
+  }
+
+  @Test
   void 일정_구성은_If_Match가_필수이고_상태와_범위를_검사한다() throws Exception {
     RequestFixture f = requestFixture();
     String body = items(item(f.candidateId(), 1, 30, 15));

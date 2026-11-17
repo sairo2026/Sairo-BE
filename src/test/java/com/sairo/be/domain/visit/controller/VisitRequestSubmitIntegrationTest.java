@@ -154,6 +154,25 @@ class VisitRequestSubmitIntegrationTest extends VisitRequestIntegrationTestBase 
   }
 
   @Test
+  void 이미_확정된_후보_매물에는_새_신청을_낼_수_없다() throws Exception {
+    RequestFixture f = requestFixture();
+    jdbcTemplate.update(
+        "INSERT INTO visit_schedule_item (coordination_id, office_id, candidate_property_id,"
+            + " scheduled_start_at, scheduled_end_at, sort_order, result) VALUES (?, ?, ?,"
+            + " now() + interval '3 days', now() + interval '3 days 30 minutes', 1, 'SCHEDULED')",
+        f.coordinationId(),
+        f.owner().office().getId(),
+        f.candidateId());
+    setCoordinationStatus(f.coordinationId(), "APPLYING");
+
+    assertError(
+        mockMvc.perform(jsonPostAs(requestUrl(f.coordinationId()), validBody(f), f.cookie())),
+        ErrorCode.VISIT_REQUEST_INVALID_STATE);
+    Integer rows = jdbcTemplate.queryForObject("SELECT count(*) FROM visit_request", Integer.class);
+    assertThat(rows).isZero();
+  }
+
+  @Test
   void 신청_진행_중_조율_건에도_다른_후보를_신청할_수_있다() throws Exception {
     RequestFixture f = requestFixture();
     submit(f);
