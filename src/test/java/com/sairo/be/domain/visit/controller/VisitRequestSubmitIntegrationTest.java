@@ -223,11 +223,11 @@ class VisitRequestSubmitIntegrationTest extends VisitRequestIntegrationTestBase 
         .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.code").value("APPROVER_CONDITION_VIOLATED"))
         .andExpect(jsonPath("$.violatedRules").value(hasItem("WINDOW_MISMATCH")))
-        .andExpect(jsonPath("$.violatedRules").value(hasItem("CUSTOMER_CONFLICT")));
+        .andExpect(jsonPath("$.violatedRules").value(hasItem("CUSTOMER_TIME_MISMATCH")));
   }
 
   @Test
-  void 고객_가능_시간_밖이면_고객_충돌만_알린다() throws Exception {
+  void 고객_가능_시간_밖이면_고객_시간_불일치만_알린다() throws Exception {
     RequestFixture f = requestFixture();
 
     mockMvc
@@ -238,7 +238,7 @@ class VisitRequestSubmitIntegrationTest extends VisitRequestIntegrationTestBase 
                 f.cookie()))
         .andExpect(status().isUnprocessableContent())
         .andExpect(jsonPath("$.violatedRules.length()").value(1))
-        .andExpect(jsonPath("$.violatedRules[0]").value("CUSTOMER_CONFLICT"));
+        .andExpect(jsonPath("$.violatedRules[0]").value("CUSTOMER_TIME_MISMATCH"));
     mockMvc
         .perform(
             jsonPostAs(
@@ -246,7 +246,7 @@ class VisitRequestSubmitIntegrationTest extends VisitRequestIntegrationTestBase 
                 requestBody(f.candidateId(), today().plusDays(3), "15:30", "16:30"),
                 f.cookie()))
         .andExpect(status().isUnprocessableContent())
-        .andExpect(jsonPath("$.violatedRules[0]").value("CUSTOMER_CONFLICT"));
+        .andExpect(jsonPath("$.violatedRules[0]").value("CUSTOMER_TIME_MISMATCH"));
   }
 
   @Test

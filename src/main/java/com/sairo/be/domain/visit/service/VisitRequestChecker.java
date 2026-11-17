@@ -16,6 +16,7 @@ import java.util.Set;
 public final class VisitRequestChecker {
 
   public static final String CUSTOMER_CONFLICT = "CUSTOMER_CONFLICT";
+  public static final String CUSTOMER_TIME_MISMATCH = "CUSTOMER_TIME_MISMATCH";
   public static final String PROPERTY_CONFLICT = "PROPERTY_CONFLICT";
   public static final String NO_PERMISSION = "NO_PERMISSION";
   public static final String MIN_LEAD = "MIN_LEAD";
@@ -46,7 +47,7 @@ public final class VisitRequestChecker {
       rules.add(NO_PERMISSION);
     }
     if (!insideCustomerSlots(customerSlots, subject.start(), subject.end())) {
-      rules.add(CUSTOMER_CONFLICT);
+      rules.add(CUSTOMER_TIME_MISMATCH);
     }
     Integer lead =
         ApproverConditionEvaluator.effective(

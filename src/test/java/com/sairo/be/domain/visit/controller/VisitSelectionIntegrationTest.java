@@ -546,7 +546,7 @@ class VisitSelectionIntegrationTest extends VisitSelectionTestBase {
   }
 
   @Test
-  void 고객_가능_시간이_바뀌어_밖이_되면_고객_일정_충돌로_실패한다() throws Exception {
+  void 고객_가능_시간이_바뀌어_밖이_되면_고객_시간_불일치로_실패한다() throws Exception {
     SelectionFixture s = selectionFixture();
     jdbcTemplate.update(
         "UPDATE visit_customer_time_slot SET starts_at = starts_at + interval '5 hours', ends_at"
@@ -556,7 +556,7 @@ class VisitSelectionIntegrationTest extends VisitSelectionTestBase {
 
     selectNow(s.token(), s.requestId())
         .andExpect(jsonPath("$.requestStatus").value("REVALIDATION_FAILED"))
-        .andExpect(jsonPath("$.revalidation.failureCode").value("CUSTOMER_CONFLICT"))
+        .andExpect(jsonPath("$.revalidation.failureCode").value("CUSTOMER_TIME_MISMATCH"))
         .andExpect(
             jsonPath("$.revalidation.failureDetail").value("신청한 사무소 또는 고객 쪽 사정으로 확정할 수 없다."));
   }
