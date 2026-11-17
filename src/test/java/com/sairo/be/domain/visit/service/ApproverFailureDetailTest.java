@@ -26,6 +26,7 @@ class ApproverFailureDetailTest {
         new String[] {
           "BROKER_CONFLICT",
           "CUSTOMER_CONFLICT",
+          "CUSTOMER_TIME_MISMATCH",
           "PROPERTY_CONFLICT",
           "TRAVEL_CONFLICT",
           "NO_PERMISSION",
