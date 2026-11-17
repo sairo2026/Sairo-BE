@@ -107,6 +107,19 @@ public class NotificationRepository {
     return matched > 0;
   }
 
+  /** 본인의 읽지 않은 알림을 모두 읽음 처리하고 처리한 건수를 돌려준다. */
+  public int markAllRead(Long userId, Long officeId, Instant now) {
+    return jdbcClient
+        .sql(
+            "UPDATE notification n SET read_at = :now, updated_at = :now"
+                + SCOPE
+                + " AND n.read_at IS NULL")
+        .param("now", Timestamp.from(now))
+        .param("user", userId)
+        .param("office", officeId)
+        .update();
+  }
+
   /** 수신 설정 키가 꺼져 있는지 본다. 행이 없으면 서비스 기본값(MARKETING만 꺼짐)을 따른다. */
   public boolean channelEnabled(Long userId, String channelKey) {
     return jdbcClient
