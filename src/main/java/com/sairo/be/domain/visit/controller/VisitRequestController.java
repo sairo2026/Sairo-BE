@@ -45,7 +45,9 @@ public class VisitRequestController {
 
   @Operation(
       summary = "방문 신청 제출",
-      description = "후보 매물 하나에 방문 신청을 낸다. 대표와 소속공인중개사만 낼 수 있고 신청은 예약이나 점유가 아니다.")
+      description =
+          "후보 매물 하나에 방문 신청을 낸다. 대표와 소속공인중개사만 낼 수 있고 신청은 예약이나 점유가 아니다. 조건을 어기면 422 APPROVER_CONDITION_VIOLATED와 violatedRules를 돌려준다."
+              + " 신청 구간이 고객이 낸 가능 시간 밖이면 CUSTOMER_TIME_MISMATCH이고, 고객의 다른 확정 방문이나 이동 구간과 겹치면 CUSTOMER_CONFLICT다.")
   @PostMapping("/api/visit-coordinations/{coordinationId}/visit-requests")
   @RequiresAccess(AccessPermission.AGENT_OR_OWNER)
   @ResponseStatus(HttpStatus.CREATED)

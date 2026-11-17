@@ -81,11 +81,11 @@ class VisitRequestCheckerTest {
     assertThat(
             VisitRequestChecker.violatedRules(
                 spec, subject(12, 30, 13, 30), List.of(), adjacent, NOW))
-        .containsExactly("CUSTOMER_CONFLICT");
+        .containsExactly("CUSTOMER_TIME_MISMATCH");
     assertThat(
             VisitRequestChecker.violatedRules(
                 spec, subject(10, 0, 10, 30), List.of(), List.of(), NOW))
-        .containsExactly("CUSTOMER_CONFLICT");
+        .containsExactly("CUSTOMER_TIME_MISMATCH");
   }
 
   @Test
