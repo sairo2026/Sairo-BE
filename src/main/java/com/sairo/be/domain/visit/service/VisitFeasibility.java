@@ -29,6 +29,7 @@ public final class VisitFeasibility {
           ApproverConditionEvaluator.MIN_GAP,
           VisitRequestChecker.MIN_LEAD,
           ApproverConditionEvaluator.SINGLE_VISIT_MAX,
+          VisitRequestChecker.CUSTOMER_TIME_MISMATCH,
           VisitRequestChecker.CUSTOMER_CONFLICT,
           BROKER_CONFLICT,
           VisitRequestChecker.PROPERTY_CONFLICT,

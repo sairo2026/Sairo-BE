@@ -59,7 +59,11 @@ public record VisitCoordinationDetailResponse(
       List<TimeSlot> applicableSlots,
       int visitDurationMinutes,
       int travelDurationMinutes,
-      @Schema(nullable = true) Long approvalId) {}
+      @Schema(nullable = true) Long approvalId,
+      @Schema(
+              nullable = true,
+              description = "일정 구성을 저장할 때 계산한 이 매물의 방문 시작 시각이다. 저장한 적이 없거나 순서 목록에서 빠졌으면 null이다.")
+          OffsetDateTime suggestedStartAt) {}
 
   public record ScheduleItem(
       Long itemId,

@@ -190,7 +190,8 @@ public final class VisitCoordinationMapper {
             .toList(),
         candidate.getVisitDurationMinutes(),
         candidate.getTravelDurationMinutes(),
-        approvalId);
+        approvalId,
+        TimeRules.toDisplayOffset(candidate.getSuggestedStartAt()));
   }
 
   public static List<VisitCoordinationDetailResponse.Alternative> alternatives(

@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -45,6 +46,9 @@ public class VisitCandidateProperty {
   @Column(name = "travel_duration_minutes", nullable = false)
   private int travelDurationMinutes;
 
+  @Column(name = "suggested_start_at")
+  private Instant suggestedStartAt;
+
   public static VisitCandidateProperty of(
       Long coordinationId, Long officeId, Long propertyId, Long propertyOfficeId, int sortOrder) {
     VisitCandidateProperty candidate = new VisitCandidateProperty();
@@ -64,6 +68,10 @@ public class VisitCandidateProperty {
 
   public void moveTo(int sortOrder) {
     this.sortOrder = sortOrder;
+  }
+
+  public void suggestStart(Instant suggestedStartAt) {
+    this.suggestedStartAt = suggestedStartAt;
   }
 
   public void arrange(int sortOrder, int visitDurationMinutes, int travelDurationMinutes) {

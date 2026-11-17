@@ -83,7 +83,11 @@ public class VisitScheduleController {
     return managerService.change(principal, coordinationId, IfMatchVersion.parse(ifMatch), body);
   }
 
-  @Operation(summary = "확정 안내문 조회", description = "확정된 일정의 고객 전체 동선과 승인자별 안내문을 돌려준다.")
+  @Operation(
+      summary = "확정 안내문 조회",
+      description =
+          "확정된 일정의 고객 전체 동선과 승인자별 안내문을 돌려준다. 모든 매물이 확정되기 전(최종 확정 필요, 신청 진행)에는 오류 대신 200으로 available=false와"
+              + " unavailableReason=NOT_ALL_CONFIRMED를 돌려주고 안내문은 비어 있다.")
   @GetMapping("/confirmation-messages")
   @RequiresAccess(AccessPermission.STAFF)
   public ConfirmationResponses.Messages messages(
