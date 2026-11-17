@@ -4,11 +4,9 @@ import com.sairo.be.domain.auth.entity.AppUser;
 import com.sairo.be.domain.auth.entity.AuthMethod;
 import com.sairo.be.domain.auth.repository.AppUserRepository;
 import com.sairo.be.global.error.BusinessException;
-import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.support.RequestRateLimiter;
 import com.sairo.be.global.web.ClientRequestInfo;
-import java.time.Instant;
 import java.util.Optional;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
@@ -52,13 +50,11 @@ public class EmailLoginService {
             .filter(user -> user.isActive() && user.hasEmailLogin());
     if (found.isEmpty()) {
       passwordHasher.spendComparisonTime(password);
-      recordFailure(email, null);
-      throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+      throw invalidCredentials(recordFailure(email, null));
     }
     AppUser user = found.get();
     if (!passwordHasher.matches(password, user.getPasswordHash())) {
-      recordFailure(email, user);
-      throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
+      throw invalidCredentials(recordFailure(email, user));
     }
     attemptGuard.reset(email);
     user.recordLoginSuccess();
@@ -66,10 +62,19 @@ public class EmailLoginService {
     return principalFactory.create(user);
   }
 
-  private void recordFailure(String email, AppUser user) {
-    Instant lockedUntil = attemptGuard.recordFailure(email);
+  private PasswordAttemptGuard.FailureState recordFailure(String email, AppUser user) {
+    PasswordAttemptGuard.FailureState state = attemptGuard.recordFailureState(email);
     if (user != null) {
-      user.recordLoginFailure(user.getFailedLoginCount() + 1, lockedUntil);
+      user.recordLoginFailure(user.getFailedLoginCount() + 1, state.lockedUntil());
     }
+    return state;
+  }
+
+  private static BusinessException invalidCredentials(PasswordAttemptGuard.FailureState state) {
+    return BusinessException.invalidCredentials(
+        state.failedCount(),
+        state.remainingAttempts(),
+        PasswordAttemptGuard.maxAttempts(),
+        PasswordAttemptGuard.lockMinutes());
   }
 }

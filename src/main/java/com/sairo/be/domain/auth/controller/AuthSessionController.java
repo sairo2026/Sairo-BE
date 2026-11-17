@@ -101,7 +101,13 @@ public class AuthSessionController {
         judgement, officeName, reconsentService.isReconsentRequired(principal.userId()));
   }
 
-  @Operation(summary = "이메일 로그인", description = "이메일과 비밀번호로 로그인하고 세션을 발급한다.")
+  @Operation(
+      summary = "이메일 로그인",
+      description =
+          "이메일과 비밀번호로 로그인하고 세션을 발급한다. 비밀번호가 맞지 않으면 401 INVALID_CREDENTIALS를 돌려주며 "
+              + "failedAttempts(연속 실패 횟수), remainingAttempts(잠기기까지 남은 횟수), maxAttempts(최대 횟수), "
+              + "lockMinutes(잠금 시간, 분) 필드가 함께 내려간다. 가입되지 않은 이메일도 같은 방식으로 세어 같은 형태로 응답한다. "
+              + "5번째 실패 응답은 remainingAttempts가 0이고 이후 요청은 429 LOGIN_LOCKED가 된다.")
   @RequiresAccess(AccessPermission.PUBLIC)
   @PostMapping("/login")
   public AccessConditionResponse login(

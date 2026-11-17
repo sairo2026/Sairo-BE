@@ -139,6 +139,51 @@ class EmailLoginIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
+  void 비밀번호가_틀리면_실패_횟수와_남은_횟수를_알려준다() throws Exception {
+    saveEmailUser(EMAIL, null);
+
+    for (int i = 1; i <= 5; i++) {
+      assertError(
+              mockMvc.perform(jsonPost("/api/auth/login", loginBody(EMAIL, "wrong-password"))),
+              ErrorCode.INVALID_CREDENTIALS)
+          .andExpect(jsonPath("$.failedAttempts").value(i))
+          .andExpect(jsonPath("$.remainingAttempts").value(5 - i))
+          .andExpect(jsonPath("$.maxAttempts").value(5))
+          .andExpect(jsonPath("$.lockMinutes").value(15));
+    }
+  }
+
+  @Test
+  void 미가입_이메일도_같은_형태로_횟수를_알려준다() throws Exception {
+    for (int i = 1; i <= 2; i++) {
+      assertError(
+              mockMvc.perform(jsonPost("/api/auth/login", loginBody("none@example.com", "x"))),
+              ErrorCode.INVALID_CREDENTIALS)
+          .andExpect(jsonPath("$.failedAttempts").value(i))
+          .andExpect(jsonPath("$.remainingAttempts").value(5 - i))
+          .andExpect(jsonPath("$.maxAttempts").value(5))
+          .andExpect(jsonPath("$.lockMinutes").value(15));
+    }
+  }
+
+  @Test
+  void 로그인에_성공하면_실패_횟수가_처음부터_다시_세어진다() throws Exception {
+    saveEmailUser(EMAIL, null);
+    for (int i = 0; i < 3; i++) {
+      mockMvc.perform(jsonPost("/api/auth/login", loginBody(EMAIL, "wrong-password")));
+    }
+    mockMvc
+        .perform(jsonPost("/api/auth/login", loginBody(EMAIL, PASSWORD)))
+        .andExpect(status().isOk());
+
+    assertError(
+            mockMvc.perform(jsonPost("/api/auth/login", loginBody(EMAIL, "wrong-password"))),
+            ErrorCode.INVALID_CREDENTIALS)
+        .andExpect(jsonPath("$.failedAttempts").value(1))
+        .andExpect(jsonPath("$.remainingAttempts").value(4));
+  }
+
+  @Test
   void 연속_5회_실패하면_5번째까지는_401이고_이후에는_정답이어도_429다() throws Exception {
     saveEmailUser(EMAIL, null);
 
