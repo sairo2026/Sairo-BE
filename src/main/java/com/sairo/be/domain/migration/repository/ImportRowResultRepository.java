@@ -4,6 +4,8 @@ import com.sairo.be.domain.migration.entity.ImportRowOutcome;
 import com.sairo.be.domain.migration.entity.ImportRowResult;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -28,4 +30,9 @@ public interface ImportRowResultRepository extends JpaRepository<ImportRowResult
       "select r from ImportRowResult r where r.batchId = :batchId and r.result = 'FAILED'"
           + " order by r.sourceRowNumber")
   List<ImportRowResult> findFailed(@Param("batchId") Long batchId);
+
+  Page<ImportRowResult> findByBatchId(Long batchId, Pageable pageable);
+
+  Page<ImportRowResult> findByBatchIdAndResult(
+      Long batchId, ImportRowOutcome result, Pageable pageable);
 }

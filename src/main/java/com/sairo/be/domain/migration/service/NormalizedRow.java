@@ -30,7 +30,12 @@ public record NormalizedRow(
   public String errorSummary() {
     return warnings.stream()
         .filter(warning -> warning.severity() == Severity.ERROR)
-        .map(warning -> warning.code() + ": " + warning.message())
+        .map(
+            warning ->
+                warning.code()
+                    + (warning.field() == null ? "" : "(" + warning.field() + ")")
+                    + ": "
+                    + warning.message())
         .reduce((left, right) -> left + " / " + right)
         .orElse("");
   }
