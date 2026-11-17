@@ -2,13 +2,16 @@ package com.sairo.be.domain.migration.service;
 
 import com.sairo.be.domain.migration.entity.ImportBatch;
 import com.sairo.be.domain.migration.repository.ImportBatchRepository;
+import com.sairo.be.domain.migration.repository.ImportRowCorrectionJdbcRepository;
 import com.sairo.be.domain.migration.repository.ImportRowResultRepository;
 import com.sairo.be.domain.migration.service.parser.ParsedRow;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.security.StaffPrincipal;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +31,7 @@ public class ImportRunService {
   private final ImportRowNormalizer normalizer;
   private final ImportRunTransactions transactions;
   private final ImportDuplicateClassifier classifier;
+  private final ImportRowCorrectionJdbcRepository correctionRepository;
 
   public ImportRunService(
       ImportBatchRepository batchRepository,
@@ -35,13 +39,15 @@ public class ImportRunService {
       ImportFileReader fileReader,
       ImportRowNormalizer normalizer,
       ImportRunTransactions transactions,
-      ImportDuplicateClassifier classifier) {
+      ImportDuplicateClassifier classifier,
+      ImportRowCorrectionJdbcRepository correctionRepository) {
     this.batchRepository = batchRepository;
     this.rowResultRepository = rowResultRepository;
     this.fileReader = fileReader;
     this.normalizer = normalizer;
     this.transactions = transactions;
     this.classifier = classifier;
+    this.correctionRepository = correctionRepository;
   }
 
   public void run(long batchId, StaffPrincipal principal, boolean retryOnly) {
@@ -61,10 +67,11 @@ public class ImportRunService {
       String sourceSystem = data.mapping().getSourceSystem();
       List<ParsedRow> rows = data.sheet().rows();
       List<NormalizedRow> normalizedRows = new ArrayList<>(rows.size());
+      Map<Integer, Map<String, String>> corrections = correctionRepository.findByBatch(batchId);
       for (ParsedRow row : rows) {
-        normalizedRows.add(
-            normalizer.normalize(
-                batch.getTargetType(), data.rawByField(row), data.columnByField()));
+        Map<String, String> raw = new LinkedHashMap<>(data.rawByField(row));
+        raw.putAll(corrections.getOrDefault(row.rowNumber(), Map.of()));
+        normalizedRows.add(normalizer.normalize(batch.getTargetType(), raw, data.columnByField()));
       }
       ImportDuplicateClassifier.Session session =
           classifier.open(batch.getOfficeId(), batch.getTargetType(), sourceSystem, normalizedRows);
@@ -109,16 +116,16 @@ public class ImportRunService {
       transactions.recordFailure(batch, row.rowNumber(), truncate(describe(e)));
     } catch (RuntimeException e) {
       log.warn("데이터 이전 줄 처리에 실패했습니다. batchId={}, row={}", batch.getId(), row.rowNumber(), e);
-      transactions.recordFailure(batch, row.rowNumber(), "저장 중 오류가 발생했습니다.");
+      transactions.recordFailure(batch, row.rowNumber(), "SAVE_ERROR: 저장 중 오류가 발생했습니다.");
     }
   }
 
   private static String describe(BusinessException exception) {
     String fields =
         exception.getFieldErrors().stream()
-            .map(item -> item.field() + " " + item.code() + ": " + item.message())
+            .map(item -> item.code() + "(" + item.field() + "): " + item.message())
             .collect(Collectors.joining(" / "));
-    return exception.getErrorCode().name() + (fields.isEmpty() ? "" : " " + fields);
+    return fields.isEmpty() ? exception.getErrorCode().name() + ": 저장할 수 없는 값입니다." : fields;
   }
 
   private static String truncate(String text) {
