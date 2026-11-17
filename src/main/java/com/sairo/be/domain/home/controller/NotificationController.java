@@ -43,6 +43,15 @@ public class NotificationController {
     return notificationService.list(principal, unreadOnly, PageQuery.of(page, size));
   }
 
+  @Operation(
+      summary = "알림 모두 읽음 처리",
+      description = "본인의 읽지 않은 알림을 한 번에 읽음 처리한다. 읽지 않은 알림이 없어도 같은 결과로 처리한다.")
+  @PostMapping("/read-all")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void readAll(@AuthenticationPrincipal StaffPrincipal principal) {
+    notificationService.markAllRead(principal);
+  }
+
   @Operation(summary = "알림 읽음 처리", description = "이미 읽은 알림도 같은 결과로 처리한다.")
   @PostMapping("/{notificationId}/read")
   @ResponseStatus(HttpStatus.NO_CONTENT)

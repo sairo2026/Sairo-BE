@@ -66,6 +66,11 @@ public class VisitRequestNoticeService {
   }
 
   @Transactional
+  public int markAllRead(StaffPrincipal principal) {
+    return noticeRepository.markAllRead(principal.membershipId(), clock.instant());
+  }
+
+  @Transactional
   public void markRead(StaffPrincipal principal, Long noticeId) {
     VisitRequestNotice notice =
         noticeRepository
