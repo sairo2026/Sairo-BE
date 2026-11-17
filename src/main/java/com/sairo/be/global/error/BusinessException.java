@@ -66,6 +66,16 @@ public class BusinessException extends RuntimeException {
         ErrorCode.VERIFICATION_CODE_INVALID, Map.of("remainingAttempts", remainingAttempts));
   }
 
+  public static BusinessException invalidCredentials(
+      int failedAttempts, int remainingAttempts, int maxAttempts, long lockMinutes) {
+    Map<String, Object> details = new LinkedHashMap<>();
+    details.put("failedAttempts", failedAttempts);
+    details.put("remainingAttempts", remainingAttempts);
+    details.put("maxAttempts", maxAttempts);
+    details.put("lockMinutes", lockMinutes);
+    return withDetails(ErrorCode.INVALID_CREDENTIALS, details);
+  }
+
   public static BusinessException termsVersionChanged(List<?> changedItems) {
     return withDetails(ErrorCode.TERMS_VERSION_CHANGED, Map.of("changedItems", changedItems));
   }
