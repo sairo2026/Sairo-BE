@@ -80,7 +80,6 @@ public class ScheduleComposeService {
   public VisitScheduleUpdateResponse compose(
       StaffPrincipal principal, Long coordinationId, long expectedVersion, JsonNode body) {
     List<Entry> entries = parse(body);
-    access.view(principal, coordinationId);
     VisitCoordination coordination = access.lock(principal, coordinationId);
     if (coordination.getVersion() != expectedVersion) {
       throw BusinessException.versionConflict(coordination.getVersion());
