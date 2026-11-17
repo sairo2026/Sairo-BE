@@ -142,6 +142,7 @@ class VisitScheduleIntegrationTest extends VisitSelectionTestBase {
     assertThat(saved.get("visitDurationMinutes").intValue()).isEqualTo(45);
     assertThat(saved.get("travelDurationMinutes").intValue()).isEqualTo(10);
     assertThat(saved.get("approvalId").longValue()).isEqualTo(extra.approvalId());
+    assertThat(instant(saved.get("suggestedStartAt"))).isEqualTo(at(day, "10:00"));
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM visit_coordination_status_history WHERE coordination_id = ?"

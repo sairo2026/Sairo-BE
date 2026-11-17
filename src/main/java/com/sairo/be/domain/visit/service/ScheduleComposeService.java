@@ -112,6 +112,7 @@ public class ScheduleComposeService {
     for (VisitCandidateProperty candidate : candidates) {
       if (!listed.contains(candidate.getId())) {
         candidate.moveTo(position++);
+        candidate.suggestStart(null);
       }
     }
     candidateRepository.saveAllAndFlush(candidates);
@@ -162,6 +163,7 @@ public class ScheduleComposeService {
       if (end.isAfter(periodEnd)) {
         throw timeOutOfRange(List.of(candidate.getId()));
       }
+      candidate.suggestStart(start);
       items.add(
           new VisitScheduleUpdateResponse.Item(
               candidate.getId(),
