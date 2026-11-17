@@ -1,5 +1,6 @@
 package com.sairo.be.domain.customer.repository;
 
+import com.sairo.be.global.support.ListSort;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -41,7 +42,7 @@ public class CustomerReadRepository {
     this.jdbcClient = jdbcClient;
   }
 
-  public record ListFilter(String keyword, String role, boolean archived) {}
+  public record ListFilter(String keyword, String role, boolean archived, ListSort sort) {}
 
   public record ListRow(
       long customerId,
@@ -187,7 +188,11 @@ public class CustomerReadRepository {
                 + "SELECT c.id, c.office_id, c.name, c.is_corporation, c.phone, c.deleted_at,"
                 + " c.created_at, c.updated_at, c.version FROM customer c"
                 + where
-                + " ORDER BY c.updated_at DESC, c.id DESC LIMIT :limit OFFSET :offset")
+                + " ORDER BY "
+                + (filter.sort() == null
+                    ? "c.updated_at DESC, c.id DESC"
+                    : filter.sort().orderBy("c.id"))
+                + " LIMIT :limit OFFSET :offset")
         .params(params)
         .query(
             (rs, rowNum) ->
