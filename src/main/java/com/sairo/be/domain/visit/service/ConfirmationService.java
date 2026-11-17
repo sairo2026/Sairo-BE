@@ -84,6 +84,10 @@ public class ConfirmationService {
   @Transactional(readOnly = true)
   public ConfirmationResponses.Messages messages(StaffPrincipal principal, Long coordinationId) {
     VisitCoordination coordination = access.view(principal, coordinationId);
+    if (isAwaitingFullConfirmation(coordination.getStatus())) {
+      return ConfirmationResponses.Messages.notAllConfirmed(
+          itemRepository.scheduleVersion(coordinationId));
+    }
     requireConfirmed(coordination);
     List<ItemRow> items = keptItems(coordinationId);
     Map<Long, VisitCandidateProperty> candidates = candidatesById(coordinationId);
@@ -127,7 +131,7 @@ public class ConfirmationService {
     if (!managerName.isBlank()) {
       customer.append("\n담당 ").append(managerName);
     }
-    return new ConfirmationResponses.Messages(
+    return ConfirmationResponses.Messages.ready(
         itemRepository.scheduleVersion(coordinationId), customer.toString(), approverMessages);
   }
 
@@ -246,6 +250,11 @@ public class ConfirmationService {
         .findByCoordinationIdOrderBySortOrderAscIdAsc(coordinationId)
         .forEach(candidate -> map.put(candidate.getId(), candidate));
     return map;
+  }
+
+  private static boolean isAwaitingFullConfirmation(CoordinationStatus status) {
+    return status == CoordinationStatus.FINAL_CONFIRMATION_REQUIRED
+        || status == CoordinationStatus.APPLYING;
   }
 
   private static void requireConfirmed(VisitCoordination coordination) {

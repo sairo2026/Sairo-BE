@@ -3,6 +3,7 @@ package com.sairo.be.domain.visit.controller;
 import static com.sairo.be.support.ErrorResponseAssertions.assertError;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -442,7 +443,17 @@ class VisitScheduleIntegrationTest extends VisitSelectionTestBase {
     SelectionFixture s = selectionFixture();
     String url = "/api/visit-coordinations/" + s.coordinationId() + "/confirmation-messages";
 
+    mockMvc
+        .perform(authedGet(url, s.cookie()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.available").value(false))
+        .andExpect(jsonPath("$.unavailableReason").value("NOT_ALL_CONFIRMED"))
+        .andExpect(jsonPath("$.customerMessage").value(nullValue()))
+        .andExpect(jsonPath("$.approverMessages.length()").value(0));
+    String pendingStatus = coordinationStatus(s.coordinationId());
+    setCoordinationStatus(s.coordinationId(), "TIME_COLLECTING");
     assertError(mockMvc.perform(authedGet(url, s.cookie())), ErrorCode.INVALID_TRANSITION);
+    setCoordinationStatus(s.coordinationId(), pendingStatus);
     confirmedCoordination(s);
 
     JsonNode body =
@@ -451,6 +462,8 @@ class VisitScheduleIntegrationTest extends VisitSelectionTestBase {
                 .perform(authedGet(url, s.cookie()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.scheduleVersion").value(1))
+                .andExpect(jsonPath("$.available").value(true))
+                .andExpect(jsonPath("$.unavailableReason").value(nullValue()))
                 .andExpect(jsonPath("$.approverMessages.length()").value(1))
                 .andExpect(
                     jsonPath("$.approverMessages[0].candidatePropertyId").value(s.candidateId()))
