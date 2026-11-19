@@ -81,7 +81,7 @@ sairo:
     business-number: ${COMPANY_BUSINESS_NUMBER:704-16-02872}
     address: ${COMPANY_ADDRESS:경기도 고양시 덕양구 백양로 51, 902호 A-5(화정동, 네이버타운)}
     contact-phone: ${COMPANY_CONTACT_PHONE:}
-    ecommerce-notice: ${COMPANY_ECOMMERCE_NOTICE:}
+    ecommerce-notice: ${COMPANY_ECOMMERCE_NOTICE:제 2026-고양덕양구-2847 호}
     support-email: ${COMPANY_SUPPORT_EMAIL:}
     privacy-contact: ${COMPANY_PRIVACY_CONTACT:}
     privacy-request-path: ${COMPANY_PRIVACY_REQUEST_PATH:}

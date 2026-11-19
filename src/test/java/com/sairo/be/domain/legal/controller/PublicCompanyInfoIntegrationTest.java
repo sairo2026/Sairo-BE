@@ -64,7 +64,7 @@ class PublicCompanyInfoIntegrationTest extends AuthIntegrationTestBase {
         .andExpect(jsonPath("$.businessNumber").value("704-16-02872"))
         .andExpect(jsonPath("$.address").value("경기도 고양시 덕양구 백양로 51, 902호 A-5(화정동, 네이버타운)"))
         .andExpect(jsonPath("$", hasKey("ecommerceNotice")))
-        .andExpect(jsonPath("$.ecommerceNotice").value(nullValue()))
+        .andExpect(jsonPath("$.ecommerceNotice").value("제 2026-고양덕양구-2847 호"))
         .andExpect(jsonPath("$", hasKey("contactPhone")))
         .andExpect(jsonPath("$.contactPhone").value(nullValue()))
         .andExpect(jsonPath("$", hasKey("supportEmail")))
