@@ -26,5 +26,8 @@ public interface BillingInvoiceRepository extends JpaRepository<BillingInvoice, 
 
   List<BillingInvoice> findByStatus(InvoiceStatus status);
 
+  Optional<BillingInvoice> findBySubscriptionIdAndBillingPeriodStart(
+      Long subscriptionId, Instant billingPeriodStart);
+
   boolean existsBySubscriptionId(Long subscriptionId);
 }
