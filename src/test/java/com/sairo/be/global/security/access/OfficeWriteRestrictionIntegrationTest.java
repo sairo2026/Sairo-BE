@@ -31,9 +31,9 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
 
   /**
-   * 업무 데이터를 쓰는 컨트롤러는 가드 대상이어야 한다. 아래 컨트롤러는 계정·결제·알림·문의·내보내기처럼 제한 중에도 써야 하거나,
-   * 사무소 구성원이 아닌 주체가 호출하거나, 서비스 계층에서 따로 판정하는 예외다. 운영자 콘솔(Ops로 시작하는 컨트롤러와 ops 패키지)은 전부 예외다.
-   * 새 컨트롤러는 어느 쪽인지 여기에서 정해야 이 시험이 통과한다.
+   * 업무 데이터를 쓰는 컨트롤러는 가드 대상이어야 한다. 아래 컨트롤러는 계정·결제·알림·문의·내보내기처럼 제한 중에도 써야 하거나, 사무소 구성원이 아닌 주체가 호출하거나,
+   * 서비스 계층에서 따로 판정하는 예외다. 운영자 콘솔(Ops로 시작하는 컨트롤러와 ops 패키지)은 전부 예외다. 새 컨트롤러는 어느 쪽인지 여기에서 정해야 이 시험이
+   * 통과한다.
    */
   private static final Set<String> EXEMPT_CONTROLLERS =
       Set.of(
@@ -79,8 +79,7 @@ class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
           "/api/customer-consultations/1", "{}");
 
   @Autowired
-  @Qualifier("requestMappingHandlerMapping")
-  private RequestMappingHandlerMapping handlerMapping;
+  @Qualifier("requestMappingHandlerMapping") private RequestMappingHandlerMapping handlerMapping;
 
   private static String taskBody(long assignee) {
     return "{\"title\":\"제한 시험\",\"assigneeMembershipId\":"
