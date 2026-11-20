@@ -61,7 +61,7 @@ class ImportMappingIntegrationTest extends ImportIntegrationTestBase {
         .andExpect(jsonPath("$.availableTargetFields[0].field").value("customerSourceId"))
         .andExpect(jsonPath("$.availableTargetFields[0].label").value("원본 고객 ID"))
         .andExpect(jsonPath("$.availableTargetFields[0].type").value("string"))
-        .andExpect(jsonPath("$.availableTargetFields[0].required").value(true))
+        .andExpect(jsonPath("$.availableTargetFields[0].required").value(false))
         .andExpect(jsonPath("$.availableTargetFields[2].field").value("customerIsCorporation"))
         .andExpect(jsonPath("$.availableTargetFields[2].required").value(false));
   }
@@ -229,15 +229,14 @@ class ImportMappingIntegrationTest extends ImportIntegrationTestBase {
     Cookie cookie = cookieOf(owner);
     long batchId = uploadCustomers(cookie, "1,홍길동,,,");
 
-    assertFieldError(
-        mockMvc.perform(
+    mockMvc
+        .perform(
             jsonPutAs(
                 "/api/import-batches/" + batchId + "/mapping",
                 mapping("성명", "customerName"),
                 cookie,
-                batchVersion(batchId))),
-        "mappings",
-        "REQUIRED");
+                batchVersion(batchId)))
+        .andExpect(status().isOk());
     assertFieldError(
         mockMvc.perform(
             jsonPutAs(

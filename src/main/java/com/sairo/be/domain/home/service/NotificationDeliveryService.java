@@ -60,7 +60,7 @@ public class NotificationDeliveryService {
     Map<NotificationType, String> subjects = new EnumMap<>(NotificationType.class);
     subjects.put(NotificationType.OFFICE_REVIEW, "사무소 인증 안내");
     subjects.put(NotificationType.MEMBERSHIP_APPROVAL_NEEDED, "사무소 참여 승인 요청이 도착했습니다");
-    subjects.put(NotificationType.TRIAL_ENDING, "무료 체험 종료 안내");
+    subjects.put(NotificationType.TRIAL_ENDING, "무료 이용 종료 안내");
     subjects.put(NotificationType.PLAN_CHANGED, "구독 변경 안내");
     subjects.put(NotificationType.PAYMENT, "결제·환불 안내");
     subjects.put(NotificationType.RETURN_SCHEDULED, "데이터 반환 예정 안내");
