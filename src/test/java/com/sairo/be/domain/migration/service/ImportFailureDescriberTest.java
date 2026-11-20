@@ -53,4 +53,30 @@ class ImportFailureDescriberTest {
     assertThat(ImportRowResultService.csvCell("a,\"b\"")).isEqualTo("\"a,\"\"b\"\"\"");
     assertThat(ImportRowResultService.csvCell(null)).isEmpty();
   }
+
+  @Test
+  void CSV_셀은_숫자로_시작해도_뒤에_수식이_붙으면_무력화한다() {
+    assertThat(ImportRowResultService.csvCell("+1+HYPERLINK(\"http://x\",\"a\")"))
+        .isEqualTo("\"'+1+HYPERLINK(\"\"http://x\"\",\"\"a\"\")\"");
+    assertThat(ImportRowResultService.csvCell("-1+2")).isEqualTo("'-1+2");
+    assertThat(ImportRowResultService.csvCell("-2*cmd")).isEqualTo("'-2*cmd");
+    assertThat(ImportRowResultService.csvCell("+82 10")).isEqualTo("'+82 10");
+    assertThat(ImportRowResultService.csvCell("-홍길동")).isEqualTo("'-홍길동");
+    assertThat(ImportRowResultService.csvCell("+1홍길동")).isEqualTo("'+1홍길동");
+    assertThat(ImportRowResultService.csvCell("-")).isEqualTo("'-");
+    assertThat(ImportRowResultService.csvCell("+")).isEqualTo("'+");
+    assertThat(ImportRowResultService.csvCell("-١٢٣")).isEqualTo("'-١٢٣");
+    assertThat(ImportRowResultService.csvCell("@SUM(A1)")).isEqualTo("'@SUM(A1)");
+    assertThat(ImportRowResultService.csvCell("\t=1")).isEqualTo("'\t=1");
+    assertThat(ImportRowResultService.csvCell("\r=1")).isEqualTo("\"'\r=1\"");
+  }
+
+  @Test
+  void CSV_셀은_순수_숫자_형식이면_그대로_내보낸다() {
+    assertThat(ImportRowResultService.csvCell("-123")).isEqualTo("-123");
+    assertThat(ImportRowResultService.csvCell("-12.5")).isEqualTo("-12.5");
+    assertThat(ImportRowResultService.csvCell("+821012345678")).isEqualTo("+821012345678");
+    assertThat(ImportRowResultService.csvCell("1+1")).isEqualTo("1+1");
+    assertThat(ImportRowResultService.csvCell("홍길동")).isEqualTo("홍길동");
+  }
 }
