@@ -86,6 +86,26 @@ public class SystemJobRunService {
     }
   }
 
+  /**
+   * 시작한 뒤 기준 시각이 지나도록 끝나지 않은 실행 중 작업을 실패로 되돌린다. 프로세스가 중단돼 RUNNING으로 남은 작업을 다음 주기에 같은 키로 다시 시작하게 한다.
+   * 되돌린 작업 수를 돌려준다.
+   */
+  public int reclaimStale(java.util.Collection<String> jobNames, Instant startedBefore) {
+    return jdbcClient
+        .sql(
+            """
+            UPDATE system_job_run SET status = 'FAILED', finished_at = now(),
+              error_code = 'STALE_RUNNING'
+            WHERE status = 'RUNNING' AND job_name IN (:jobNames) AND started_at < :before
+            RETURNING id
+            """)
+        .param("jobNames", jobNames)
+        .param("before", java.sql.Timestamp.from(startedBefore))
+        .query(Long.class)
+        .list()
+        .size();
+  }
+
   private static String errorCode(RuntimeException e) {
     String code =
         e instanceof SystemJobFailure failure ? failure.code() : e.getClass().getSimpleName();
