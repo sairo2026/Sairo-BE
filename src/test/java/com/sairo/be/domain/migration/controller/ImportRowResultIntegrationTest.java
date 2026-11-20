@@ -111,6 +111,41 @@ class ImportRowResultIntegrationTest extends ImportIntegrationTestBase {
   }
 
   @Test
+  void 원본_번호가_빈_줄은_자동_번호로_저장되고_실패만_다시_처리해도_중복이_없다() throws Exception {
+    var owner = newStaff(OfficeMembershipRole.OWNER);
+    Cookie cookie = cookieOf(owner);
+    long batchId = readyCustomerBatch(cookie, ",홍길동,,,", ",김철수,,이메일아님,");
+    executeBatch(cookie, batchId);
+    String base = "/api/import-batches/" + batchId;
+
+    assertThat(count("customer")).isEqualTo(1);
+    JsonNode succeeded = rows(cookie, batchId, "?outcome=SUCCEEDED");
+    assertThat(succeeded.get("rows").get(0).get("sourceId").isNull()).isTrue();
+    assertThat(succeeded.get("rows").get(0).get("targetId").isNull()).isFalse();
+
+    mockMvc
+        .perform(
+            jsonPutAs(
+                base + "/rows/3/correction",
+                "{\"values\":{\"customerEmail\":\"fixed@example.com\"}}",
+                cookie,
+                null))
+        .andExpect(status().isOk());
+    mockMvc.perform(jsonPostAs(base + "/retry-failed", "", cookie)).andExpect(status().isOk());
+    mockMvc.perform(jsonPostAs(base + "/retry-failed", "", cookie));
+
+    JsonNode detail = detail(cookie, batchId);
+    assertThat(detail.get("counts").get("succeeded").asInt()).isEqualTo(2);
+    assertThat(detail.get("counts").get("failed").asInt()).isZero();
+    assertThat(count("customer")).isEqualTo(2);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM import_record_link WHERE source_id LIKE 'SAIRO-AUTO-%'",
+                Integer.class))
+        .isEqualTo(2);
+  }
+
+  @Test
   void 고쳐도_틀리면_계속_실패로_남고_원인이_갱신된다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     Cookie cookie = cookieOf(owner);

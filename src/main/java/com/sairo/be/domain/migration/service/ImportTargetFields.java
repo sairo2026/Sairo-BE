@@ -29,9 +29,11 @@ public final class ImportTargetFields {
   public static final String PROPERTY_DESCRIPTION = "propertyDescription";
   public static final String PROPERTY_MEMO = "propertyMemo";
 
+  public static final String AUTO_SOURCE_ID_PREFIX = "SAIRO-AUTO-";
+
   private static final List<ImportTargetField> CUSTOMER =
       List.of(
-          new ImportTargetField(CUSTOMER_SOURCE_ID, "원본 고객 ID", "string", true),
+          new ImportTargetField(CUSTOMER_SOURCE_ID, "원본 고객 ID", "string", false),
           new ImportTargetField(CUSTOMER_NAME, "고객명", "string", true),
           new ImportTargetField(CUSTOMER_IS_CORPORATION, "법인 여부", "boolean", false),
           new ImportTargetField(CUSTOMER_PHONE, "연락처", "string", false),
@@ -41,7 +43,7 @@ public final class ImportTargetFields {
 
   private static final List<ImportTargetField> PROPERTY =
       List.of(
-          new ImportTargetField(PROPERTY_SOURCE_ID, "원본 매물 ID", "string", true),
+          new ImportTargetField(PROPERTY_SOURCE_ID, "원본 매물 ID", "string", false),
           new ImportTargetField(PROPERTY_NAME, "매물명", "string", true),
           new ImportTargetField(PROPERTY_ADDRESS, "기본주소", "string", false),
           new ImportTargetField(PROPERTY_ADDRESS_DETAIL, "상세주소", "string", false),
@@ -77,6 +79,11 @@ public final class ImportTargetFields {
       case PROPERTY -> PROPERTY_SOURCE_ID;
       case CONTRACT -> null;
     };
+  }
+
+  /** 원본 번호가 비어 있는 줄에 붙이는 번호다. 같은 이전 건의 같은 줄은 다시 처리해도 같은 번호가 나온다. */
+  public static String autoSourceId(long batchId, int rowNumber) {
+    return AUTO_SOURCE_ID_PREFIX + batchId + "-" + rowNumber;
   }
 
   public static String nameField(ImportTargetType type) {

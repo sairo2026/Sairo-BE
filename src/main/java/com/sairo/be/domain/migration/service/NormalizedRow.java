@@ -7,7 +7,21 @@ public record NormalizedRow(
     Map<String, Object> values,
     List<UnitConversion> unitConversions,
     List<RowWarning> warnings,
-    String sourceId) {
+    String sourceId,
+    boolean autoSourceId) {
+
+  public NormalizedRow(
+      Map<String, Object> values,
+      List<UnitConversion> unitConversions,
+      List<RowWarning> warnings,
+      String sourceId) {
+    this(values, unitConversions, warnings, sourceId, false);
+  }
+
+  /** 시스템이 붙인 번호는 사용자에게 원본 번호로 보여 주지 않는다. */
+  public String displaySourceId() {
+    return autoSourceId ? null : sourceId;
+  }
 
   public enum Severity {
     ERROR,

@@ -71,7 +71,12 @@ public class ImportRunService {
       for (ParsedRow row : rows) {
         Map<String, String> raw = new LinkedHashMap<>(data.rawByField(row));
         raw.putAll(corrections.getOrDefault(row.rowNumber(), Map.of()));
-        normalizedRows.add(normalizer.normalize(batch.getTargetType(), raw, data.columnByField()));
+        normalizedRows.add(
+            normalizer.normalize(
+                batch.getTargetType(),
+                raw,
+                data.columnByField(),
+                ImportTargetFields.autoSourceId(batch.getId(), row.rowNumber())));
       }
       ImportDuplicateClassifier.Session session =
           classifier.open(batch.getOfficeId(), batch.getTargetType(), sourceSystem, normalizedRows);
