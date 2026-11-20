@@ -30,6 +30,47 @@ class ClientIpResolverTest {
   }
 
   @Test
+  void repeatedCdnHeaderIsDroppedSoTheClientCopyCannotWin() {
+    MockHttpServletRequest request = request("172.18.0.1");
+    request.addHeader("CF-Connecting-IP", "1.2.3.4");
+    request.addHeader("CF-Connecting-IP", "203.0.113.7");
+    request.addHeader("X-Forwarded-For", "203.0.113.7");
+
+    assertThat(resolver.resolve(request)).isEqualTo("203.0.113.7");
+  }
+
+  @Test
+  void commaJoinedOrMalformedCdnHeaderIsDropped() {
+    MockHttpServletRequest joined = request("172.18.0.1");
+    joined.addHeader("CF-Connecting-IP", "1.2.3.4, 203.0.113.7");
+    assertThat(resolver.resolve(joined)).isEqualTo("172.18.0.1");
+
+    MockHttpServletRequest malformed = request("172.18.0.1");
+    malformed.addHeader("CF-Connecting-IP", "evil.example.com");
+    assertThat(resolver.resolve(malformed)).isEqualTo("172.18.0.1");
+  }
+
+  @Test
+  void cdnHeaderNamingATrustedProxyAddressIsDropped() {
+    MockHttpServletRequest request = request("172.18.0.1");
+    request.addHeader("CF-Connecting-IP", "127.0.0.1");
+    request.addHeader("X-Forwarded-For", "203.0.113.7");
+
+    assertThat(resolver.resolve(request)).isEqualTo("203.0.113.7");
+  }
+
+  @Test
+  void repeatedEdgeClientHeaderIsDroppedEvenWithMatchingToken() {
+    MockHttpServletRequest request = request("172.18.0.1");
+    request.addHeader("CF-Connecting-IP", "198.51.100.5");
+    request.addHeader("X-Vercel-Forwarded-For", "1.2.3.4");
+    request.addHeader("X-Vercel-Forwarded-For", "203.0.113.7");
+    request.addHeader("X-Sairo-Edge-Token", "edge-secret");
+
+    assertThat(resolver.resolve(request)).isEqualTo("198.51.100.5");
+  }
+
+  @Test
   void untrustedPeerIgnoresEveryForwardingHeader() {
     MockHttpServletRequest request = request("198.51.100.9");
     request.addHeader("CF-Connecting-IP", "1.2.3.4");
