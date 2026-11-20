@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -69,6 +70,7 @@ public class ImportSupportService {
   private final PaymentGateway paymentGateway;
   private final LiveChargingGuard liveChargingGuard;
   private final Clock clock;
+  private final boolean paymentEnabled;
 
   public ImportSupportService(
       ImportSupportRequestRepository requestRepository,
@@ -81,7 +83,8 @@ public class ImportSupportService {
       ImportPreviewService previewService,
       PaymentGateway paymentGateway,
       LiveChargingGuard liveChargingGuard,
-      Clock clock) {
+      Clock clock,
+      @Value("${sairo.migration.support-payment-enabled:false}") boolean paymentEnabled) {
     this.requestRepository = requestRepository;
     this.linkRepository = linkRepository;
     this.jdbcRepository = jdbcRepository;
@@ -93,6 +96,7 @@ public class ImportSupportService {
     this.paymentGateway = paymentGateway;
     this.liveChargingGuard = liveChargingGuard;
     this.clock = clock;
+    this.paymentEnabled = paymentEnabled;
   }
 
   @Transactional
@@ -145,6 +149,7 @@ public class ImportSupportService {
 
   @Transactional
   public ImportSupportQuoteAcceptResponse acceptQuote(StaffPrincipal principal, Long requestId) {
+    requirePaymentEnabled();
     ImportSupportRequest request = lock(principal, requestId);
     if (request.getStatus() == ImportSupportStatus.ACCEPTED) {
       return ImportSupportMapper.toQuoteAccept(request);
@@ -156,6 +161,7 @@ public class ImportSupportService {
   @Transactional
   public ImportSupportPaymentConfirmResponse confirmPayment(
       StaffPrincipal principal, Long requestId, JsonNode body) {
+    requirePaymentEnabled();
     liveChargingGuard.requireChargeAllowed();
     ImportSupportPaymentConfirmRequest command = ImportSupportRequestParser.paymentConfirm(body);
     ImportSupportRequest request = lock(principal, requestId);
@@ -214,6 +220,12 @@ public class ImportSupportService {
     requireVersion(request, expectedVersion);
     request.cancel(principal.membershipId(), reason.reason(), now());
     return ImportSupportMapper.toCancel(requestRepository.saveAndFlush(request));
+  }
+
+  private void requirePaymentEnabled() {
+    if (!paymentEnabled) {
+      throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
+    }
   }
 
   private ImportSupportRequest lock(StaffPrincipal principal, Long requestId) {

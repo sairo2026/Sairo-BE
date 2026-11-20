@@ -28,6 +28,36 @@ class ImportSupportPaymentGuardTest {
       Clock.fixed(Instant.parse("2026-11-16T00:00:00Z"), ZoneOffset.UTC);
 
   @Test
+  void paymentPathsAreClosedByDefault() {
+    ImportSupportRequestRepository requestRepository = mock(ImportSupportRequestRepository.class);
+    PaymentGateway gateway = mock(PaymentGateway.class);
+    ImportSupportService service =
+        new ImportSupportService(
+            requestRepository,
+            mock(ImportSupportLinkRepository.class),
+            mock(ImportSupportJdbcRepository.class),
+            mock(ImportGuard.class),
+            mock(ImportMappingVersionRepository.class),
+            mock(ImportMappingItemRepository.class),
+            mock(ImportRowResultRepository.class),
+            mock(ImportPreviewService.class),
+            gateway,
+            mock(LiveChargingGuard.class),
+            CLOCK,
+            false);
+
+    assertThatThrownBy(() -> service.acceptQuote(mock(StaffPrincipal.class), 1L))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+    assertThatThrownBy(() -> service.confirmPayment(mock(StaffPrincipal.class), 1L, null))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+    verifyNoInteractions(gateway, requestRepository);
+  }
+
+  @Test
   void confirmPaymentThrowsBeforeGatewayWhileChargingBlocked() {
     ImportSupportRequestRepository requestRepository = mock(ImportSupportRequestRepository.class);
     ImportGuard importGuard = mock(ImportGuard.class);
@@ -49,7 +79,8 @@ class ImportSupportPaymentGuardTest {
             mock(ImportPreviewService.class),
             gateway,
             guard,
-            CLOCK);
+            CLOCK,
+            true);
 
     assertThatThrownBy(() -> service.confirmPayment(mock(StaffPrincipal.class), 1L, null))
         .isInstanceOf(BusinessException.class)
