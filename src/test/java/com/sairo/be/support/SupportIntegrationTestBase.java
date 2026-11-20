@@ -13,11 +13,13 @@ import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+@TestPropertySource(properties = "sairo.migration.support-payment-enabled=true")
 public abstract class SupportIntegrationTestBase extends ImportIntegrationTestBase {
 
   protected static final String CHANGE_BODY = "{\"reason\":\"연락처 열을 전화번호로 매핑해 주세요\"}";
