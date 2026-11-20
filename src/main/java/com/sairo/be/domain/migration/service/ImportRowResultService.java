@@ -317,6 +317,10 @@ public class ImportRowResultService {
         .append("\r\n");
   }
 
+  /** 부호가 붙은 값은 문자열 전체가 숫자일 때만 그대로 내보낸다. 숫자로 시작해도 뒤에 수식이 붙으면 접두 따옴표를 붙인다. */
+  private static final java.util.regex.Pattern PLAIN_NUMBER =
+      java.util.regex.Pattern.compile("[+-][0-9]+(\\.[0-9]+)?");
+
   static String csvCell(String value) {
     String text = value == null ? "" : value;
     if (isFormulaLike(text)) {
@@ -337,7 +341,7 @@ public class ImportRowResultService {
       return true;
     }
     if (first == '+' || first == '-') {
-      return text.length() > 1 && !Character.isDigit(text.charAt(1));
+      return !PLAIN_NUMBER.matcher(text).matches();
     }
     return false;
   }
