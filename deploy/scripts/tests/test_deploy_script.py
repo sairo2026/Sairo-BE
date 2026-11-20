@@ -282,6 +282,34 @@ class DeployScriptTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("tossWebhookSecret must be a single line", result.stderr)
 
+    def test_edge_token_is_delivered_to_app_env(self):
+        self.set_healthy(NEW_TAG)
+        token = "a" * 64
+        self.write_secret("sairo_be_app-secrets", {**APP_SECRETS, "edgeToken": token})
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"SAIRO_CLIENT_IP_EDGE_TOKEN={token}", self.read_env_lines())
+
+    def test_missing_edge_token_is_not_written(self):
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(
+            any(line.startswith("SAIRO_CLIENT_IP_EDGE_TOKEN") for line in self.read_env_lines())
+        )
+
+    def test_short_edge_token_is_rejected_before_deploying(self):
+        self.write_secret("sairo_be_app-secrets", {**APP_SECRETS, "edgeToken": "short"})
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("edgeToken must be", result.stderr)
+
     def test_lease_period_scan_cron_is_delivered_to_app_env(self):
         self.set_healthy(NEW_TAG)
         self.write_secret(
