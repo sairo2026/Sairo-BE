@@ -6,6 +6,7 @@ import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
 
 /**
@@ -16,7 +17,9 @@ import java.util.List;
  *
  * <ol>
  *   <li>the edge client header, only when it comes with the matching shared edge token
- *   <li>the CDN connecting-address header, which the CDN overwrites on every request
+ *   <li>the CDN connecting-address header, which the CDN overwrites on every request. It is used
+ *       only as a single valid IP literal that is not itself a trusted proxy address; a repeated
+ *       header is dropped because the first copy may have been sent by the client
  *   <li>the right-most X-Forwarded-For entry that is not a trusted proxy
  *   <li>the TCP peer
  * </ol>
@@ -56,14 +59,14 @@ public class ClientIpResolver {
     if (edgeToken != null
         && presented != null
         && MessageDigest.isEqual(edgeToken, presented.trim().getBytes(StandardCharsets.UTF_8))) {
-      String edgeClient = single(request.getHeader(EDGE_CLIENT_HEADER));
+      String edgeClient = single(request, EDGE_CLIENT_HEADER);
       if (edgeClient != null) {
         return edgeClient;
       }
     }
 
-    String cdnClient = single(request.getHeader(CDN_HEADER));
-    if (cdnClient != null) {
+    String cdnClient = single(request, CDN_HEADER);
+    if (cdnClient != null && !isTrusted(parseLiteral(cdnClient))) {
       return cdnClient;
     }
 
@@ -84,8 +87,13 @@ public class ClientIpResolver {
     return peer;
   }
 
-  private static String single(String value) {
-    if (value == null) {
+  private static String single(HttpServletRequest request, String name) {
+    Enumeration<String> values = request.getHeaders(name);
+    if (values == null || !values.hasMoreElements()) {
+      return null;
+    }
+    String value = values.nextElement();
+    if (value == null || values.hasMoreElements()) {
       return null;
     }
     String trimmed = value.trim();

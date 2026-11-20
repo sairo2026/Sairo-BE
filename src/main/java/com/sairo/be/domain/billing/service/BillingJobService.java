@@ -31,6 +31,10 @@ public class BillingJobService {
   private static final List<InvoiceStatus> UNPAID =
       List.of(InvoiceStatus.UNBILLED, InvoiceStatus.FAILED);
   private static final int MAX_BOUNDARY_STEPS = 1200;
+
+  /** 청구 배치의 스케줄러 잠금 최대 유지 시간과 같다. 이 시간이 지난 RUNNING 작업은 다른 실행이 아닌 중단된 실행으로 본다. */
+  static final Duration STALE_JOB_AFTER = Duration.ofMinutes(30);
+
   static final List<Integer> TRIAL_ENDING_DAYS = List.of(1, 7, 14, 30);
 
   private final SubscriptionRepository subscriptionRepository;
@@ -86,6 +90,7 @@ public class BillingJobService {
   }
 
   public void runAll(Instant now) {
+    recoverInterruptedCharges(now);
     runTrialEndingNotices(now);
     runFirstCharges(now);
     runRenewals(now);
@@ -95,6 +100,24 @@ public class BillingJobService {
     runReconciliation();
     authSuspensionService.expireSuspensions(now);
     runDailyReconciliation(now);
+  }
+
+  /**
+   * 프로세스 중단으로 멈춘 청구를 회수한다. 오래된 처리 중 청구서를 확인 중으로 바꿔 결제 결과 확인이 토스 조회로 확정하게 하고, 시작한 뒤 {@link
+   * #STALE_JOB_AFTER}가 지나도록 끝나지 않은 청구 작업을 실패로 되돌려 같은 키로 다시 시작하게 한다. 다시 시작한 작업은 확인 중인 청구서를 보면 새 주문을
+   * 만들지 않는다.
+   */
+  void recoverInterruptedCharges(Instant now) {
+    try {
+      int recovered = chargeService.recoverStaleProcessing(now);
+      int reclaimed =
+          jobRunService.reclaimStale(RERUNNABLE_CHARGE_JOBS, now.minus(STALE_JOB_AFTER));
+      if (recovered > 0 || reclaimed > 0) {
+        log.warn("중단된 청구를 회수했습니다. invoices={} jobs={}", recovered, reclaimed);
+      }
+    } catch (RuntimeException e) {
+      log.warn("중단된 청구 회수에 실패했습니다.", e);
+    }
   }
 
   /**
@@ -203,6 +226,10 @@ public class BillingJobService {
     }
   }
 
+  /**
+   * 청구 차단 중에는 재시도도 멈춰 있어 고객이 미납을 해소할 수 없으므로 제한·종료 전이도 함께 멈춘다. 차단이 풀리면 같은 주기에 재시도가 먼저 실행되고, 기간이 이미
+   * 지난 구독은 그 뒤에 전이된다.
+   */
   public void runDelinquency(Instant now) {
     if (liveChargingGuard.isBlockedForScheduledRun("billing-delinquency")) {
       return;
@@ -331,6 +358,12 @@ public class BillingJobService {
                 subscriptionRepository.save(subscription);
                 return null;
               }
+              Optional<BillingInvoice> issued =
+                  invoiceRepository.findBySubscriptionIdAndBillingPeriodStart(
+                      subscriptionId, scheduled);
+              if (issued.isPresent()) {
+                return resumableInvoiceId(issued.get());
+              }
               Optional<BillingInvoice> invoice =
                   hasBillingKey(subscription)
                       ? invoiceIssuer.issue(
@@ -365,6 +398,14 @@ public class BillingJobService {
     }
   }
 
+  /**
+   * 같은 청구기간의 청구서가 이미 있으면 새로 만들지 않는다. 아직 청구하지 않은 청구서만 이어서 청구하고, 처리 중·확인 중·실패·완료는 각자의 확인·재시도 경로가 맡으므로
+   * 청구하지 않는다.
+   */
+  private static Long resumableInvoiceId(BillingInvoice invoice) {
+    return invoice.getStatus() == InvoiceStatus.UNBILLED ? invoice.getId() : null;
+  }
+
   private void renew(Long subscriptionId, Instant now) {
     Long invoiceId =
         transactionTemplate.execute(
@@ -383,6 +424,12 @@ public class BillingJobService {
                 return null;
               }
               Instant periodStart = subscription.getCurrentPeriodEnd();
+              Optional<BillingInvoice> issued =
+                  invoiceRepository.findBySubscriptionIdAndBillingPeriodStart(
+                      subscriptionId, periodStart);
+              if (issued.isPresent()) {
+                return resumableInvoiceId(issued.get());
+              }
               if (endsWithoutPriceConsent(subscription, periodStart, now)) {
                 return null;
               }

@@ -512,4 +512,153 @@ class BillingJobIntegrationTest extends AuthIntegrationTestBase {
     assertThat(gateway.charges()).hasSize(1);
     assertThat(subscription(ready).get("status")).isEqualTo("ENDED");
   }
+
+  private record Crashed(Ready ready, String orderId, Instant periodEnd) {}
+
+  /** 갱신 청구가 청구서와 시도를 처리 중으로 저장한 뒤 결과 반영 없이 프로세스가 중단된 상태를 만든다. */
+  private Crashed crashedRenewal(Duration age) {
+    Instant periodEnd = daysFromNow(-1);
+    Ready ready = activeDue(daysFromNow(-31), periodEnd);
+    gateway.respondWith(PaymentStatus.VERIFYING);
+    jobService.runRenewals(Instant.now());
+    String orderId =
+        jdbcTemplate.queryForObject("SELECT pg_order_id FROM billing_charge_attempt", String.class);
+    Timestamp at = Timestamp.from(Instant.now().minus(age));
+    jdbcTemplate.update("UPDATE billing_invoice SET status = 'PROCESSING'");
+    jdbcTemplate.update(
+        "UPDATE billing_charge_attempt SET result = 'PROCESSING', attempted_at = ?", at);
+    jdbcTemplate.update(
+        "UPDATE system_job_run SET status = 'RUNNING', finished_at = NULL, started_at = ?"
+            + " WHERE job_name = 'billing-renewal'",
+        at);
+    return new Crashed(ready, orderId, periodEnd);
+  }
+
+  private String invoiceStatus() {
+    return jdbcTemplate.queryForObject("SELECT status FROM billing_invoice", String.class);
+  }
+
+  private String attemptResult() {
+    return jdbcTemplate.queryForObject("SELECT result FROM billing_charge_attempt", String.class);
+  }
+
+  @Test
+  void 호출_직후_결과_반영_전에_중단된_갱신은_토스_조회로_승인을_확정하고_새_주문을_만들지_않는다() {
+    Crashed crashed = crashedRenewal(Duration.ofHours(2));
+    gateway.resolve(crashed.orderId(), PaymentStatus.SUCCEEDED);
+
+    jobService.recoverInterruptedCharges(Instant.now());
+    assertThat(invoiceStatus()).isEqualTo("VERIFYING");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM system_job_run WHERE job_name = 'billing-renewal'",
+                String.class))
+        .isEqualTo("FAILED");
+
+    jobService.runReconciliation();
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+    assertThat(attemptResult()).isEqualTo("SUCCESS");
+    Map<String, Object> sub = subscription(crashed.ready());
+    assertThat(sub.get("status")).isEqualTo("ACTIVE");
+    assertThat(((Timestamp) sub.get("current_period_end")).toInstant())
+        .isAfter(crashed.periodEnd());
+    assertThat(gateway.charges()).hasSize(1);
+    assertThat(count("SELECT count(*) FROM billing_charge_attempt")).isEqualTo(1);
+    assertThat(count("SELECT count(*) FROM billing_invoice")).isEqualTo(1);
+  }
+
+  @Test
+  void 호출_전에_중단된_갱신은_토스에_주문이_없으면_실패로_확정하고_미납_유예로_들어간다() {
+    Crashed crashed = crashedRenewal(Duration.ofHours(2));
+    gateway.reset();
+
+    jobService.recoverInterruptedCharges(Instant.now());
+    jobService.runReconciliation();
+
+    assertThat(invoiceStatus()).isEqualTo("FAILED");
+    assertThat(attemptResult()).isEqualTo("FAILED");
+    assertThat(subscription(crashed.ready()).get("status")).isEqualTo("PAST_DUE_GRACE");
+    assertThat(gateway.charges()).isEmpty();
+    assertThat(count("SELECT count(*) FROM billing_charge_attempt")).isEqualTo(1);
+  }
+
+  @Test
+  void 반영까지_끝난_갱신은_회수_대상이_아니다() {
+    Instant periodEnd = daysFromNow(-1);
+    Ready ready = activeDue(daysFromNow(-31), periodEnd);
+    jobService.runRenewals(Instant.now());
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+
+    assertThat(chargeService.recoverStaleProcessing(Instant.now().plus(Duration.ofDays(1))))
+        .isZero();
+    jobService.recoverInterruptedCharges(Instant.now().plus(Duration.ofDays(1)));
+
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+    assertThat(attemptResult()).isEqualTo("SUCCESS");
+    assertThat(subscription(ready).get("status")).isEqualTo("ACTIVE");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM system_job_run WHERE job_name = 'billing-renewal'",
+                String.class))
+        .isEqualTo("SUCCESS");
+    assertThat(gateway.charges()).hasSize(1);
+  }
+
+  @Test
+  void 기준_시간이_지나지_않은_처리_중_시도와_실행_중_작업은_건드리지_않는다() {
+    crashedRenewal(Duration.ofMinutes(1));
+
+    jobService.recoverInterruptedCharges(Instant.now());
+
+    assertThat(invoiceStatus()).isEqualTo("PROCESSING");
+    assertThat(attemptResult()).isEqualTo("PROCESSING");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM system_job_run WHERE job_name = 'billing-renewal'",
+                String.class))
+        .isEqualTo("RUNNING");
+  }
+
+  @Test
+  void 결과를_확인하기_전에는_회수된_작업이_다시_시작돼도_새_주문으로_청구하지_않는다() {
+    crashedRenewal(Duration.ofHours(2));
+
+    jobService.recoverInterruptedCharges(Instant.now());
+    jobService.runRenewals(Instant.now());
+
+    assertThat(invoiceStatus()).isEqualTo("VERIFYING");
+    assertThat(gateway.charges()).hasSize(1);
+    assertThat(count("SELECT count(*) FROM billing_charge_attempt")).isEqualTo(1);
+    assertThat(count("SELECT count(*) FROM billing_invoice")).isEqualTo(1);
+  }
+
+  @Test
+  void 청구서만_발행하고_중단된_갱신은_같은_청구서를_이어서_청구한다() {
+    Instant periodEnd = daysFromNow(-1);
+    Ready ready = activeDue(daysFromNow(-31), periodEnd);
+    long invoiceId =
+        fixtures
+            .invoice(ready.owner().office().getId(), ready.subscriptionId(), ready.consentId())
+            .status("UNBILLED")
+            .period(periodEnd, periodEnd.plus(Duration.ofDays(30)))
+            .insert();
+    jdbcTemplate.update(
+        "INSERT INTO system_job_run (job_name, office_id, idempotency_key, status, scheduled_at,"
+            + " started_at) VALUES ('billing-renewal', ?, ?, 'RUNNING', ?, ?)",
+        ready.owner().office().getId(),
+        "renewal:" + ready.subscriptionId() + ":" + periodEnd.getEpochSecond(),
+        Timestamp.from(periodEnd),
+        Timestamp.from(Instant.now().minus(Duration.ofHours(2))));
+
+    jobService.recoverInterruptedCharges(Instant.now());
+    jobService.runRenewals(Instant.now());
+
+    assertThat(count("SELECT count(*) FROM billing_invoice")).isEqualTo(1);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM billing_invoice WHERE id = ?", String.class, invoiceId))
+        .isEqualTo("PAID");
+    assertThat(gateway.charges()).hasSize(1);
+    assertThat(subscription(ready).get("status")).isEqualTo("ACTIVE");
+  }
 }
