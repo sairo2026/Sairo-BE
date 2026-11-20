@@ -1,5 +1,6 @@
 package com.sairo.be.domain.billing.service;
 
+import com.sairo.be.domain.billing.entity.AttemptResult;
 import com.sairo.be.domain.billing.entity.BillingChargeAttempt;
 import com.sairo.be.domain.billing.entity.BillingCustomer;
 import com.sairo.be.domain.billing.entity.BillingInvoice;
@@ -22,6 +23,7 @@ import com.sairo.be.global.support.AdvisoryLock;
 import com.sairo.be.global.support.TextCipher;
 import com.sairo.be.global.support.TokenGenerator;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -34,6 +36,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class BillingChargeService {
 
   private static final String ORDER_NAME = "사이로 구독 이용료";
+
+  /** 토스 승인 요청 제한 시간(65초)을 넘겨도 결과를 반영하지 못한 시도는 프로세스가 중단된 것으로 본다. */
+  static final Duration STALE_PROCESSING_AFTER = Duration.ofMinutes(15);
 
   private final BillingInvoiceRepository invoiceRepository;
   private final BillingChargeAttemptRepository attemptRepository;
@@ -93,6 +98,45 @@ public class BillingChargeService {
     PaymentResult finalResult = result;
     return transactionTemplate.execute(
         status -> apply(invoiceId, prepared.attemptId(), finalResult));
+  }
+
+  /**
+   * 청구서를 처리 중으로 저장한 뒤 토스 호출이나 결과 반영 전에 프로세스가 중단되면 청구서가 처리 중으로 남는다. 시도에 주문 ID가 이미 저장돼 있으므로 오래된 처리 중
+   * 시도를 확인 중으로 바꿔 기존 결제 결과 확인이 토스 조회로 승인·실패를 확정하게 한다. 확정되기 전에는 새 주문을 만들지 않는다.
+   */
+  public int recoverStaleProcessing(Instant now) {
+    Instant threshold = now.minus(STALE_PROCESSING_AFTER);
+    int recovered = 0;
+    for (BillingInvoice invoice : invoiceRepository.findByStatus(InvoiceStatus.PROCESSING)) {
+      Long invoiceId = invoice.getId();
+      if (Boolean.TRUE.equals(
+          transactionTemplate.execute(status -> markStaleAsVerifying(invoiceId, threshold)))) {
+        recovered++;
+      }
+    }
+    return recovered;
+  }
+
+  private boolean markStaleAsVerifying(Long invoiceId, Instant threshold) {
+    Optional<Long> subscriptionId = queryRepository.findInvoiceSubscriptionId(invoiceId);
+    if (subscriptionId.isEmpty()) {
+      return false;
+    }
+    advisoryLock.lockForTransaction("billing:subscription:" + subscriptionId.get());
+    BillingInvoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
+    if (invoice == null || invoice.getStatus() != InvoiceStatus.PROCESSING) {
+      return false;
+    }
+    BillingChargeAttempt attempt =
+        attemptRepository.findFirstByInvoiceIdOrderByAttemptNoDesc(invoiceId).orElse(null);
+    if (attempt == null
+        || attempt.getResult() != AttemptResult.PROCESSING
+        || attempt.getAttemptedAt().isAfter(threshold)) {
+      return false;
+    }
+    attempt.markVerifying(null);
+    invoice.markVerifying();
+    return true;
   }
 
   public Optional<ChargeOutcome> reconcile(Long invoiceId) {
