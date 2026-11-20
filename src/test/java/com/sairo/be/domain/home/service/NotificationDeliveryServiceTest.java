@@ -61,7 +61,7 @@ class NotificationDeliveryServiceTest {
     assertThat(NotificationDeliveryService.subjectOf("MEMBERSHIP_APPROVAL_NEEDED"))
         .isEqualTo("[사이로] 사무소 참여 승인 요청이 도착했습니다");
     assertThat(NotificationDeliveryService.subjectOf("TRIAL_ENDING"))
-        .isEqualTo("[사이로] 무료 체험 종료 안내");
+        .isEqualTo("[사이로] 무료 이용 종료 안내");
     assertThat(NotificationDeliveryService.subjectOf("PLAN_CHANGED")).isEqualTo("[사이로] 구독 변경 안내");
     assertThat(NotificationDeliveryService.subjectOf("PAYMENT")).isEqualTo("[사이로] 결제·환불 안내");
     assertThat(NotificationDeliveryService.subjectOf("RETURN_SCHEDULED"))

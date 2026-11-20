@@ -188,6 +188,7 @@ public class ImportRowResultService {
     ImportTargetType type = batch.getTargetType();
     String label = null;
     String sourceId = null;
+    String displayId = null;
     List<Issue> issues = List.of();
     List<FieldValue> fields = List.of();
     boolean ready = false;
@@ -197,8 +198,14 @@ public class ImportRowResultService {
     if (parsed != null) {
       raw = new LinkedHashMap<>(data.rawByField(parsed));
       raw.putAll(corrections);
-      normalized = normalizer.normalize(type, raw, data.columnByField());
+      normalized =
+          normalizer.normalize(
+              type,
+              raw,
+              data.columnByField(),
+              ImportTargetFields.autoSourceId(batch.getId(), result.getSourceRowNumber()));
       sourceId = normalized.sourceId();
+      displayId = normalized.displaySourceId();
       Object name = normalized.values().get(ImportTargetFields.nameField(type));
       label = name == null ? null : name.toString();
     }
@@ -225,7 +232,7 @@ public class ImportRowResultService {
         result.getSourceRowNumber(),
         outcome.name(),
         label,
-        sourceId,
+        displayId,
         issues,
         result.getSkipReason() == null ? null : result.getSkipReason().name(),
         targetId,

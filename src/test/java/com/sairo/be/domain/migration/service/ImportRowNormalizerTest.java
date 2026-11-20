@@ -167,23 +167,77 @@ class ImportRowNormalizerTest {
   }
 
   @Test
-  void 필수_값이_비면_오류이고_숫자가_7자_미만인_고객_연락처도_오류다() {
+  void 고객명이_비면_오류이고_숫자가_7자_미만인_고객_연락처도_오류다() {
     NormalizedRow row =
         normalizer.normalize(
             ImportTargetType.CUSTOMER,
             raw(
-                ImportTargetFields.CUSTOMER_SOURCE_ID, " ",
-                ImportTargetFields.CUSTOMER_NAME, "홍길동",
+                ImportTargetFields.CUSTOMER_SOURCE_ID, "1",
+                ImportTargetFields.CUSTOMER_NAME, " ",
                 ImportTargetFields.CUSTOMER_PHONE, "02-123",
                 ImportTargetFields.CUSTOMER_IS_CORPORATION, "법인"),
             Map.of());
 
     assertThat(warning(row, "REQUIRED_VALUE_MISSING").field())
-        .isEqualTo(ImportTargetFields.CUSTOMER_SOURCE_ID);
+        .isEqualTo(ImportTargetFields.CUSTOMER_NAME);
     assertThat(warning(row, "INVALID_PHONE_FORMAT").severity()).isEqualTo(Severity.ERROR);
     assertThat(row.values().get(ImportTargetFields.CUSTOMER_IS_CORPORATION)).isEqualTo(true);
     assertThat(row.values().get(ImportTargetFields.CUSTOMER_PHONE)).isEqualTo("02-123");
-    assertThat(row.sourceId()).isNull();
+    assertThat(row.sourceId()).isEqualTo("1");
+  }
+
+  @Test
+  void 원본_번호가_비어_있으면_오류_없이_자동_번호를_붙이고_화면에는_보이지_않는다() {
+    String auto = ImportTargetFields.autoSourceId(7L, 3);
+    NormalizedRow blank =
+        normalizer.normalize(
+            ImportTargetType.CUSTOMER,
+            raw(
+                ImportTargetFields.CUSTOMER_SOURCE_ID, " ",
+                ImportTargetFields.CUSTOMER_NAME, "홍길동"),
+            Map.of(),
+            auto);
+    NormalizedRow unmapped =
+        normalizer.normalize(
+            ImportTargetType.CUSTOMER,
+            raw(ImportTargetFields.CUSTOMER_NAME, "홍길동"),
+            Map.of(),
+            auto);
+
+    for (NormalizedRow row : new NormalizedRow[] {blank, unmapped}) {
+      assertThat(row.hasError()).isFalse();
+      assertThat(row.sourceId()).isEqualTo(auto);
+      assertThat(row.displaySourceId()).isNull();
+    }
+    assertThat(auto).isEqualTo(ImportTargetFields.autoSourceId(7L, 3));
+    assertThat(auto).isNotEqualTo(ImportTargetFields.autoSourceId(7L, 4));
+  }
+
+  @Test
+  void 원본_번호가_있으면_그대로_쓰고_자동_번호_접두어는_예약값으로_거절한다() {
+    String auto = ImportTargetFields.autoSourceId(7L, 3);
+    NormalizedRow given =
+        normalizer.normalize(
+            ImportTargetType.PROPERTY,
+            raw(
+                ImportTargetFields.PROPERTY_SOURCE_ID, "P-1",
+                ImportTargetFields.PROPERTY_NAME, "해든빌"),
+            Map.of(),
+            auto);
+    NormalizedRow reserved =
+        normalizer.normalize(
+            ImportTargetType.PROPERTY,
+            raw(
+                ImportTargetFields.PROPERTY_SOURCE_ID,
+                auto,
+                ImportTargetFields.PROPERTY_NAME,
+                "해든빌"),
+            Map.of(),
+            "SAIRO-AUTO-9-9");
+
+    assertThat(given.sourceId()).isEqualTo("P-1");
+    assertThat(given.displaySourceId()).isEqualTo("P-1");
+    assertThat(warning(reserved, "RESERVED_SOURCE_ID").severity()).isEqualTo(Severity.ERROR);
   }
 
   @Test

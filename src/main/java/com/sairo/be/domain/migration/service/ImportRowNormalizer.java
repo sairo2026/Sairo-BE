@@ -71,6 +71,14 @@ public class ImportRowNormalizer {
 
   public NormalizedRow normalize(
       ImportTargetType type, Map<String, String> rawByField, Map<String, String> columnByField) {
+    return normalize(type, rawByField, columnByField, null);
+  }
+
+  public NormalizedRow normalize(
+      ImportTargetType type,
+      Map<String, String> rawByField,
+      Map<String, String> columnByField,
+      String autoSourceId) {
     Map<String, Object> values = new LinkedHashMap<>();
     List<UnitConversion> conversions = new ArrayList<>();
     List<RowWarning> warnings = new ArrayList<>();
@@ -84,7 +92,7 @@ public class ImportRowNormalizer {
       String raw = clean(rawByField.get(field));
       if (raw == null) {
         values.put(field, null);
-        if (field.equals(sourceIdField) || field.equals(nameField)) {
+        if (field.equals(nameField)) {
           warnings.add(error("REQUIRED_VALUE_MISSING", field, "필수 값이 비어 있습니다."));
         }
         continue;
@@ -100,6 +108,17 @@ public class ImportRowNormalizer {
     }
     crossCheck(values, warnings);
     Object sourceId = sourceIdField == null ? null : values.get(sourceIdField);
+    if (sourceId != null
+        && sourceId.toString().startsWith(ImportTargetFields.AUTO_SOURCE_ID_PREFIX)) {
+      warnings.add(
+          error(
+              "RESERVED_SOURCE_ID",
+              sourceIdField,
+              "'" + ImportTargetFields.AUTO_SOURCE_ID_PREFIX + "'로 시작하는 번호는 사용할 수 없습니다."));
+    }
+    if (sourceId == null && sourceIdField != null && autoSourceId != null) {
+      return new NormalizedRow(values, conversions, warnings, autoSourceId, true);
+    }
     return new NormalizedRow(
         values, conversions, warnings, sourceId == null ? null : sourceId.toString());
   }

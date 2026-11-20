@@ -17,6 +17,7 @@ public final class ImportFailureDescriber {
   private static final Map<String, String> FIX =
       Map.ofEntries(
           Map.entry("REQUIRED_VALUE_MISSING", "칸이 비어 있습니다. 값을 입력해 주세요."),
+          Map.entry("RESERVED_SOURCE_ID", "다른 번호로 바꾸거나 칸을 비워 주세요. 비우면 사이로가 번호를 붙입니다."),
           Map.entry("HTML_NOT_ALLOWED", "'<', '>' 같은 태그 문자를 지우고 일반 글자만 입력해 주세요."),
           Map.entry("VALUE_TOO_LONG", "글자 수를 줄여 주세요."),
           Map.entry("SENSITIVE_DATA_DETECTED", "주민등록번호·카드번호처럼 보이는 숫자를 지워 주세요. 사이로에는 저장하지 않습니다."),

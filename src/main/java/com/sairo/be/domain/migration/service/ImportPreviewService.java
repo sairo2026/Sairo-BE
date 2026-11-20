@@ -102,7 +102,7 @@ public class ImportPreviewService {
                 item.row().rowNumber(),
                 sourceSystem,
                 sourceType,
-                item.normalized().sourceId(),
+                item.normalized().displaySourceId(),
                 item.existingTargetId(),
                 item.judgement().reason().name(),
                 item.judgement().matchedArchived()));
@@ -124,7 +124,12 @@ public class ImportPreviewService {
     Map<String, String> columnByField = data.columnByField();
     List<NormalizedRow> normalizedRows = new ArrayList<>();
     for (ParsedRow row : data.sheet().rows()) {
-      normalizedRows.add(normalizer.normalize(type, data.rawByField(row), columnByField));
+      normalizedRows.add(
+          normalizer.normalize(
+              type,
+              data.rawByField(row),
+              columnByField,
+              ImportTargetFields.autoSourceId(batch.getId(), row.rowNumber())));
     }
     ImportDuplicateClassifier.Session session =
         classifier.open(officeId, type, sourceSystem, normalizedRows);
