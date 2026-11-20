@@ -29,9 +29,9 @@ class ErrorCodeTest {
 
   @Test
   void 문서가_정한_오류_코드를_모두_정의한다() {
-    assertThat(ErrorCode.values()).hasSize(150);
+    assertThat(ErrorCode.values()).hasSize(151);
     assertThat(Arrays.stream(ErrorCode.values()).filter(c -> c != ErrorCode.INTERNAL_ERROR))
-        .hasSize(149);
+        .hasSize(150);
   }
 
   @Test

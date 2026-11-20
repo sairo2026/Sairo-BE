@@ -54,6 +54,11 @@ public class NotificationService {
     }
   }
 
+  @Transactional
+  public int markAllRead(StaffPrincipal principal) {
+    return repository.markAllRead(principal.userId(), principal.officeId(), clock.instant());
+  }
+
   @Transactional(readOnly = true)
   public long unreadCount(StaffPrincipal principal) {
     return repository.count(principal.userId(), principal.officeId(), true);

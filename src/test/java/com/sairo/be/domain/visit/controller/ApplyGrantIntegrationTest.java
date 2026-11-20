@@ -168,7 +168,7 @@ class ApplyGrantIntegrationTest extends VisitOutcomeTestBase {
                 grantsUrl(owner),
                 "{\"granteeOfficeId\":" + grantee.officeId() + "}",
                 owner.cookie())),
-        ErrorCode.FORBIDDEN);
+        ErrorCode.OFFICE_WRITE_RESTRICTED);
   }
 
   @Test

@@ -27,7 +27,7 @@ public class OpenApiConfig {
             new Info()
                 .title("사이로 백엔드 API")
                 .description(
-                    "사이로는 부동산 중개사무소가 매물, 고객, 임장 조율, 계약, 월말결산, 구독·결제,"
+                    "사이로는 부동산 중개사무소가 매물, 고객, 방문 조율, 계약, 월말결산, 구독·결제,"
                         + " 데이터 이전을 사무소 단위로 운영하는 서비스다. 내부 API는 세션 쿠키와 CSRF 토큰을 쓰고,"
                         + " 공개 링크 API는 URL 토큰만 쓴다. 모든 오류 응답은 code, message, traceId를 담는다.")
                 .version("1.0.0")

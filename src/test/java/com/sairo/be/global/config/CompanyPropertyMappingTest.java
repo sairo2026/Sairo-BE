@@ -53,4 +53,12 @@ class CompanyPropertyMappingTest {
     assertThat(environment.getProperty("sairo.company.contact-phone")).isEmpty();
     assertThat(environment.getProperty("sairo.company.support-email")).isEmpty();
   }
+
+  @Test
+  void 통신판매업_신고번호는_환경변수가_없으면_발급된_번호를_기본값으로_쓴다() throws IOException {
+    StandardEnvironment environment = prodEnvironment(Map.of());
+
+    assertThat(environment.getProperty("sairo.company.ecommerce-notice"))
+        .isEqualTo("제 2026-고양덕양구-2847 호");
+  }
 }

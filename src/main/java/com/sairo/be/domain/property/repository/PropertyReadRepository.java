@@ -3,6 +3,7 @@ package com.sairo.be.domain.property.repository;
 import com.sairo.be.domain.property.entity.AreaType;
 import com.sairo.be.domain.property.entity.DealType;
 import com.sairo.be.domain.property.entity.RegistrationStage;
+import com.sairo.be.global.support.ListSort;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -41,7 +42,8 @@ public class PropertyReadRepository {
       BigDecimal areaMax,
       Long managingMembershipId,
       RegistrationStage registrationStage,
-      boolean archived) {}
+      boolean archived,
+      ListSort sort) {}
 
   public record ListRow(
       long propertyId,
@@ -124,8 +126,14 @@ public class PropertyReadRepository {
             + " LEFT JOIN office_membership m ON m.id = p.managing_membership_id"
             + " LEFT JOIN app_user u ON u.id = m.user_id"
             + where
-            + " ORDER BY p.updated_at DESC, p.id DESC LIMIT :limit OFFSET :offset";
+            + " ORDER BY "
+            + orderBy(filter)
+            + " LIMIT :limit OFFSET :offset";
     return jdbcClient.sql(sql).params(params).query(this::mapListRow).list();
+  }
+
+  private static String orderBy(ListFilter filter) {
+    return filter.sort() == null ? "p.updated_at DESC, p.id DESC" : filter.sort().orderBy("p.id");
   }
 
   public long countList(long officeId, ListFilter filter) {

@@ -2,6 +2,7 @@ package com.sairo.be.global.config;
 
 import com.sairo.be.global.security.access.AccessInterceptor;
 import com.sairo.be.global.security.access.ApproverPortalRateLimitInterceptor;
+import com.sairo.be.global.security.access.OfficeWriteRestrictionInterceptor;
 import com.sairo.be.global.security.access.ReconsentInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -15,20 +16,24 @@ public class AccessWebConfig implements WebMvcConfigurer {
   private final AccessInterceptor accessInterceptor;
   private final ReconsentInterceptor reconsentInterceptor;
   private final ApproverPortalRateLimitInterceptor approverPortalRateLimitInterceptor;
+  private final OfficeWriteRestrictionInterceptor officeWriteRestrictionInterceptor;
 
   public AccessWebConfig(
       AccessInterceptor accessInterceptor,
       ReconsentInterceptor reconsentInterceptor,
-      ApproverPortalRateLimitInterceptor approverPortalRateLimitInterceptor) {
+      ApproverPortalRateLimitInterceptor approverPortalRateLimitInterceptor,
+      OfficeWriteRestrictionInterceptor officeWriteRestrictionInterceptor) {
     this.accessInterceptor = accessInterceptor;
     this.reconsentInterceptor = reconsentInterceptor;
     this.approverPortalRateLimitInterceptor = approverPortalRateLimitInterceptor;
+    this.officeWriteRestrictionInterceptor = officeWriteRestrictionInterceptor;
   }
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
     registry.addInterceptor(accessInterceptor).addPathPatterns("/api/**").order(0);
     registry.addInterceptor(reconsentInterceptor).addPathPatterns("/api/**").order(1);
+    registry.addInterceptor(officeWriteRestrictionInterceptor).addPathPatterns("/api/**").order(1);
     registry
         .addInterceptor(approverPortalRateLimitInterceptor)
         .addPathPatterns("/api/approver-portal/**")
