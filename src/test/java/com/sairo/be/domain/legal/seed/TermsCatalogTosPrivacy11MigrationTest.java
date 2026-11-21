@@ -47,8 +47,7 @@ class TermsCatalogTosPrivacy11MigrationTest {
     assertThat(rows)
         .extracting(r -> r.get("terms_code") + ":" + r.get("terms_version"))
         .containsExactly("PRIVACY:1.0", "PRIVACY:1.1", "TOS:1.0", "TOS:1.1");
-    assertThat(rows)
-        .allSatisfy(row -> assertThat(row.get("reconsent_required")).isEqualTo(false));
+    assertThat(rows).allSatisfy(row -> assertThat(row.get("reconsent_required")).isEqualTo(false));
     assertThat(rows.get(1))
         .containsEntry("category", "NOTICE")
         .containsEntry("required", false)
@@ -79,15 +78,23 @@ class TermsCatalogTosPrivacy11MigrationTest {
     Instant before = Instant.parse("2026-11-30T14:59:59Z");
     Instant after = Instant.parse("2026-11-30T15:00:00Z");
 
-    assertThat(termsCatalogRepository.findInForceByCode("TOS", before).orElseThrow().getTermsVersion())
+    assertThat(
+            termsCatalogRepository.findInForceByCode("TOS", before).orElseThrow().getTermsVersion())
         .isEqualTo("1.0");
-    assertThat(termsCatalogRepository.findInForceByCode("TOS", after).orElseThrow().getTermsVersion())
+    assertThat(
+            termsCatalogRepository.findInForceByCode("TOS", after).orElseThrow().getTermsVersion())
         .isEqualTo("1.1");
     assertThat(
-            termsCatalogRepository.findInForceByCode("PRIVACY", before).orElseThrow().getTermsVersion())
+            termsCatalogRepository
+                .findInForceByCode("PRIVACY", before)
+                .orElseThrow()
+                .getTermsVersion())
         .isEqualTo("1.0");
     assertThat(
-            termsCatalogRepository.findInForceByCode("PRIVACY", after).orElseThrow().getTermsVersion())
+            termsCatalogRepository
+                .findInForceByCode("PRIVACY", after)
+                .orElseThrow()
+                .getTermsVersion())
         .isEqualTo("1.1");
   }
 
