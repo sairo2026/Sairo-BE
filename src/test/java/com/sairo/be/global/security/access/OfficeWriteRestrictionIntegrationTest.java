@@ -71,6 +71,54 @@ class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
           "VisitAssistantNoticeController",
           "VisitRequestNoticeController");
 
+  // 승인된 구성원이 가드 밖에서 호출하는 기존 변경 경로를 명시한다.
+  private static final Set<String> MEMBERSHIP_WRITE_EXEMPTIONS =
+      Set.of(
+          "DELETE /api/memberships/{membershipId}",
+          "DELETE /api/subscriptions/billing-key",
+          "PATCH /api/memberships/{membershipId}/role",
+          "PATCH /api/offices/current",
+          "PATCH /api/offices/current/employment-roster/{rosterId}",
+          "POST /api/exports",
+          "POST /api/import-support-requests",
+          "POST /api/import-support-requests/{requestId}/accept-quote",
+          "POST /api/import-support-requests/{requestId}/approve",
+          "POST /api/import-support-requests/{requestId}/cancel",
+          "POST /api/import-support-requests/{requestId}/payment/confirm",
+          "POST /api/import-support-requests/{requestId}/request-changes",
+          "POST /api/memberships/me/leave",
+          "POST /api/memberships/{membershipId}/approve",
+          "POST /api/memberships/{membershipId}/invitation/cancel",
+          "POST /api/memberships/{membershipId}/invitation/resend",
+          "POST /api/memberships/{membershipId}/reinstate",
+          "POST /api/memberships/{membershipId}/reject",
+          "POST /api/memberships/{membershipId}/suspend",
+          "POST /api/notifications/read-all",
+          "POST /api/notifications/{notificationId}/read",
+          "POST /api/office-change-requests",
+          "POST /api/offices/current/close",
+          "POST /api/offices/current/employment-roster",
+          "POST /api/offices/current/memberships/invite",
+          "POST /api/offices/current/owner-transfer",
+          "POST /api/owner-transfers/{transferId}/accept",
+          "POST /api/owner-transfers/{transferId}/reject",
+          "POST /api/owner-transfers/{transferId}/withdraw",
+          "POST /api/refund-requests",
+          "POST /api/subscriptions/billing-key",
+          "POST /api/subscriptions/billing-key/session",
+          "POST /api/subscriptions/cancel",
+          "POST /api/subscriptions/cancel/withdraw",
+          "POST /api/subscriptions/first-payment",
+          "POST /api/subscriptions/price-change-notices/{noticeId}/decline",
+          "POST /api/subscriptions/purchase-consent",
+          "POST /api/subscriptions/retry-payment",
+          "POST /api/subscriptions/start-customer-agreement/acknowledge",
+          "POST /api/visit-assistant-notices/{noticeId}/confirm",
+          "POST /api/visit-request-notices/read-all",
+          "POST /api/visit-request-notices/{noticeId}/read",
+          "PUT /api/billing/tax-recipient",
+          "PUT /api/offices/current/export-policy");
+
   private static final Map<String, String> PREVIOUSLY_UNGUARDED =
       Map.of(
           "/api/owner-occupants/1", "{}",
@@ -218,6 +266,7 @@ class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
         Set.of(RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE);
     List<String> unclassified = new ArrayList<>();
     Set<String> guardedControllers = new TreeSet<>();
+    Set<String> membershipExemptions = new TreeSet<>();
     for (Map.Entry<RequestMappingInfo, HandlerMethod> entry :
         handlerMapping.getHandlerMethods().entrySet()) {
       Class<?> controller = entry.getValue().getBeanType();
@@ -226,6 +275,8 @@ class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
           || entry.getKey().getPathPatternsCondition() == null) {
         continue;
       }
+      var access = AccessInterceptor.findAnnotation(entry.getValue());
+      boolean requiresMembership = access != null && access.value().requiresApprovedMembership();
       boolean exempt =
           EXEMPT_CONTROLLERS.contains(name)
               || name.startsWith("Ops")
@@ -238,6 +289,8 @@ class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
           String sample = pattern.replaceAll("\\{[^}]*}", "1");
           if (OfficeWriteRestrictionInterceptor.isRestrictedPath(method.name(), sample)) {
             guardedControllers.add(name);
+          } else if (requiresMembership) {
+            membershipExemptions.add(method + " " + pattern);
           } else if (!exempt) {
             unclassified.add(method + " " + pattern + " [" + name + "]");
           }
@@ -245,6 +298,9 @@ class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
       }
     }
     assertThat(unclassified).as("가드 대상에도 예외에도 없는 변경성 엔드포인트").isEmpty();
+    assertThat(membershipExemptions)
+        .as("가입 승인된 구성원이 쓰기 가드 밖에서 변경할 수 있는 경로")
+        .containsExactlyInAnyOrderElementsOf(MEMBERSHIP_WRITE_EXEMPTIONS);
     assertThat(guardedControllers)
         .contains("CustomerRelationController", "CustomerConsultationController");
   }
