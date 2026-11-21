@@ -45,9 +45,7 @@ class TermsCatalogSubscriptionPurchase11MigrationTest {
                 + " WHERE terms_code = 'SUBSCRIPTION_PURCHASE' ORDER BY terms_version");
 
     assertThat(rows).hasSize(2);
-    assertThat(rows)
-        .extracting(r -> r.get("terms_version"))
-        .containsExactly("1.0", "1.1");
+    assertThat(rows).extracting(r -> r.get("terms_version")).containsExactly("1.0", "1.1");
     assertThat(rows.get(1))
         .containsEntry("category", "SEPARATE_CONSENT")
         .containsEntry("required", true)
