@@ -1,0 +1,47 @@
+name: Isolated Docker verification
+
+on:
+  push:
+    branches: [audit/isolated-docker-verification]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build application image
+        run: docker build --no-cache --tag sairo-audit:local .
+      - name: Verify image with isolated PostgreSQL and Redis
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull postgres:17-alpine
+          docker pull redis:7.4-alpine
+          docker network create --internal sairo-audit
+          docker run -d --name sairo-audit-db --network sairo-audit             -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_USER=audit -e POSTGRES_DB=audit             postgres:17-alpine
+          docker run -d --name sairo-audit-redis --network sairo-audit             redis:7.4-alpine redis-server --save '' --appendonly no
+          for attempt in $(seq 1 45); do
+            if docker exec sairo-audit-db pg_isready -U audit -d audit >/dev/null; then break; fi
+            sleep 1
+          done
+          docker run -d --name sairo-audit-app --network sairo-audit             -e SPRING_PROFILES_ACTIVE=local             -e SPRING_DATASOURCE_URL=jdbc:postgresql://sairo-audit-db:5432/audit             -e SPRING_DATASOURCE_USERNAME=audit -e SPRING_DATASOURCE_PASSWORD=             -e REDIS_HOST=sairo-audit-redis -e REDIS_PORT=6379             -e SAIRO_MAIL_PROVIDER=stub -e SAIRO_SMS_PROVIDER=stub             -e TOSS_API_BASE_URL=http://127.0.0.1:1             sairo-audit:local --sairo.integrations.kakao-oauth=stub
+          healthy=no
+          for attempt in $(seq 1 75); do
+            if docker exec sairo-audit-app curl -fsS http://127.0.0.1:8080/actuator/health                 | jq -e '.status == "UP"' >/dev/null; then
+              healthy=yes
+              break
+            fi
+            sleep 1
+          done 2>/dev/null
+          test "$healthy" = yes
+          test "$(docker exec sairo-audit-app id -u)" -ne 0
+          test "$(docker exec sairo-audit-redis redis-cli ping)" = PONG
+          migrations=$(docker exec sairo-audit-db psql -At -U audit -d audit             -c "SELECT string_agg(version, ',' ORDER BY installed_rank) FROM flyway_schema_history WHERE success")
+          test "$migrations" = "$(seq -s, 1 29)"
+          printf 'Image build, non-root user, health, Redis, and Flyway V1 through V29 passed.\n'
