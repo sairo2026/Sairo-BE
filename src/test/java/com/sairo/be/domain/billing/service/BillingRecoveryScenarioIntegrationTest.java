@@ -2,6 +2,7 @@ package com.sairo.be.domain.billing.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 
 import com.sairo.be.domain.office.entity.OfficeMembershipRole;
@@ -26,6 +27,7 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,7 +45,7 @@ class BillingRecoveryScenarioIntegrationTest extends AuthIntegrationTestBase {
 
   @Autowired private BillingJobService jobService;
   @Autowired private BillingChargeService chargeService;
-  @Autowired private StubPaymentGateway gateway;
+  @MockitoSpyBean private StubPaymentGateway gateway;
   @Autowired private OfficeRepository officeRepository;
   @Autowired private OfficeMembershipRepository officeMembershipRepository;
 
@@ -75,7 +77,8 @@ class BillingRecoveryScenarioIntegrationTest extends AuthIntegrationTestBase {
     return Instant.now().plus(days, ChronoUnit.DAYS).truncatedTo(ChronoUnit.MICROS);
   }
 
-  private record Due(long subscriptionId, long officeId, long consentId, Instant periodEnd) {}
+  private record Due(
+      long subscriptionId, long officeId, long consentId, Instant periodEnd, long ownerUserId) {}
 
   private Due activeDue() {
     TestData.Staff owner =
@@ -95,7 +98,8 @@ class BillingRecoveryScenarioIntegrationTest extends AuthIntegrationTestBase {
         owner.office().getId(),
         "customer-" + owner.office().getId(),
         cipher.encrypt("billing-key"));
-    return new Due(subscriptionId, owner.office().getId(), consentId, periodEnd);
+    return new Due(
+        subscriptionId, owner.office().getId(), consentId, periodEnd, owner.user().getId());
   }
 
   private long count(String sql) {
@@ -213,6 +217,36 @@ class BillingRecoveryScenarioIntegrationTest extends AuthIntegrationTestBase {
     assertThat(count("SELECT count(*) FROM billing_charge_attempt")).isEqualTo(1);
     assertThat(invoiceStatus()).isEqualTo("PAID");
     assertThat(count("SELECT count(*) FROM system_job_run WHERE job_name = 'billing-renewal'"))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void 동시_결과_확인이_실패로_확정돼도_결제_실패_안내는_한_번만_나간다() throws Exception {
+    Due due = activeDue();
+    gateway.respondWith(PaymentStatus.VERIFYING);
+    jobService.runRenewals(Instant.now());
+    String orderId =
+        jdbcTemplate.queryForObject("SELECT pg_order_id FROM billing_charge_attempt", String.class);
+    gateway.resolve(orderId, PaymentStatus.FAILED);
+    long invoiceId = count("SELECT id FROM billing_invoice");
+    CyclicBarrier inquired = new CyclicBarrier(2);
+    doAnswer(
+            invocation -> {
+              Object result = invocation.callRealMethod();
+              inquired.await(10, TimeUnit.SECONDS);
+              return result;
+            })
+        .when(gateway)
+        .inquire(any());
+
+    runConcurrently(2, () -> chargeService.reconcile(invoiceId));
+
+    assertThat(invoiceStatus()).isEqualTo("FAILED");
+    assertThat(
+            count(
+                "SELECT count(*) FROM notification WHERE recipient_user_id = "
+                    + due.ownerUserId()
+                    + " AND notification_type = 'PAYMENT_FAILED'"))
         .isEqualTo(1);
   }
 
