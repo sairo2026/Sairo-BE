@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 class ContractAccessRevocationIntegrationTest extends ContractIntegrationTestBase {
 
   @Test
-  void 접근을_정지하면_같은_세션의_계약_조회와_변경이_바로_거부되고_해제하면_다시_허용된다() throws Exception {
+  void 접근을_정지하면_같은_세션의_계약_조회와_변경이_바로_거부되고_해제하면_새_세션으로_다시_허용된다() throws Exception {
     long contractId = createJeonse(property, today(), today().plusYears(2));
     TestData.Staff agent = staffIn(owner.office(), OfficeMembershipRole.AGENT);
     Cookie agentCookie = cookieOf(agent);
@@ -53,6 +53,6 @@ class ContractAccessRevocationIntegrationTest extends ContractIntegrationTestBas
             jsonPostAs(
                 "/api/memberships/" + agent.membership().getId() + "/reinstate", "", ownerCookie))
         .andExpect(status().isOk());
-    mockMvc.perform(authedGet(detail, agentCookie)).andExpect(status().isOk());
+    mockMvc.perform(authedGet(detail, cookieOf(agent))).andExpect(status().isOk());
   }
 }
