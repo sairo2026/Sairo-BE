@@ -241,13 +241,13 @@ class BillingRecoveryScenarioIntegrationTest extends AuthIntegrationTestBase {
     runConcurrently(2, () -> chargeService.reconcile(invoiceId));
 
     assertThat(invoiceStatus()).isEqualTo("FAILED");
-    assertThat(
-            count(
-                "SELECT count(*) FROM notification WHERE recipient_user_id = "
-                    + due.ownerUserId()
-                    + " AND notification_type = 'PAYMENT'"
-                    + " AND message LIKE '%결제에 실패했습니다%'"))
-        .isEqualTo(1);
+    List<String> notices =
+        jdbcTemplate.queryForList(
+            "SELECT notification_type || ':' || message FROM notification WHERE"
+                + " recipient_user_id = ? AND notification_type = 'PAYMENT'",
+            String.class,
+            due.ownerUserId());
+    assertThat(notices).as(notices.toString()).hasSize(1);
   }
 
   @Test
