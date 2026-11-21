@@ -52,8 +52,7 @@ class BillingRecoveryScenarioIntegrationTest extends AuthIntegrationTestBase {
   @MockitoSpyBean private SubscriptionTransitions transitions;
 
   @Autowired
-  @Qualifier("billingKeyCipher")
-  private TextCipher cipher;
+  @Qualifier("billingKeyCipher") private TextCipher cipher;
 
   private BillingFixtures fixtures;
   private ExecutorService executor;
