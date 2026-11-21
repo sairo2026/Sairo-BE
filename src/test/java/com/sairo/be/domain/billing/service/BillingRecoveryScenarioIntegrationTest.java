@@ -52,7 +52,8 @@ class BillingRecoveryScenarioIntegrationTest extends AuthIntegrationTestBase {
   @MockitoSpyBean private SubscriptionTransitions transitions;
 
   @Autowired
-  @Qualifier("billingKeyCipher") private TextCipher cipher;
+  @Qualifier("billingKeyCipher")
+  private TextCipher cipher;
 
   private BillingFixtures fixtures;
   private ExecutorService executor;
@@ -219,15 +220,40 @@ class BillingRecoveryScenarioIntegrationTest extends AuthIntegrationTestBase {
         .isEqualTo(1);
   }
 
-  @Test
-  void 동시_결과_확인이_실패로_확정돼도_결제_실패_안내는_한_번만_나간다() throws Exception {
-    Due due = activeDue();
+  private long verifyingFailure(Due due) {
     gateway.respondWith(PaymentStatus.VERIFYING);
     jobService.runRenewals(Instant.now());
+    long invoiceId =
+        count("SELECT id FROM billing_invoice WHERE subscription_id = " + due.subscriptionId());
     String orderId =
-        jdbcTemplate.queryForObject("SELECT pg_order_id FROM billing_charge_attempt", String.class);
+        jdbcTemplate.queryForObject(
+            "SELECT pg_order_id FROM billing_charge_attempt WHERE invoice_id = ?",
+            String.class,
+            invoiceId);
     gateway.resolve(orderId, PaymentStatus.FAILED);
-    long invoiceId = count("SELECT id FROM billing_invoice");
+    return invoiceId;
+  }
+
+  private int failureNotices(Due due) {
+    return jdbcTemplate
+        .queryForList(
+            "SELECT message FROM notification WHERE recipient_user_id = ? AND notification_type ="
+                + " 'PAYMENT'",
+            String.class,
+            due.ownerUserId())
+        .size();
+  }
+
+  @Test
+  void 동시_결과_확인이_실패로_확정돼도_결제_실패_안내는_순차_확인과_같은_수만_나간다() throws Exception {
+    Due sequential = activeDue();
+    long first = verifyingFailure(sequential);
+    chargeService.reconcile(first);
+    int expected = failureNotices(sequential);
+    assertThat(expected).isPositive();
+
+    Due concurrent = activeDue();
+    long second = verifyingFailure(concurrent);
     CyclicBarrier inquired = new CyclicBarrier(2);
     doAnswer(
             invocation -> {
@@ -238,16 +264,13 @@ class BillingRecoveryScenarioIntegrationTest extends AuthIntegrationTestBase {
         .when(gateway)
         .inquire(any());
 
-    runConcurrently(2, () -> chargeService.reconcile(invoiceId));
+    runConcurrently(2, () -> chargeService.reconcile(second));
 
-    assertThat(invoiceStatus()).isEqualTo("FAILED");
-    List<String> notices =
-        jdbcTemplate.queryForList(
-            "SELECT notification_type || ':' || message FROM notification WHERE"
-                + " recipient_user_id = ? AND notification_type = 'PAYMENT'",
-            String.class,
-            due.ownerUserId());
-    assertThat(notices).as(notices.toString()).hasSize(1);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM billing_invoice WHERE id = ?", String.class, second))
+        .isEqualTo("FAILED");
+    assertThat(failureNotices(concurrent)).isEqualTo(expected);
   }
 
   @Test
