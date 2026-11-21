@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
+import com.sairo.be.domain.settlement.repository.SettlementMetricRepository;
+import com.sairo.be.domain.settlement.service.SettlementPeriods;
 import com.sairo.be.global.port.stub.InMemoryObjectStorage;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StaffRole;
@@ -74,6 +76,7 @@ class ScalePerformanceTest {
 
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
+  @Autowired SettlementMetricRepository settlementMetrics;
   @Autowired DataSource dataSource;
   @Autowired SessionRepository sessionRepository;
   @Autowired PublicLinkTokenGenerator tokenGenerator;
@@ -537,6 +540,26 @@ class ScalePerformanceTest {
         });
   }
 
+  @Test
+  @Order(2)
+  void batchedSettlementMatchesIndividualAggregates() {
+    Instant now = Instant.now();
+    YearMonth currentMonth = SettlementPeriods.current(now);
+    for (long office : List.of(fixture.largeOffice(), fixture.midOffice())) {
+      for (int offset : List.of(0, 1, 6)) {
+        var window = SettlementPeriods.window(office, currentMonth.minusMonths(offset), now);
+        settlementMetrics
+            .aggregateContracts(window)
+            .forEach(
+                (metric, total) ->
+                    org.junit.jupiter.api.Assertions.assertEquals(
+                        settlementMetrics.aggregate(metric, window),
+                        total.longValue(),
+                        metric.name()));
+      }
+    }
+  }
+
   private void measure(Api api) throws Exception {
     for (int i = 0; i < 2; i++) {
       mockMvc.perform(api.request().apply(-1 - i)).andReturn();
@@ -830,7 +853,8 @@ class ScalePerformanceTest {
               "고객A.csv",
               csv(customerRows("IMP-A-", 0, IMPORT_ROWS)),
               "CUSTOMER",
-              customerMapping());
+              customerMapping(),
+              IMPORT_ROWS);
           runImport(
               "customer-xlsx",
               owner,
@@ -840,9 +864,10 @@ class ScalePerformanceTest {
                       "Sheet1",
                       concat(
                           customerRows("IMP-A-", 0, half),
-                          customerRows("IMP-B-", 0, IMPORT_ROWS - half)))),
+                          customerRows("IMP-B-", IMPORT_ROWS, IMPORT_ROWS - half)))),
               "CUSTOMER",
-              customerMapping());
+              customerMapping(),
+              IMPORT_ROWS - half);
           runImport(
               "property-xls",
               owner,
@@ -850,7 +875,8 @@ class ScalePerformanceTest {
               SpreadsheetFixtures.xls(
                   SpreadsheetFixtures.sheets("Sheet1", propertyRows("IMP-P-", IMPORT_ROWS))),
               "PROPERTY",
-              propertyMapping());
+              propertyMapping(),
+              IMPORT_ROWS);
         });
   }
 
@@ -861,7 +887,13 @@ class ScalePerformanceTest {
   }
 
   private void runImport(
-      String name, Cookie cookie, String fileName, byte[] content, String type, String mapping)
+      String name,
+      Cookie cookie,
+      String fileName,
+      byte[] content,
+      String type,
+      String mapping,
+      int expectedSucceeded)
       throws Exception {
     long[] batch = new long[1];
     timedStage(
@@ -940,6 +972,12 @@ class ScalePerformanceTest {
               jdbc.queryForMap(
                   "SELECT status, succeeded_count, failed_count FROM import_batch WHERE id = ?",
                   batch[0]);
+          long skipped =
+              jdbc.queryForObject(
+                  "SELECT COUNT(*) FROM import_row_result WHERE batch_id = ? AND result ="
+                      + " 'SKIPPED'",
+                  Long.class,
+                  batch[0]);
           PerfReport.line(
               "> `"
                   + name
@@ -948,7 +986,15 @@ class ScalePerformanceTest {
                   + ", 성공 "
                   + row.get("succeeded_count")
                   + ", 실패 "
-                  + row.get("failed_count"));
+                  + row.get("failed_count")
+                  + ", 제외 "
+                  + skipped);
+          if (!"COMPLETED".equals(row.get("status"))
+              || !Integer.valueOf(expectedSucceeded).equals(row.get("succeeded_count"))
+              || !Integer.valueOf(0).equals(row.get("failed_count"))
+              || skipped != IMPORT_ROWS - expectedSucceeded) {
+            throw new IllegalStateException("이전 결과가 준비한 신규·중복 행 구성과 다릅니다.");
+          }
         });
   }
 

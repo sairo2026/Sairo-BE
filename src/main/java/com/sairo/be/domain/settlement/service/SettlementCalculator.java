@@ -39,8 +39,11 @@ public class SettlementCalculator {
 
   public Map<SettlementMetric, Long> compute(SettlementWindow window) {
     Map<SettlementMetric, Long> values = new EnumMap<>(SettlementMetric.class);
+    values.putAll(metricRepository.aggregateContracts(window));
     for (SettlementMetric metric : SettlementMetric.values()) {
-      values.put(metric, metricRepository.aggregate(metric, window));
+      if (!values.containsKey(metric)) {
+        values.put(metric, metricRepository.aggregate(metric, window));
+      }
     }
     return values;
   }
