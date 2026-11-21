@@ -266,21 +266,27 @@ public class CustomerReadRepository {
     String occupant = partyRole("OCCUPANT");
     return switch (role) {
       case "DEMAND" -> " AND " + demand;
-      case "OWNER" -> " AND " + owner;
+      case "OWNER" -> " AND " + indexedOwnerRole();
       case "OCCUPANT" -> " AND " + occupant;
       default -> " AND NOT " + demand + " AND NOT " + owner + " AND NOT " + occupant;
     };
   }
 
   private static String partyRole(String role) {
+    return "c.id IN (SELECT oo.customer_id FROM property_owner_occupant oo WHERE oo.office_id ="
+        + " :officeId AND oo.role = '"
+        + role
+        + "' UNION ALL SELECT cl.root_id FROM closure cl JOIN property_owner_occupant oo ON"
+        + " oo.customer_id = cl.member_id WHERE oo.role = '"
+        + role
+        + "')";
+  }
+
+  private static String indexedOwnerRole() {
     return "(EXISTS (SELECT 1 FROM property_owner_occupant oo WHERE oo.customer_id = c.id"
-        + " AND oo.office_id = :officeId AND oo.role = '"
-        + role
-        + "') OR c.id IN (SELECT cl.root_id FROM closure cl JOIN property_owner_occupant oo ON"
-        + " oo.customer_id = cl.member_id WHERE cl.member_id <> cl.root_id"
-        + " AND oo.office_id = :officeId AND oo.role = '"
-        + role
-        + "'))";
+        + " AND oo.office_id = :officeId AND oo.role = 'OWNER') OR c.id IN (SELECT cl.root_id"
+        + " FROM closure cl JOIN property_owner_occupant oo ON oo.customer_id = cl.member_id"
+        + " WHERE cl.member_id <> cl.root_id AND oo.office_id = :officeId AND oo.role = 'OWNER'))";
   }
 
   public Map<Long, RoleFlags> findRoles(long officeId, Collection<Long> customerIds) {
