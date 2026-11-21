@@ -5,6 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
+import com.sairo.be.domain.settlement.repository.SettlementMetricRepository;
+import com.sairo.be.domain.settlement.service.SettlementPeriods;
 import com.sairo.be.global.port.stub.InMemoryObjectStorage;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StaffRole;
@@ -74,6 +76,7 @@ class ScalePerformanceTest {
 
   @Autowired MockMvc mockMvc;
   @Autowired JdbcTemplate jdbc;
+  @Autowired SettlementMetricRepository settlementMetrics;
   @Autowired DataSource dataSource;
   @Autowired SessionRepository sessionRepository;
   @Autowired PublicLinkTokenGenerator tokenGenerator;
@@ -535,6 +538,26 @@ class ScalePerformanceTest {
             guard(api.name(), () -> measure(api));
           }
         });
+  }
+
+  @Test
+  @Order(2)
+  void batchedSettlementMatchesIndividualAggregates() {
+    Instant now = Instant.now();
+    YearMonth currentMonth = SettlementPeriods.current(now);
+    for (long office : List.of(fixture.largeOffice(), fixture.midOffice())) {
+      for (int offset : List.of(0, 1, 6)) {
+        var window = SettlementPeriods.window(office, currentMonth.minusMonths(offset), now);
+        settlementMetrics
+            .aggregateContracts(window)
+            .forEach(
+                (metric, total) ->
+                    org.junit.jupiter.api.Assertions.assertEquals(
+                        settlementMetrics.aggregate(metric, window),
+                        total.longValue(),
+                        metric.name()));
+      }
+    }
   }
 
   private void measure(Api api) throws Exception {
