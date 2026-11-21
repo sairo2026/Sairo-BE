@@ -124,18 +124,16 @@ public class SettlementMetricRepository {
   private static final String VALID_STATE =
       " AND st.to_status IN ('SIGNED','ENDED') AND c.duplicate_excluded_at IS NULL";
 
-  private static final String CONTRACT_SIGNED_ROWS =
-      CONTRACT_HISTORY
-          + " SELECT c.id AS contract_id, c.property_id, p.address AS property_address,"
+  private static final String CONTRACT_SIGNED_SELECT =
+      "SELECT c.id AS contract_id, c.property_id, p.address AS property_address,"
           + " c.deal_type, c.signed_date, c.balance_due_date, c.balance_due_date_pending_reason"
           + " FROM signed s JOIN state st ON st.contract_id = s.contract_id JOIN contract c ON"
           + " c.id = s.contract_id JOIN property p ON p.id = c.property_id WHERE s.signed_at >="
           + " :from AND s.signed_at < :to"
           + VALID_STATE;
 
-  private static final String LEASE_MATURITY_ROWS =
-      CONTRACT_HISTORY
-          + " SELECT c.id AS contract_id, c.property_id, p.address AS property_address,"
+  private static final String LEASE_MATURITY_SELECT =
+      "SELECT c.id AS contract_id, c.property_id, p.address AS property_address,"
           + " c.lease_end_date FROM contract c JOIN state st ON st.contract_id = c.id JOIN"
           + " property p ON p.id = c.property_id WHERE c.office_id = :office AND c.deal_type IN"
           + " ('JEONSE','MONTHLY') AND c.lease_end_date BETWEEN :firstDay AND :lastDay"
@@ -149,17 +147,39 @@ public class SettlementMetricRepository {
           + " rx.supersedes_revision_id = r.id) ORDER BY r.fee_id, r.effective_date DESC, r.id"
           + " DESC)";
 
-  private static final String AGREED_FEE_ROWS =
-      CONTRACT_HISTORY
-          + ","
-          + FEE_REVISION
-          + " SELECT f.id AS fee_id, c.id AS contract_id, p.address AS property_address, cp.name"
+  private static final String AGREED_FEE_SELECT =
+      "SELECT f.id AS fee_id, c.id AS contract_id, p.address AS property_address, cp.name"
           + " AS payer_name, c.balance_due_date, rev.agreed_fee_amount FROM contract_fee f JOIN"
           + " rev ON rev.fee_id = f.id JOIN contract c ON c.id = f.contract_id JOIN state st ON"
           + " st.contract_id = c.id JOIN property p ON p.id = c.property_id JOIN contract_party cp"
           + " ON cp.id = f.payer_party_id WHERE c.balance_due_date BETWEEN :firstDay AND"
           + " :lastDay"
           + VALID_STATE;
+
+  private static final String CONTRACT_SIGNED_ROWS =
+      CONTRACT_HISTORY + " " + CONTRACT_SIGNED_SELECT;
+  private static final String LEASE_MATURITY_ROWS = CONTRACT_HISTORY + " " + LEASE_MATURITY_SELECT;
+  private static final String AGREED_FEE_ROWS =
+      CONTRACT_HISTORY + "," + FEE_REVISION + " " + AGREED_FEE_SELECT;
+
+  private static final String CONTRACT_TOTALS =
+      CONTRACT_HISTORY
+          + ","
+          + FEE_REVISION
+          + ", signed_rows AS ("
+          + CONTRACT_SIGNED_SELECT
+          + ")"
+          + ", maturity_rows AS ("
+          + LEASE_MATURITY_SELECT
+          + ")"
+          + " SELECT (SELECT count(*) FROM signed_rows),"
+          + " (SELECT count(DISTINCT property_id) FROM signed_rows),"
+          + " (SELECT count(*) FROM maturity_rows),"
+          + " (SELECT count(DISTINCT property_id) FROM maturity_rows),"
+          + " (SELECT COALESCE(sum(agreed_fee_amount), 0)::bigint FROM ("
+          + AGREED_FEE_SELECT
+          + ") agreed),"
+          + " (SELECT count(*) FROM signed_rows WHERE balance_due_date IS NULL)";
 
   private static final String VALID_TRANSACTION =
       " AND t.transaction_type IN ('RECEIPT','REFUND') AND NOT EXISTS (SELECT 1 FROM"
@@ -317,6 +337,21 @@ public class SettlementMetricRepository {
             "payer_party_id",
             "COALESCE(sum(balance_amount), 0)::bigint"));
     return map;
+  }
+
+  /** 같은 정산 창의 계약 상태 이력에서 계약·만기·약정수수료 지표를 함께 계산한다. */
+  public Map<SettlementMetric, Long> aggregateContracts(SettlementWindow window) {
+    return bind(jdbcClient.sql(CONTRACT_TOTALS), window)
+        .query(
+            (rs, rowNum) ->
+                Map.of(
+                    SettlementMetric.contractSignedCount, rs.getLong(1),
+                    SettlementMetric.contractSignedPropertyCount, rs.getLong(2),
+                    SettlementMetric.leaseMaturityCount, rs.getLong(3),
+                    SettlementMetric.leaseMaturityPropertyCount, rs.getLong(4),
+                    SettlementMetric.agreedFeeTotal, rs.getLong(5),
+                    SettlementMetric.agreedFeeUndatedCount, rs.getLong(6)))
+        .single();
   }
 
   /** 지표 하나의 집계 값(건수 또는 금액 합계)이다. */
