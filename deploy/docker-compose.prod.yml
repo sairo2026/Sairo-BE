@@ -25,9 +25,11 @@ services:
       retries: 3
 
   # Session and short-lived login state store. Not published to the host;
-  # only the api container reaches it over the compose network.
+  # only the api container reaches it over the compose network. The image is
+  # pinned by digest so a redeploy cannot silently change the server version;
+  # raise the tag and the digest together when updating.
   redis:
-    image: redis:7.4-alpine
+    image: redis:7.4.12-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
     command:
       - redis-server
       - --appendonly
