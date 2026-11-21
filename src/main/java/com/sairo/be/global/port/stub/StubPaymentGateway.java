@@ -36,6 +36,14 @@ public class StubPaymentGateway implements PaymentGateway {
   private final Map<String, Long> cancelledAmounts = new ConcurrentHashMap<>();
   private final Map<String, String> orderByPaymentKey = new ConcurrentHashMap<>();
 
+  private final java.util.concurrent.atomic.AtomicLong chargeDelayMillis =
+      new java.util.concurrent.atomic.AtomicLong();
+
+  /** 시험용으로 승인 요청 응답을 늦춰 동시 실행이 겹치게 한다. */
+  public void delayCharges(long millis) {
+    chargeDelayMillis.set(millis);
+  }
+
   public void respondWith(PaymentStatus status) {
     nextStatus.set(status);
   }
@@ -113,6 +121,7 @@ public class StubPaymentGateway implements PaymentGateway {
     cancelFailure.set(null);
     nextCancelStatus.set(PaymentStatus.SUCCEEDED);
     chargeFailure.set(null);
+    chargeDelayMillis.set(0);
     failureCode.set("STUB_DECLINED");
     failNextIssue.set(false);
     blockNextIssue.set(false);
@@ -139,6 +148,14 @@ public class StubPaymentGateway implements PaymentGateway {
   @Override
   public PaymentResult charge(ChargeCommand command) {
     charges.add(command);
+    long delay = chargeDelayMillis.get();
+    if (delay > 0) {
+      try {
+        Thread.sleep(delay);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
     RuntimeException failure = chargeFailure.getAndSet(null);
     if (failure != null) {
       orders.put(
