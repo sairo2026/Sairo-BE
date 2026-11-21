@@ -245,7 +245,8 @@ class BillingRecoveryScenarioIntegrationTest extends AuthIntegrationTestBase {
             count(
                 "SELECT count(*) FROM notification WHERE recipient_user_id = "
                     + due.ownerUserId()
-                    + " AND notification_type = 'PAYMENT_FAILED'"))
+                    + " AND notification_type = 'PAYMENT'"
+                    + " AND message LIKE '%결제에 실패했습니다%'"))
         .isEqualTo(1);
   }
 
