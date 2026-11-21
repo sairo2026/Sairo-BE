@@ -830,7 +830,8 @@ class ScalePerformanceTest {
               "고객A.csv",
               csv(customerRows("IMP-A-", 0, IMPORT_ROWS)),
               "CUSTOMER",
-              customerMapping());
+              customerMapping(),
+              IMPORT_ROWS);
           runImport(
               "customer-xlsx",
               owner,
@@ -840,9 +841,10 @@ class ScalePerformanceTest {
                       "Sheet1",
                       concat(
                           customerRows("IMP-A-", 0, half),
-                          customerRows("IMP-B-", 0, IMPORT_ROWS - half)))),
+                          customerRows("IMP-B-", IMPORT_ROWS, IMPORT_ROWS - half)))),
               "CUSTOMER",
-              customerMapping());
+              customerMapping(),
+              IMPORT_ROWS - half);
           runImport(
               "property-xls",
               owner,
@@ -850,7 +852,8 @@ class ScalePerformanceTest {
               SpreadsheetFixtures.xls(
                   SpreadsheetFixtures.sheets("Sheet1", propertyRows("IMP-P-", IMPORT_ROWS))),
               "PROPERTY",
-              propertyMapping());
+              propertyMapping(),
+              IMPORT_ROWS);
         });
   }
 
@@ -861,7 +864,13 @@ class ScalePerformanceTest {
   }
 
   private void runImport(
-      String name, Cookie cookie, String fileName, byte[] content, String type, String mapping)
+      String name,
+      Cookie cookie,
+      String fileName,
+      byte[] content,
+      String type,
+      String mapping,
+      int expectedSucceeded)
       throws Exception {
     long[] batch = new long[1];
     timedStage(
@@ -940,6 +949,12 @@ class ScalePerformanceTest {
               jdbc.queryForMap(
                   "SELECT status, succeeded_count, failed_count FROM import_batch WHERE id = ?",
                   batch[0]);
+          long skipped =
+              jdbc.queryForObject(
+                  "SELECT COUNT(*) FROM import_row_result WHERE batch_id = ? AND result ="
+                      + " 'SKIPPED'",
+                  Long.class,
+                  batch[0]);
           PerfReport.line(
               "> `"
                   + name
@@ -948,7 +963,15 @@ class ScalePerformanceTest {
                   + ", 성공 "
                   + row.get("succeeded_count")
                   + ", 실패 "
-                  + row.get("failed_count"));
+                  + row.get("failed_count")
+                  + ", 제외 "
+                  + skipped);
+          if (!"COMPLETED".equals(row.get("status"))
+              || !Integer.valueOf(expectedSucceeded).equals(row.get("succeeded_count"))
+              || !Integer.valueOf(0).equals(row.get("failed_count"))
+              || skipped != IMPORT_ROWS - expectedSucceeded) {
+            throw new IllegalStateException("이전 결과가 준비한 신규·중복 행 구성과 다릅니다.");
+          }
         });
   }
 
