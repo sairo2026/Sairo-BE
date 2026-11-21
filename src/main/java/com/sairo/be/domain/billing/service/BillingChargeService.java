@@ -226,6 +226,10 @@ public class BillingChargeService {
     advisoryLock.lockForTransaction("billing:subscription:" + subscriptionId);
     BillingInvoice invoice = invoiceRepository.findById(invoiceId).orElseThrow();
     BillingChargeAttempt attempt = attemptRepository.findById(attemptId).orElseThrow();
+    if (!attempt.isInFlight()) {
+      // 같은 시도를 다른 작업자가 이미 확정했다. 다시 반영하면 안내와 구독 기간이 중복된다.
+      return new ChargeOutcome(invoice.getStatus(), null, invoiceId);
+    }
     Subscription subscription = subscriptionRepository.findById(subscriptionId).orElseThrow();
     Instant now = clock.instant();
     FailureCategory category = null;
