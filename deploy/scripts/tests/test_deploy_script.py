@@ -370,6 +370,51 @@ class DeployScriptTests(unittest.TestCase):
                 self.assertIn("leasePeriodScanCron must be", result.stderr)
                 self.assertNotIn("up -d api", self.docker_log())
 
+    def read_redis_env(self):
+        return (self.deploy_dir / "env" / "redis.env").read_text(encoding="utf-8").splitlines()
+
+    def test_redis_password_is_delivered_to_app_and_redis_env(self):
+        self.set_healthy(NEW_TAG)
+        password = "Ab1_-" * 8
+        self.write_secret("sairo_be_app-secrets", {**APP_SECRETS, "redisPassword": password})
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"REDIS_PASSWORD={password}", self.read_env_lines())
+        self.assertIn(f"SPRING_DATA_REDIS_PASSWORD={password}", self.read_env_lines())
+        self.assertEqual(self.read_redis_env(), [f"REDIS_PASSWORD={password}"])
+        self.assertNotIn(password, result.stdout + result.stderr)
+        if os.name == "posix":
+            mode = (self.deploy_dir / "env" / "redis.env").stat().st_mode & 0o777
+            self.assertEqual(mode, 0o600)
+
+    def test_missing_redis_password_writes_nothing_and_clears_old_value(self):
+        self.set_healthy(NEW_TAG)
+        (self.deploy_dir / "env").mkdir()
+        (self.deploy_dir / "env" / "redis.env").write_text("REDIS_PASSWORD=stale\n", encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read_redis_env(), [])
+        self.assertFalse(
+            any("REDIS_PASSWORD" in line for line in self.read_env_lines())
+        )
+
+    def test_weak_or_unsafe_redis_password_is_rejected_without_echo(self):
+        for value in ("short", "a" * 31, "a" * 31 + " ", "a" * 31 + "$", "a" * 31 + "\n"):
+            with self.subTest(value=value):
+                self.write_secret(
+                    "sairo_be_app-secrets", {**APP_SECRETS, "redisPassword": value}
+                )
+
+                result = self.run_deploy()
+
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("redisPassword must be", result.stderr)
+                self.assertNotIn("up -d api", self.docker_log())
+
     def test_migration_failure_leaves_api_untouched(self):
         (self.stub / "migrate-exit").write_text("1", encoding="utf-8")
 

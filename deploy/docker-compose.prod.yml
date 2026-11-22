@@ -30,6 +30,20 @@ services:
   # raise the tag and the digest together when updating.
   redis:
     image: redis:7.4.12-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+    # REDIS_PASSWORD comes from env/redis.env, which deploy.sh writes from the
+    # redisPassword field of sairo/be/app-secrets. When it is empty or the file
+    # is absent Redis starts without authentication, as before. The password is
+    # appended to the command at start so it never appears in this file or in
+    # `docker inspect`. docker-entrypoint.sh is kept so Redis still drops root.
+    entrypoint:
+      - sh
+      - -c
+      - 'if [ -n "$$REDIS_PASSWORD" ]; then set -- "$$@" --requirepass "$$REDIS_PASSWORD"; fi; exec docker-entrypoint.sh "$$@"'
+      - redis-entrypoint
+    env_file:
+      - path: ./env/redis.env
+        format: raw
+        required: false
     command:
       - redis-server
       - --appendonly
@@ -44,7 +58,9 @@ services:
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        - CMD-SHELL
+        - '[ -z "$$REDIS_PASSWORD" ] || export REDISCLI_AUTH="$$REDIS_PASSWORD"; redis-cli ping | grep -q PONG'
       interval: 10s
       timeout: 3s
       retries: 5
