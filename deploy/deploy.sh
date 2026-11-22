@@ -226,6 +226,11 @@ if [[ -n "${SAIRO_CLIENT_IP_EDGE_TOKEN}" && ! "${SAIRO_CLIENT_IP_EDGE_TOKEN}" =~
   echo "[deploy] edgeToken must be at least 32 characters of letters, digits, underscore or hyphen" >&2
   exit 1
 fi
+REDIS_PASSWORD=$(jq -r '.redisPassword // "" | tostring' <<<"${APP_SECRETS_JSON}")
+if [[ -n "${REDIS_PASSWORD}" && ! "${REDIS_PASSWORD}" =~ ^[A-Za-z0-9_-]{32,}$ ]]; then
+  echo "[deploy] redisPassword must be at least 32 characters of letters, digits, underscore or hyphen" >&2
+  exit 1
+fi
 SAIRO_BOOTSTRAP_OPERATOR_ENABLED=$(jq -r 'if .bootstrapOperatorEnabled == null then "" else (.bootstrapOperatorEnabled | tostring) end' <<<"${APP_SECRETS_JSON}")
 SAIRO_BOOTSTRAP_OPERATOR_EMAIL=$(jq -r '.bootstrapOperatorEmail // ""' <<<"${APP_SECRETS_JSON}")
 if [[ -n "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" && "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" != "true" && "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" != "false" ]]; then
@@ -295,6 +300,12 @@ umask 077
   if [[ -n "${SAIRO_CLIENT_IP_EDGE_TOKEN}" ]]; then
     echo "SAIRO_CLIENT_IP_EDGE_TOKEN=${SAIRO_CLIENT_IP_EDGE_TOKEN}"
   fi
+  if [[ -n "${REDIS_PASSWORD}" ]]; then
+    echo "REDIS_PASSWORD=${REDIS_PASSWORD}"
+    # Same value under Spring's own property name so images built before the
+    # REDIS_PASSWORD mapping existed can still authenticate during a rollback.
+    echo "SPRING_DATA_REDIS_PASSWORD=${REDIS_PASSWORD}"
+  fi
   if [[ -n "${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}" ]]; then
     echo "SAIRO_BOOTSTRAP_OPERATOR_ENABLED=${SAIRO_BOOTSTRAP_OPERATOR_ENABLED}"
   fi
@@ -317,7 +328,16 @@ umask 077
 } > "${MIGRATE_ENV_FILE}"
 chmod 600 "${MIGRATE_ENV_FILE}"
 
-unset APP_SECRET_JSON MIGRATOR_SECRET_JSON APP_SECRETS_JSON DB_APP_PASSWORD DB_MIGRATOR_PASSWORD \
+REDIS_ENV_FILE="${ENV_DIR}/redis.env"
+umask 077
+{
+  if [[ -n "${REDIS_PASSWORD}" ]]; then
+    echo "REDIS_PASSWORD=${REDIS_PASSWORD}"
+  fi
+} > "${REDIS_ENV_FILE}"
+chmod 600 "${REDIS_ENV_FILE}"
+
+unset REDIS_PASSWORD APP_SECRET_JSONMIGRATOR_SECRET_JSON APP_SECRETS_JSON DB_APP_PASSWORD DB_MIGRATOR_PASSWORD \
   KAKAO_REST_API_KEY KAKAO_CLIENT_SECRET KAKAO_ADMIN_KEY KAKAO_APP_ID PUBLIC_LINK_HMAC_SECRET \
   AUTH_TICKET_SECRET AUTH_RATE_LIMIT_HMAC_SECRET AUTH_KAKAO_KEY_HMAC_SECRET \
   AUTH_UNSUBSCRIBE_SECRET AUTH_KAKAO_KEY_ENCRYPTION_SECRET BILLING_KEY_ENCRYPTION_SECRET \
