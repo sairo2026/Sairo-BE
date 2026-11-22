@@ -18,11 +18,25 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.header.writers.DelegatingRequestMatcherHeaderWriter;
+import org.springframework.security.web.header.writers.HstsHeaderWriter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.AnyRequestMatcher;
 
 @Profile("!migrate")
 @Configuration
 public class SecurityConfig {
+
+  static final long HSTS_MAX_AGE_SECONDS = 63_072_000L;
+
+  // TLS는 Cloudflare와 nginx에서 끝나 애플리케이션은 평문 요청으로 보므로, 보안 연결 여부와 무관하게 항상 내려준다.
+  static HstsHeaderWriter hstsHeaderWriter() {
+    HstsHeaderWriter writer = new HstsHeaderWriter();
+    writer.setRequestMatcher(AnyRequestMatcher.INSTANCE);
+    writer.setMaxAgeInSeconds(HSTS_MAX_AGE_SECONDS);
+    writer.setIncludeSubDomains(true);
+    writer.setPreload(false);
+    return writer;
+  }
 
   @Bean
   SecurityFilterChain securityFilterChain(
@@ -49,16 +63,19 @@ public class SecurityConfig {
                     .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                     .ignoringRequestMatchers("/api/public/**", "/api/webhooks/**"))
         .headers(
-            headers ->
-                headers.addHeaderWriter(
-                    new DelegatingRequestMatcherHeaderWriter(
-                        PathPatternRequestMatcher.pathPattern("/api/public/**"),
-                        (request, response) -> {
-                          if (!response.containsHeader("Cache-Control")) {
-                            response.setHeader("Cache-Control", "no-store");
-                          }
-                          response.setHeader("Referrer-Policy", "no-referrer");
-                        })))
+            headers -> {
+              headers.httpStrictTransportSecurity(hsts -> hsts.disable());
+              headers.addHeaderWriter(hstsHeaderWriter());
+              headers.addHeaderWriter(
+                  new DelegatingRequestMatcherHeaderWriter(
+                      PathPatternRequestMatcher.pathPattern("/api/public/**"),
+                      (request, response) -> {
+                        if (!response.containsHeader("Cache-Control")) {
+                          response.setHeader("Cache-Control", "no-store");
+                        }
+                        response.setHeader("Referrer-Policy", "no-referrer");
+                      }));
+            })
         .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
         .addFilterBefore(new AbsoluteSessionTimeoutFilter(clock), AuthorizationFilter.class)
         .addFilterBefore(

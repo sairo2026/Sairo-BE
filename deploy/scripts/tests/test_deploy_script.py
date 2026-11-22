@@ -15,6 +15,7 @@ from pathlib import Path
 DEPLOY_SCRIPT = Path(__file__).resolve().parents[2] / "deploy.sh"
 NEW_TAG = "a" * 40
 OLD_TAG = "b" * 40
+REPO = "632154834220.dkr.ecr.ap-northeast-2.amazonaws.com/sairo-be"
 
 AWS_STUB = """#!/usr/bin/env bash
 case "$1" in
@@ -36,6 +37,14 @@ if [ "$1" = "login" ]; then cat > /dev/null; exit 0; fi
 case "$*" in
   *"run --rm migrate"*) exit "$(cat "${STUB_DIR}/migrate-exit" 2>/dev/null || echo 0)" ;;
   *"up -d api"*) echo "${IMAGE_TAG}" > "${STUB_DIR}/current-tag" ;;
+  "image ls "*) cat "${STUB_DIR}/images" 2>/dev/null ;;
+  "ps -a "*) cat "${STUB_DIR}/in-use" 2>/dev/null ;;
+  "info "*) exit 1 ;;
+  "rmi "*)
+    if [ -f "${STUB_DIR}/rmi-fails" ]; then exit 1; fi
+    if grep -qxF "$2" "${STUB_DIR}/in-use" 2>/dev/null; then exit 1; fi
+    echo "$2" >> "${STUB_DIR}/removed" ;;
+  "image prune"*) echo prune >> "${STUB_DIR}/removed" ;;
 esac
 exit 0
 """
@@ -45,6 +54,16 @@ count=$(cat "${STUB_DIR}/curl-count" 2>/dev/null || echo 0)
 echo $((count + 1)) > "${STUB_DIR}/curl-count"
 current=$(cat "${STUB_DIR}/current-tag" 2>/dev/null || echo none)
 grep -qx "${current}" "${STUB_DIR}/healthy-tags" 2>/dev/null
+"""
+
+DF_STUB = """#!/usr/bin/env bash
+if [ -f "${STUB_DIR}/removed" ] && [ -f "${STUB_DIR}/df-free-mb-after-prune" ]; then
+  free=$(cat "${STUB_DIR}/df-free-mb-after-prune")
+else
+  free=$(cat "${STUB_DIR}/df-free-mb" 2>/dev/null || echo 999999)
+fi
+echo "Filesystem 1024-blocks Used Available Capacity Mounted"
+echo "x 0 0 $((free * 1024)) 0% /"
 """
 
 SLEEP_STUB = """#!/usr/bin/env bash
@@ -91,6 +110,7 @@ class DeployScriptTests(unittest.TestCase):
             ("docker", DOCKER_STUB),
             ("curl", CURL_STUB),
             ("sleep", SLEEP_STUB),
+            ("df", DF_STUB),
         ):
             path = self.bin / name
             path.write_text(body, encoding="utf-8", newline="\n")
@@ -357,6 +377,112 @@ class DeployScriptTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1)
         self.assertNotIn("up -d api", self.docker_log())
+
+    def set_images(self, *tags):
+        (self.stub / "images").write_bytes(("\n".join(tags) + "\n").encode())
+
+    def set_in_use(self, *tags):
+        (self.stub / "in-use").write_bytes(
+            ("\n".join(f"{REPO}:{tag}" for tag in tags) + "\n").encode()
+        )
+
+    def removed(self):
+        path = self.stub / "removed"
+        return path.read_text(encoding="utf-8").split() if path.exists() else []
+
+    def removed_images(self):
+        return [item for item in self.removed() if item != "prune"]
+
+    def test_successful_deploy_keeps_new_last_good_and_previous_images_only(self):
+        (self.deploy_dir / "last-good-tag").write_bytes((OLD_TAG + "\n").encode())
+        self.set_healthy(NEW_TAG)
+        extra = ["d" * 40, "e" * 40]
+        self.set_images(NEW_TAG, OLD_TAG, *extra, "latest")
+        self.set_in_use(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            sorted(self.removed_images()), sorted(f"{REPO}:{tag}" for tag in extra)
+        )
+
+    def test_image_used_by_a_container_is_never_removed(self):
+        self.set_healthy(NEW_TAG)
+        busy = "d" * 40
+        self.set_images(NEW_TAG, busy)
+        self.set_in_use(NEW_TAG, busy)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.removed_images(), [])
+
+    def test_failed_removal_does_not_fail_a_healthy_deploy(self):
+        self.set_healthy(NEW_TAG)
+        self.set_images(NEW_TAG, "d" * 40)
+        self.set_in_use()
+        (self.stub / "rmi-fails").write_text("1", encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.read("last-good-tag"), NEW_TAG)
+
+    def test_failed_deploy_does_not_prune(self):
+        (self.deploy_dir / "last-good-tag").write_bytes((OLD_TAG + "\n").encode())
+        self.set_healthy()
+        self.set_images(NEW_TAG, OLD_TAG, "d" * 40)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.removed(), [])
+
+    def test_enough_free_disk_skips_pre_pull_prune(self):
+        self.set_healthy()
+        self.set_images("d" * 40)
+        (self.stub / "df-free-mb").write_text("100000", encoding="utf-8")
+
+        self.run_deploy()
+
+        self.assertEqual(self.removed(), [])
+
+    def test_low_disk_prunes_before_pulling_and_keeps_last_good(self):
+        (self.deploy_dir / "last-good-tag").write_bytes((OLD_TAG + "\n").encode())
+        self.set_healthy(NEW_TAG)
+        stale = "d" * 40
+        self.set_images(OLD_TAG, stale)
+        self.set_in_use(OLD_TAG)
+        (self.stub / "df-free-mb").write_text("500", encoding="utf-8")
+        (self.stub / "df-free-mb-after-prune").write_text("9000", encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        log = self.docker_log()
+        self.assertLess(log.index("rmi"), log.index("pull migrate"))
+        self.assertIn(f"{REPO}:{stale}", self.removed_images())
+        self.assertNotIn(f"{REPO}:{OLD_TAG}", self.removed_images())
+
+    def test_still_low_disk_after_prune_aborts_without_touching_api(self):
+        self.set_images("d" * 40)
+        (self.stub / "df-free-mb").write_text("500", encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("still below", result.stderr)
+        log = self.docker_log()
+        self.assertNotIn("pull", log)
+        self.assertNotIn("up -d api", log)
+        self.assertNotIn("stop api", log)
+
+    def test_invalid_min_free_disk_is_rejected(self):
+        result = self.run_deploy(extra_env={"MIN_FREE_DISK_MB": "lots"})
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("MIN_FREE_DISK_MB", result.stderr)
 
 
 if __name__ == "__main__":
