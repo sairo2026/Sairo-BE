@@ -7,5 +7,5 @@
 INSERT INTO terms_catalog (terms_code, terms_version, title, category, required, document_url, content_hash, effective_at, display_context, reconsent_required, change_summary)
 VALUES
     ('TOS', '1.1', '사이로 이용약관', 'TERMS', true, '/legal/terms', '97ddc8d8ae69212f858eaea8c47ffa803c9d52754404117a31c6fb2ddbad3176', TIMESTAMPTZ '2026-12-01 00:00:00+09', 'SIGNUP', false, '회원가입 때 휴대폰 번호 인증을 필수로 적었던 제7조 제1항을 문자 인증을 제공하는 동안과 제공하지 않는 동안으로 나누어 실제 운영에 맞게 고쳤습니다.'),
-    ('PRIVACY', '1.1', '사이로 개인정보처리방침', 'NOTICE', false, '/legal/privacy', 'b83c8852ad2a804562cda18886342f4bd41f2871c721c2d1818716b7edb2ba7a', TIMESTAMPTZ '2026-12-01 00:00:00+09', 'SIGNUP', false, '휴대폰 인증 시각과 인증 목적을 문자 인증 제공 여부에 맞게 고치고, 안전성 확보 조치의 암호화 저장 항목을 실제 암호화하는 항목으로 바로잡았습니다.')
+    ('PRIVACY', '1.1', '사이로 개인정보처리방침', 'NOTICE', false, '/legal/privacy', '0a5e22ca4a5b4c2c75e8f187788589ea22605d93596d5edd8dbe6005c6379307', TIMESTAMPTZ '2026-12-01 00:00:00+09', 'SIGNUP', false, '휴대폰 인증 시각과 인증 목적을 문자 인증 제공 여부에 맞게 고치고, 안전성 확보 조치의 암호화 저장 항목을 실제 암호화하는 항목으로 바로잡았습니다.')
 ON CONFLICT (terms_code, terms_version) DO NOTHING;
