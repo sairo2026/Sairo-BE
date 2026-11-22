@@ -6,5 +6,5 @@
 -- 효력 시각은 진행 중인 구독의 갱신 결제가 끝난 뒤로 잡는다. 1.0 행은 동의 이력이 참조하므로 그대로 둔다.
 INSERT INTO terms_catalog (terms_code, terms_version, title, category, required, document_url, content_hash, effective_at, display_context, reconsent_required, change_summary)
 VALUES
-    ('SUBSCRIPTION_PURCHASE', '1.1', '구독·결제 약관과 구독 구매 동의', 'SEPARATE_CONSENT', true, '/legal/subscription-terms', '812b4bece290192f98a585221f29eaaba665ae86f2bac66ed11f73535ebbf74b', TIMESTAMPTZ '2026-12-16 00:00:00+09', 'PURCHASE', false, '결제 재시도 기준 시각과 실패 사유 안내, 결제 실패·제한 시작·미납 종료 때의 대표 안내 기준, 환불 사유와 신청 방식을 실제 처리에 맞게 고쳤습니다.')
+    ('SUBSCRIPTION_PURCHASE', '1.1', '구독·결제 약관과 구독 구매 동의', 'SEPARATE_CONSENT', true, '/legal/subscription-terms', '087a460f4de8c2400d3fcd6d3df407bbf884610337220c46560eedae31d19411', TIMESTAMPTZ '2026-12-16 00:00:00+09', 'PURCHASE', false, '결제 재시도 기준 시각과 실패 사유 안내, 결제 실패·제한 시작·미납 종료 때의 대표 안내 기준, 환불 사유와 신청 방식을 실제 처리에 맞게 고쳤습니다.')
 ON CONFLICT (terms_code, terms_version) DO NOTHING;
