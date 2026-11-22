@@ -34,6 +34,67 @@ HEALTH_URL="http://127.0.0.1:8080/actuator/health"
 mkdir -p "${ENV_DIR}"
 chmod 700 "${ENV_DIR}"
 
+MIN_FREE_DISK_MB="${MIN_FREE_DISK_MB:-3072}"
+if [[ ! "${MIN_FREE_DISK_MB}" =~ ^[0-9]+$ ]]; then
+  echo "[deploy] MIN_FREE_DISK_MB must be a non-negative integer" >&2
+  exit 1
+fi
+
+# Removes sairo-be images that are neither in the keep list nor referenced by
+# any container. Never forces removal (no -f), so docker itself also refuses to
+# delete an image a container still uses. Every failure is tolerated: pruning
+# must never change the outcome of a deploy or touch a running container.
+prune_old_images() {
+  local keep=" $* "
+  local in_use tag
+  in_use=$(docker ps -a --format '{{.Image}}' 2>/dev/null || true)
+  while IFS= read -r tag; do
+    [[ "${tag}" =~ ^[0-9a-f]{40}$ ]] || continue
+    [[ "${keep}" == *" ${tag} "* ]] && continue
+    if grep -qxF "${ECR_REPOSITORY_URI}:${tag}" <<<"${in_use}"; then
+      continue
+    fi
+    echo "[deploy] removing old image ${tag}"
+    docker rmi "${ECR_REPOSITORY_URI}:${tag}" >/dev/null 2>&1 \
+      || echo "[deploy] could not remove image ${tag}, skipping" >&2
+  done < <(docker image ls "${ECR_REPOSITORY_URI}" --format '{{.Tag}}' 2>/dev/null || true)
+  docker image prune -f >/dev/null 2>&1 || true
+  return 0
+}
+
+free_disk_mb() {
+  local root
+  root=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)
+  if [ -z "${root}" ] || [ ! -d "${root}" ]; then
+    root="${COMPOSE_DIR}"
+  fi
+  df -Pk "${root}" 2>/dev/null | awk 'NR==2 {print int($4 / 1024)}'
+}
+
+ensure_free_disk() {
+  local free kept_tag=""
+  free=$(free_disk_mb || true)
+  if [[ ! "${free}" =~ ^[0-9]+$ ]]; then
+    echo "[deploy] could not determine free disk space, continuing" >&2
+    return 0
+  fi
+  if [ "${free}" -ge "${MIN_FREE_DISK_MB}" ]; then
+    return 0
+  fi
+  echo "[deploy] free disk ${free}MB is below ${MIN_FREE_DISK_MB}MB, pruning old images"
+  if [ -f "${LAST_GOOD_FILE}" ]; then
+    kept_tag=$(cat "${LAST_GOOD_FILE}")
+  fi
+  prune_old_images "${kept_tag}" "${IMAGE_TAG}"
+  free=$(free_disk_mb || true)
+  if [[ "${free}" =~ ^[0-9]+$ ]] && [ "${free}" -lt "${MIN_FREE_DISK_MB}" ]; then
+    echo "[deploy] free disk ${free}MB is still below ${MIN_FREE_DISK_MB}MB, aborting before any change" >&2
+    exit 1
+  fi
+}
+
+ensure_free_disk
+
 echo "[deploy] logging in to ECR"
 aws ecr get-login-password --region "${AWS_REGION}" \
   | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
@@ -332,6 +393,7 @@ if wait_for_healthy; then
   echo "[deploy] healthy, recording ${IMAGE_TAG} as last-good"
   echo "${IMAGE_TAG}" > "${LAST_GOOD_FILE}"
   echo "${IMAGE_TAG}" > "${VERIFIED_GOOD_FILE}"
+  prune_old_images "${IMAGE_TAG}" "${PREVIOUS_TAG}" "${ROLLBACK_TAG}"
   exit 0
 fi
 
