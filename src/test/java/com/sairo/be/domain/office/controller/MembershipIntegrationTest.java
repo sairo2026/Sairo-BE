@@ -340,6 +340,9 @@ class MembershipIntegrationTest extends AuthIntegrationTestBase {
 
   @Test
   void 승인은_중개보조원_5배_한도를_넘으면_409이고_명부의_AGENT가_있으면_통과한다() throws Exception {
+    for (int i = 0; i < 5; i++) {
+      staffIn(OfficeMembershipRole.DEPUTY);
+    }
     long id = pendingRequest(plainUser(), "DEPUTY");
     assertError(
         post("/api/memberships/" + id + "/approve", "", ownerCookie),
@@ -895,6 +898,9 @@ class MembershipIntegrationTest extends AuthIntegrationTestBase {
 
   @Test
   void 강등은_5배_한도를_넘으면_409이고_역할과_담당을_바꾸지_않는다() throws Exception {
+    for (int i = 0; i < 5; i++) {
+      staffIn(OfficeMembershipRole.DEPUTY);
+    }
     var agent = staffIn(OfficeMembershipRole.AGENT);
     long id = agent.membership().getId();
     long version = versionOf(id);
@@ -911,9 +917,9 @@ class MembershipIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
-  void 강등은_명부_한도_안이면_통과하고_한도를_넘기는_여섯_번째에서_막힌다() throws Exception {
+  void 강등은_명부_한도_안이면_통과하고_한도를_넘기는_열한_번째에서_막힌다() throws Exception {
     addRosterAgent();
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 10; i++) {
       var agent = staffIn(OfficeMembershipRole.AGENT);
       long id = agent.membership().getId();
       grantStepUp(ownerCookie);
@@ -921,8 +927,8 @@ class MembershipIntegrationTest extends AuthIntegrationTestBase {
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.role").value("DEPUTY"));
     }
-    var sixth = staffIn(OfficeMembershipRole.AGENT);
-    long id = sixth.membership().getId();
+    var eleventh = staffIn(OfficeMembershipRole.AGENT);
+    long id = eleventh.membership().getId();
     grantStepUp(ownerCookie);
     assertError(
         roleRequest("/api/memberships/" + id + "/role", "DEPUTY", versionOf(id), ownerCookie),
