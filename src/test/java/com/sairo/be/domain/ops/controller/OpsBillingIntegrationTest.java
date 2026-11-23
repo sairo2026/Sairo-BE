@@ -679,6 +679,11 @@ class OpsBillingIntegrationTest extends OpsConsoleTestBase {
     long refundId = failedRefund(invoiceId, "ORDER-R1");
     String reopen = REFUNDS + "/" + refundId + "/reopen";
     String firstKey = paymentGateway.cancels().get(0).idempotencyKey();
+    mockMvc
+        .perform(get(REFUNDS + "/" + refundId).cookie(billing2Session))
+        .andExpect(jsonPath("$.status").value("FAILED"))
+        .andExpect(
+            jsonPath("$.failureReason").value(Matchers.containsString("STUB_CANCEL_DECLINED")));
 
     assertError(post(reopen, reopenBody(true), billing2Session), ErrorCode.STEP_UP_REQUIRED);
     stepUp(billing2Session);
@@ -690,6 +695,10 @@ class OpsBillingIntegrationTest extends OpsConsoleTestBase {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("APPROVED"));
     assertThat(refundStatus(refundId)).isEqualTo("APPROVED");
+    mockMvc
+        .perform(get(REFUNDS + "/" + refundId).cookie(billing2Session))
+        .andExpect(jsonPath("$.status").value("APPROVED"))
+        .andExpect(jsonPath("$.failureReason").value(Matchers.nullValue()));
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT pg_idempotency_key FROM refund_request WHERE id = ?",

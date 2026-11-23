@@ -233,7 +233,8 @@ public class OpsBillingService {
         toDisplayOffset(row.reviewedAt()),
         row.rejectionReason(),
         maskReference(row.pgRefundId()),
-        toDisplayOffset(row.resolvedAt()));
+        toDisplayOffset(row.resolvedAt()),
+        "FAILED".equals(row.status()) ? row.failureReason() : null);
   }
 
   @Transactional
