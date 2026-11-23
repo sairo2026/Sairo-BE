@@ -75,8 +75,8 @@ class TermsCatalogTosPrivacy11MigrationTest {
 
   @Test
   void 효력_시각_전에는_1_0이고_이후에는_1_1이_시행_중이다() {
-    Instant before = Instant.parse("2026-11-30T14:59:59Z");
-    Instant after = Instant.parse("2026-11-30T15:00:00Z");
+    Instant before = Instant.parse("2026-12-15T14:59:59Z");
+    Instant after = Instant.parse("2026-12-15T15:00:00Z");
 
     assertThat(
             termsCatalogRepository.findInForceByCode("TOS", before).orElseThrow().getTermsVersion())
