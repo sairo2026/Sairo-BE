@@ -8,5 +8,5 @@
 -- 이 파일은 V30 다음에 적용되어야 하므로 V30 약관 카탈로그 행 추가가 먼저 병합되어야 한다.
 INSERT INTO terms_catalog (terms_code, terms_version, title, category, required, document_url, content_hash, effective_at, display_context, reconsent_required, change_summary)
 VALUES
-    ('SUBSCRIPTION_PURCHASE', '1.1', '구독·결제 약관과 구독 구매 동의', 'SEPARATE_CONSENT', true, '/legal/subscription-terms', 'c5eedb6fa69de26f5edc51b9fcb8e2ec73913bf4ed9a308ae4fad1696c853b1c', TIMESTAMPTZ '2026-12-16 00:00:00+09', 'PURCHASE', false, '결제 재시도 기준 시각, 결제 실패 사유 표시 위치, 결제 실패·제한 시작·미납 종료 때의 대표 안내 기준, 환불 사유와 신청 방식, 서비스 장애 환불 금액, 회원 탈퇴 조건을 실제 처리에 맞게 고쳤습니다.')
+    ('SUBSCRIPTION_PURCHASE', '1.1', '구독·결제 약관과 구독 구매 동의', 'SEPARATE_CONSENT', true, '/legal/subscription-terms', 'eca742d6baf0299cc04ca3d8e95bf10f8974e25689527479c4423a219f581059', TIMESTAMPTZ '2026-12-16 00:00:00+09', 'PURCHASE', false, '결제 재시도 기준 시각, 결제 실패 사유 표시 위치, 결제 실패·제한 시작·미납 종료 때의 대표 안내 기준, 환불 사유와 신청 방식, 서비스 장애 환불 금액, 회원 탈퇴 조건을 실제 처리에 맞게 고쳤습니다.')
 ON CONFLICT (terms_code, terms_version) DO NOTHING;
