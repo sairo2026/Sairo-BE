@@ -29,6 +29,19 @@ public final class OpsBillingRequests {
                       + " 환불 가능 잔액 안에서 적용한다")
           Long amount) {}
 
+  @Schema(description = "PG가 거절해 실패로 끝난 환불을 다시 실행할 수 있게 되돌린다")
+  public record RefundReopenRequest(
+      @Schema(description = "되돌리는 사유") @PlainText(max = 1000) String reason,
+      @Schema(description = "PG 관리자 화면에서 이 결제가 아직 취소되지 않았음을 확인했는지. true여야 한다")
+          Boolean pgStateConfirmed) {}
+
+  @Schema(description = "PG 관리자 화면에서 직접 취소한 실패 환불을 완료로 닫는다")
+  public record RefundManualResolveRequest(
+      @Schema(description = "PG 관리자 화면의 취소 거래 번호 등 근거") @PlainText(max = 150) String reference,
+      @Schema(description = "직접 처리한 사유") @PlainText(max = 1000) String reason,
+      @Schema(description = "PG 관리자 화면에서 취소 금액이 환불 금액과 같음을 확인했는지. true여야 한다")
+          Boolean pgCancelConfirmed) {}
+
   @Schema(description = "대사 불일치 원인과 해결 근거")
   public record ReconciliationResolveRequest(
       @Schema(description = "불일치 원인") @PlainText(max = 2000) String differenceReason,

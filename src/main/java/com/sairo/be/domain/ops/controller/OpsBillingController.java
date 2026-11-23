@@ -1,6 +1,8 @@
 package com.sairo.be.domain.ops.controller;
 
 import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.ReconciliationResolveRequest;
+import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.RefundManualResolveRequest;
+import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.RefundReopenRequest;
 import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.RefundReviewRequest;
 import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.TaxDocumentAmendRequest;
 import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.TaxDocumentRecordRequest;
@@ -11,6 +13,7 @@ import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.ReconciliationRe
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.RefundDetail;
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.RefundExecuteResponse;
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.RefundItem;
+import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.RefundReprocessResponse;
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.RefundReviewResponse;
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.TaxDocumentItem;
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.TaxDocumentResponse;
@@ -109,6 +112,32 @@ public class OpsBillingController {
       @AuthenticationPrincipal OperatorPrincipal principal,
       HttpSession session) {
     return service.execute(principal.operatorId(), refundId, session);
+  }
+
+  @Operation(
+      summary = "실패한 환불 다시 열기",
+      description =
+          "5분 안의 재인증이 필요하다. PG가 취소를 거절해 실패로 끝난 환불을 승인 상태로 되돌린다. 사유와 PG 미취소 확인이 필수이고, 다음 실행은 새 멱등키로 나간다.")
+  @PostMapping("/refund-requests/{refundId}/reopen")
+  public RefundReprocessResponse reopen(
+      @PathVariable Long refundId,
+      @Valid @RequestBody RefundReopenRequest request,
+      @AuthenticationPrincipal OperatorPrincipal principal,
+      HttpSession session) {
+    return service.reopenRefund(principal.operatorId(), refundId, request, session);
+  }
+
+  @Operation(
+      summary = "실패한 환불을 직접 처리로 닫기",
+      description =
+          "5분 안의 재인증이 필요하다. PG 관리자 화면에서 직접 취소한 실패 환불을 근거와 함께 완료로 닫고 청구서 환불 상태를 맞춘다. 정책 외 보상은 승인한 운영자가 닫을 수 없다.")
+  @PostMapping("/refund-requests/{refundId}/resolve-manually")
+  public RefundReprocessResponse resolveManually(
+      @PathVariable Long refundId,
+      @Valid @RequestBody RefundManualResolveRequest request,
+      @AuthenticationPrincipal OperatorPrincipal principal,
+      HttpSession session) {
+    return service.resolveRefundManually(principal.operatorId(), refundId, request, session);
   }
 
   @Operation(

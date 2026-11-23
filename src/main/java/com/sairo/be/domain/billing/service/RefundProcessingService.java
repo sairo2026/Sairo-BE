@@ -40,6 +40,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class RefundProcessingService {
 
   static final String CANCEL_REASON = "사이로 구독 이용료 환불";
+  static final String ALREADY_CANCELED_CODE = "ALREADY_CANCELED";
 
   private final RefundRequestRepository refundRepository;
   private final BillingInvoiceRepository invoiceRepository;
@@ -172,6 +173,15 @@ public class RefundProcessingService {
         && Long.valueOf(operatorId).equals(refund.getReviewedByOperatorId())) {
       throw new BusinessException(ErrorCode.SELF_APPROVAL_FORBIDDEN);
     }
+    if (status == RefundStatus.APPROVED) {
+      BillingInvoice invoice = invoiceRepository.findById(refund.getInvoiceId()).orElseThrow();
+      if (!invoice.isRefundableStatus()
+          || refundRepository.sumCompleted(invoice.getId())
+                  + refundRepository.sumReserved(invoice.getId())
+              > invoice.getAmount()) {
+        throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+      }
+    }
     String paymentKey =
         attemptRepository
             .findFirstByInvoiceIdAndResultOrderByAttemptNoDesc(
@@ -207,6 +217,63 @@ public class RefundProcessingService {
         refundRepository.saveAndFlush(refund);
       }
     }
+    return refund;
+  }
+
+  /**
+   * PG가 확정 거절해 실패로 끝난 환불을 운영자가 다시 실행할 수 있게 승인 상태로 되돌린다. 이미 취소된 결제라는 거절과 환불 가능 잔액이 모자란 경우는 되돌리지 않는다.
+   * 이전 멱등키와 실패 사유는 감사 기록에 남기도록 돌려준다.
+   */
+  @Transactional
+  public Reopened reopenFailed(long refundId) {
+    RefundRequest refund = lockedRefund(refundId);
+    if (refund.getStatus() != RefundStatus.FAILED || refund.getRefundAmount() == null) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    String failure = refund.getFailureReason();
+    if (failure != null && failure.contains(ALREADY_CANCELED_CODE)) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    BillingInvoice invoice = invoiceRepository.findById(refund.getInvoiceId()).orElseThrow();
+    long refundable =
+        BillingMapper.refundableAmount(
+            invoice,
+            refundRepository.sumCompleted(invoice.getId()),
+            refundRepository.sumReserved(invoice.getId()));
+    if (refundable < refund.getRefundAmount()) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    Reopened reopened = new Reopened(refund.getPgIdempotencyKey(), failure);
+    refund.reopenFromFailure();
+    refundRepository.saveAndFlush(refund);
+    return reopened;
+  }
+
+  /**
+   * 실패로 끝난 환불을 운영자가 PG 관리자 화면에서 직접 취소했을 때 완료로 닫고 청구서 환불 상태를 맞춘다. 정책 외 보상은 승인한 운영자가 닫을 수 없다. 청구서 환불
+   * 합계가 결제액을 넘으면 거절한다.
+   */
+  @Transactional
+  public RefundRequest resolveFailedManually(long refundId, long operatorId, String reference) {
+    RefundRequest refund = lockedRefund(refundId);
+    if (refund.getStatus() != RefundStatus.FAILED || refund.getRefundAmount() == null) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    if (refund.getReasonCode() == RefundReasonCode.POLICY_COMPENSATION
+        && Long.valueOf(operatorId).equals(refund.getReviewedByOperatorId())) {
+      throw new BusinessException(ErrorCode.SELF_APPROVAL_FORBIDDEN);
+    }
+    BillingInvoice invoice = invoiceRepository.findById(refund.getInvoiceId()).orElseThrow();
+    long completed = refundRepository.sumCompleted(invoice.getId());
+    if (!invoice.isRefundableStatus()
+        || completed + refund.getRefundAmount() > invoice.getAmount()) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    refund.markResolvedManually(reference, clock.instant().truncatedTo(ChronoUnit.MICROS));
+    refundRepository.saveAndFlush(refund);
+    invoice.applyRefunded(refundRepository.sumCompleted(invoice.getId()));
+    invoiceRepository.saveAndFlush(invoice);
+    noticeDispatcher.refundCompleted(refund.getOfficeId(), refund.getRefundAmount());
     return refund;
   }
 
@@ -277,6 +344,9 @@ public class RefundProcessingService {
   }
 
   public record ReviewCommand(boolean approve, String note, Long reasonEventId, Long amount) {}
+
+  /** 되돌리기 전 값이다. 감사 기록에만 쓴다. */
+  public record Reopened(String previousIdempotencyKey, String previousFailureReason) {}
 
   private record Prepared(CancelCommand command) {}
 }
