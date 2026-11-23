@@ -28,6 +28,14 @@ public class BillingQueryRepository {
     this.jdbcClient = jdbcClient;
   }
 
+  public boolean isOfficeClosed(long officeId) {
+    return jdbcClient
+        .sql("SELECT closed_at IS NOT NULL FROM office WHERE id = :officeId")
+        .param("officeId", officeId)
+        .query(Boolean.class)
+        .single();
+  }
+
   public int countBillableMembers(long officeId) {
     Integer count =
         jdbcClient

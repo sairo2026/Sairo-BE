@@ -22,6 +22,9 @@ jobs:
       - name: Run security watch unit tests
         run: python3 deploy/scripts/tests/test_security_watch.py -v
 
+      - name: Lint deploy script
+        run: shellcheck deploy/deploy.sh
+
       - name: Run deploy script tests
         run: python3 deploy/scripts/tests/test_deploy_script.py -v
 

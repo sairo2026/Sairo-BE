@@ -1,28 +1,43 @@
+# The api runs as one of two interchangeable slots with the same image. `api`
+# publishes host port 8080 and `api-alt` publishes 8081. deploy.sh starts the
+# idle slot with the new image, waits until it is ready, points nginx at it and
+# only then stops the other slot, so a deploy never leaves nginx without an
+# answering backend. In steady state only one slot runs.
+x-api-slot: &api-slot
+  image: ${ECR_REPOSITORY_URI}:${IMAGE_TAG}
+  restart: unless-stopped
+  # Lets in-flight requests finish after SIGTERM (server.shutdown=graceful).
+  stop_grace_period: 40s
+  environment:
+    SPRING_PROFILES_ACTIVE: prod
+    REDIS_HOST: redis
+    AWS_REGION: ap-northeast-2
+  env_file:
+    - path: ./env/app.env
+      format: raw
+  volumes:
+    - bootstrap-data:/var/sairo/bootstrap
+  depends_on:
+    redis:
+      condition: service_healthy
+    scanner:
+      condition: service_started
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+
 services:
   api:
-    image: ${ECR_REPOSITORY_URI}:${IMAGE_TAG}
+    <<: *api-slot
     ports:
       - "127.0.0.1:8080:8080"
-    restart: unless-stopped
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-      REDIS_HOST: redis
-      AWS_REGION: ap-northeast-2
-    env_file:
-      - path: ./env/app.env
-        format: raw
-    volumes:
-      - bootstrap-data:/var/sairo/bootstrap
-    depends_on:
-      redis:
-        condition: service_healthy
-      scanner:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+
+  api-alt:
+    <<: *api-slot
+    ports:
+      - "127.0.0.1:8081:8080"
 
   # Session and short-lived login state store. Not published to the host;
   # only the api container reaches it over the compose network. The image is

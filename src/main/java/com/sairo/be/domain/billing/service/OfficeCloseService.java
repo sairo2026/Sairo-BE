@@ -110,12 +110,13 @@ public class OfficeCloseService {
 
   /** 끝나지 않은 구독을 지금 끝낸다. 인증 중단 상태는 중단 때 이미 미납 취소·환불·동의 철회를 했으므로 상태만 바꾼다. */
   private void endSubscription(Long officeId, Instant now) {
-    Optional<Subscription> found = subscriptionRepository.findByOfficeId(officeId);
+    Optional<Long> found = subscriptionRepository.findIdByOfficeId(officeId);
     if (found.isEmpty()) {
       return;
     }
-    advisoryLock.lockForTransaction("billing:subscription:" + found.get().getId());
-    Subscription subscription = subscriptionRepository.findById(found.get().getId()).orElseThrow();
+    Long subscriptionId = found.get();
+    advisoryLock.lockForTransaction("billing:subscription:" + subscriptionId);
+    Subscription subscription = subscriptionRepository.findById(subscriptionId).orElseThrow();
     if (subscription.getStatus() == SubscriptionStatus.ENDED) {
       return;
     }

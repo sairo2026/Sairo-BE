@@ -2,7 +2,9 @@ package com.sairo.be.domain.billing.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 
@@ -14,6 +16,9 @@ import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.port.PaymentGateway.PaymentStatus;
 import com.sairo.be.global.port.stub.StubPaymentGateway;
+import com.sairo.be.global.security.StaffPrincipal;
+import com.sairo.be.global.security.StaffRole;
+import com.sairo.be.global.security.StepUpState;
 import com.sairo.be.global.support.TextCipher;
 import com.sairo.be.support.AuthIntegrationTestBase;
 import com.sairo.be.support.IntegrationTest;
@@ -25,17 +30,22 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 청구 중단 복구 시나리오를 이어서 검증한다. 호출 전 중단의 전체 연쇄, 오래 이어지는 확인 중, 결과 중복 전달, 미납 제한과 복구, 동시 재시도, 운영자 재실행 경로를
@@ -45,6 +55,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 class BillingCrashScenarioIntegrationTest extends AuthIntegrationTestBase {
 
   @Autowired private BillingJobService jobService;
+  @Autowired private OfficeCloseService officeCloseService;
+  @Autowired private StepUpState stepUpState;
   @Autowired private BillingChargeService chargeService;
   @Autowired private SystemJobRunService jobRunService;
   @MockitoSpyBean private StubPaymentGateway gateway;
@@ -434,5 +446,165 @@ class BillingCrashScenarioIntegrationTest extends AuthIntegrationTestBase {
         .isEqualTo("PAID");
     assertThat(gateway.charges()).hasSize(1);
     assertThat(subscriptionStatus(due)).isEqualTo("ACTIVE");
+  }
+
+  private void closeOffice(Due due) {
+    Long membershipId =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM office_membership WHERE office_id = ? AND user_id = ?",
+            Long.class,
+            due.officeId(),
+            due.ownerUserId());
+    var owner =
+        new StaffPrincipal(
+            due.ownerUserId(), membershipId, due.officeId(), "시험 대표", StaffRole.OWNER);
+    var session = new MockHttpSession();
+    stepUpState.grant(session);
+    officeCloseService.close(
+        owner,
+        session,
+        new JsonMapper().readTree("{\"confirmed\":true,\"archiveChoice\":\"DECLINE\"}"));
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+    assertThat(count("SELECT count(*) FROM office WHERE closed_at IS NOT NULL")).isEqualTo(1);
+  }
+
+  @Test
+  void 사무소_종료와_승인_조회가_겹쳐도_청구만_승인되고_구독은_종료를_유지한다() throws Exception {
+    Due due = activeDue();
+    gateway.respondWith(PaymentStatus.VERIFYING);
+    jobService.runRenewals(Instant.now());
+    assertThat(invoiceStatus()).isEqualTo("VERIFYING");
+    gateway.resolve(lastOrderId(), PaymentStatus.SUCCEEDED);
+    long invoiceId = count("SELECT id FROM billing_invoice");
+    var inquiryStarted = new CountDownLatch(1);
+    var officeClosed = new CountDownLatch(1);
+    doAnswer(
+            invocation -> {
+              inquiryStarted.countDown();
+              assertThat(officeClosed.await(10, TimeUnit.SECONDS)).isTrue();
+              return invocation.callRealMethod();
+            })
+        .when(gateway)
+        .inquire(any());
+
+    var reconciliation = executor.submit(() -> chargeService.reconcile(invoiceId));
+    try {
+      assertThat(inquiryStarted.await(10, TimeUnit.SECONDS)).isTrue();
+      closeOffice(due);
+    } finally {
+      officeClosed.countDown();
+    }
+
+    assertThat(reconciliation.get(10, TimeUnit.SECONDS)).isPresent();
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+    assertThat(gateway.charges()).hasSize(1);
+  }
+
+  @Test
+  void 승인_반영이_종료보다_먼저_잠금을_잡아도_종료는_최신_구독을_끝낸다() throws Exception {
+    Instant overdue = daysFromNow(-31);
+    Due due = subscriptionIn("PAST_DUE_RESTRICTED", daysFromNow(-61), overdue, overdue);
+    long invoiceId =
+        fixtures
+            .invoice(due.officeId(), due.subscriptionId(), due.consentId())
+            .status("FAILED")
+            .period(overdue, overdue.plus(Duration.ofDays(30)))
+            .insert();
+    gateway.respondWith(PaymentStatus.VERIFYING);
+    assertThat(chargeService.charge(invoiceId).isVerifying()).isTrue();
+    jobService.runDelinquency(Instant.now());
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+    gateway.resolve(lastOrderId(), PaymentStatus.SUCCEEDED);
+
+    var applying = new CountDownLatch(1);
+    var allowApproval = new CountDownLatch(1);
+    doAnswer(
+            invocation -> {
+              applying.countDown();
+              assertThat(allowApproval.await(15, TimeUnit.SECONDS)).isTrue();
+              return invocation.callRealMethod();
+            })
+        .when(transitions)
+        .onPaid(any(), any());
+
+    var reconciliation = executor.submit(() -> chargeService.reconcile(invoiceId));
+    Future<?> closure;
+    try {
+      assertThat(applying.await(10, TimeUnit.SECONDS)).isTrue();
+      closure = executor.submit(() -> closeOffice(due));
+      await()
+          .atMost(Duration.ofSeconds(10))
+          .until(
+              () ->
+                  count(
+                          "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted"
+                              + " AND database = (SELECT oid FROM pg_database WHERE datname = current_database())")
+                      > 0);
+    } finally {
+      allowApproval.countDown();
+    }
+
+    assertThat(reconciliation.get(10, TimeUnit.SECONDS)).isPresent();
+    closure.get(10, TimeUnit.SECONDS);
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+    assertThat(gateway.charges()).hasSize(1);
+  }
+
+  @Test
+  void 직접_종료된_구독의_중복_승인과_재시도는_청구를_다시_만들지_않는다() throws Exception {
+    Due due = activeDue();
+    gateway.respondWith(PaymentStatus.VERIFYING);
+    jobService.runRenewals(Instant.now());
+    assertThat(invoiceStatus()).isEqualTo("VERIFYING");
+    closeOffice(due);
+    Timestamp endedAt =
+        jdbcTemplate.queryForObject(
+            "SELECT ended_at FROM subscription WHERE id = ?",
+            Timestamp.class,
+            due.subscriptionId());
+    gateway.resolve(lastOrderId(), PaymentStatus.SUCCEEDED);
+    long invoiceId = count("SELECT id FROM billing_invoice");
+
+    var results = runConcurrently(4, () -> chargeService.reconcile(invoiceId));
+    assertThat(results).allMatch(Optional.class::isInstance);
+    assertThat(results).anyMatch(result -> ((Optional<?>) result).isPresent());
+    assertThat(chargeService.reconcile(invoiceId)).isEmpty();
+    jobService.runRetries(daysFromNow(31));
+    jobService.runRenewals(daysFromNow(31));
+
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT ended_at FROM subscription WHERE id = ?",
+                Timestamp.class,
+                due.subscriptionId()))
+        .isEqualTo(endedAt);
+    assertThat(count("SELECT count(*) FROM billing_invoice")).isEqualTo(1);
+    assertThat(count("SELECT count(*) FROM billing_charge_attempt")).isEqualTo(1);
+    assertThat(gateway.charges()).hasSize(1);
+  }
+
+  @Test
+  void 직접_종료_뒤_중단된_청구를_복구해도_구독은_끝난_상태로_남는다() {
+    Due due = activeDue();
+    doThrow(new IllegalStateException("승인 기록 반영 중단")).when(transitions).onPaid(any(), any());
+    jobService.runRenewals(Instant.now());
+    assertThat(invoiceStatus()).isEqualTo("PROCESSING");
+    doCallRealMethod().when(transitions).onPaid(any(), any());
+    closeOffice(due);
+
+    jdbcTemplate.update(
+        "UPDATE billing_charge_attempt SET attempted_at = ?",
+        Timestamp.from(Instant.now().minus(Duration.ofMinutes(20))));
+    jobService.recoverInterruptedCharges(Instant.now());
+    assertThat(invoiceStatus()).isEqualTo("VERIFYING");
+    jobService.runReconciliation();
+
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+    assertThat(gateway.charges()).hasSize(1);
   }
 }
