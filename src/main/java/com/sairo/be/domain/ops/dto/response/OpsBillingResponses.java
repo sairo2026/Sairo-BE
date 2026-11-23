@@ -108,7 +108,8 @@ public final class OpsBillingResponses {
       OffsetDateTime reviewedAt,
       String rejectionReason,
       String pgRefundId,
-      OffsetDateTime resolvedAt) {}
+      OffsetDateTime resolvedAt,
+      String failureReason) {}
 
   @Schema(description = "환불 검토 결과")
   public record RefundReviewResponse(

@@ -247,15 +247,15 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
   @Test
   void 고용명부_목록은_사무소_전체_기준_한도와_초과_여부를_준다() throws Exception {
     post("/api/offices/current/employment-roster", rosterBody("김중개", "AGENT"), ownerCookie);
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 11; i++) {
       staffIn(OfficeMembershipRole.DEPUTY);
     }
     mockMvc
         .perform(get("/api/offices/current/employment-roster?page=0&size=25").cookie(ownerCookie))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.quota.qualifiedCount").value(1))
-        .andExpect(jsonPath("$.quota.deputyCount").value(6))
-        .andExpect(jsonPath("$.quota.deputyLimit").value(5))
+        .andExpect(jsonPath("$.quota.qualifiedCount").value(2))
+        .andExpect(jsonPath("$.quota.deputyCount").value(11))
+        .andExpect(jsonPath("$.quota.deputyLimit").value(10))
         .andExpect(jsonPath("$.quota.exceeded").value(true))
         .andExpect(jsonPath("$.items.length()").value(1))
         .andExpect(jsonPath("$.totalElements").value(1));
@@ -271,10 +271,51 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
         mockMvc.perform(get("/api/offices/current/employment-roster")), ErrorCode.UNAUTHENTICATED);
   }
 
+  private tools.jackson.databind.JsonNode quotaOf() throws Exception {
+    return AuthFlowSupport.json(
+            mockMvc
+                .perform(
+                    get("/api/offices/current/employment-roster?page=0&size=25")
+                        .cookie(ownerCookie))
+                .andExpect(status().isOk())
+                .andReturn())
+        .get("quota");
+  }
+
+  @Test
+  void 개인_사무소_대표는_명부에_등록하지_않아도_분모_1명으로_센다() throws Exception {
+    assertThat(quotaOf().get("qualifiedCount").asLong()).isEqualTo(1);
+    assertThat(quotaOf().get("deputyLimit").asLong()).isEqualTo(5);
+  }
+
+  @Test
+  void 대표가_명부에_이미_있으면_중복해서_세지_않는다() throws Exception {
+    jdbcTemplate.update(
+        "INSERT INTO employment_roster (office_id, membership_id, person_name,"
+            + " legal_qualification, employment_start_date, confirmation_source) VALUES (?, ?,"
+            + " '대표 본인', 'AGENT', current_date, 'MANUAL_ENTRY')",
+        office.getId(),
+        owner.membership().getId());
+    assertThat(quotaOf().get("qualifiedCount").asLong()).isEqualTo(1);
+    jdbcTemplate.update(
+        "UPDATE employment_roster SET membership_id = NULL, person_name = ?",
+        owner.user().getName());
+    assertThat(quotaOf().get("qualifiedCount").asLong()).isEqualTo(1);
+  }
+
+  @Test
+  void 법인_사무소는_대표를_분모에_더하지_않고_명부_행만_센다() throws Exception {
+    jdbcTemplate.update(
+        "UPDATE office SET entity_type = 'CORPORATION' WHERE id = ?", office.getId());
+    assertThat(quotaOf().get("qualifiedCount").asLong()).isZero();
+    post("/api/offices/current/employment-roster", rosterBody("김중개", "AGENT"), ownerCookie);
+    assertThat(quotaOf().get("qualifiedCount").asLong()).isEqualTo(1);
+  }
+
   @Test
   void 고용명부_수정은_사무소_버전으로_충돌을_검사하고_한도_초과_경고를_준다() throws Exception {
     post("/api/offices/current/employment-roster", rosterBody("김중개", "AGENT"), ownerCookie);
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
       staffIn(OfficeMembershipRole.DEPUTY);
     }
     long rosterId = jdbcTemplate.queryForObject("SELECT id FROM employment_roster", Long.class);

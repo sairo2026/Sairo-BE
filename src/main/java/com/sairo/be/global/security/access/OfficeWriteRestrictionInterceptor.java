@@ -16,7 +16,7 @@ import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
 
 /**
- * 인증 회수, 미납 제한, 구독 종료로 읽기만 가능한 사무소의 업무 데이터 쓰기를 서버에서 막는다. 화면이 이미 열려 있거나 API를 직접 호출해도 같은 결과다.
+ * 인증 회수, 결제 전, 미납 제한, 구독 종료로 읽기만 가능한 사무소의 업무 데이터 쓰기를 서버에서 막는다. 화면이 이미 열려 있거나 API를 직접 호출해도 같은 결과다.
  * 결제·내보내기·문의·계정처럼 제한 중에도 써야 하는 경로는 대상에 넣지 않는다.
  */
 @Profile("!migrate")
@@ -74,7 +74,7 @@ public class OfficeWriteRestrictionInterceptor implements HandlerInterceptor {
     if (!subject.hasApprovedMembership()) {
       return true;
     }
-    if (writeRestriction.restricted(subject.officeId())) {
+    if (writeRestriction.businessDataWriteBlocked(subject.officeId())) {
       throw new BusinessException(ErrorCode.OFFICE_WRITE_RESTRICTED);
     }
     return true;
