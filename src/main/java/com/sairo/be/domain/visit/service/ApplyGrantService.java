@@ -105,7 +105,7 @@ public class ApplyGrantService {
     Long granteeMembershipId = CustomerInput.optionalLong(body, "granteeMembershipId");
     OffsetDateTime expiresInput = CustomerInput.optionalDateTime(body, "expiresAt");
     PropertyAccessApproval approval = access.lock(principal, propertyId, approvalId);
-    if (writeRestriction.restricted(principal.officeId())) {
+    if (writeRestriction.businessDataWriteBlocked(principal.officeId())) {
       throw new BusinessException(ErrorCode.FORBIDDEN);
     }
     Instant now = now();

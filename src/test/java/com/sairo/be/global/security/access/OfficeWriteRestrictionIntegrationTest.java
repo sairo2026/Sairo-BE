@@ -209,11 +209,12 @@ class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
     long officeId = owner.office().getId();
     String body = taskBody(owner.membership().getId());
 
-    for (String writable : new String[] {"PRE_PAYMENT", "ACTIVE", "PAST_DUE_GRACE"}) {
+    for (String writable : new String[] {"ACTIVE", "PAST_DUE_GRACE"}) {
       setSubscription(officeId, writable);
       mockMvc.perform(jsonPostAs("/api/tasks", body, cookie)).andExpect(status().isCreated());
     }
-    for (String restricted : new String[] {"PAST_DUE_RESTRICTED", "SUSPENDED", "ENDED"}) {
+    for (String restricted :
+        new String[] {"PRE_PAYMENT", "PAST_DUE_RESTRICTED", "SUSPENDED", "ENDED"}) {
       setSubscription(officeId, restricted);
       assertError(
           mockMvc.perform(jsonPostAs("/api/tasks", body, cookie)),
@@ -231,7 +232,8 @@ class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
     Cookie cookie = cookieOf(owner);
     long officeId = owner.office().getId();
 
-    for (String restricted : new String[] {"PAST_DUE_RESTRICTED", "SUSPENDED", "ENDED"}) {
+    for (String restricted :
+        new String[] {"PRE_PAYMENT", "PAST_DUE_RESTRICTED", "SUSPENDED", "ENDED"}) {
       setSubscription(officeId, restricted);
       for (Map.Entry<String, String> sample : PREVIOUSLY_UNGUARDED.entrySet()) {
         assertError(
@@ -247,7 +249,7 @@ class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
     Cookie cookie = cookieOf(owner);
     long officeId = owner.office().getId();
 
-    for (String writable : new String[] {"PRE_PAYMENT", "TRIAL", "ACTIVE", "PAST_DUE_GRACE"}) {
+    for (String writable : new String[] {"TRIAL", "ACTIVE", "PAST_DUE_GRACE"}) {
       setSubscription(officeId, writable);
       for (Map.Entry<String, String> sample : PREVIOUSLY_UNGUARDED.entrySet()) {
         mockMvc

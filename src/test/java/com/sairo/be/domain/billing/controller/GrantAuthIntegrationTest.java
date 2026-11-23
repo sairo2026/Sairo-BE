@@ -66,21 +66,68 @@ class GrantAuthIntegrationTest extends GrantTestBase {
         ErrorCode.INVALID_CREDENTIALS);
   }
 
+  private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder fromIp(
+      String ip, long grantId, String credential) {
+    return postRequest(RETURN, grantAuthBody(grantId, "EMAIL", credential))
+        .apply(null)
+        .with(
+            request -> {
+              request.setRemoteAddr(ip);
+              return request;
+            });
+  }
+
   @Test
-  void 이메일_재확인도_연속_5회_틀리면_정답이어도_429_LOGIN_LOCKED다() throws Exception {
+  void 같은_접속지에서_5회_틀리면_그_접속지만_429이고_다른_접속지의_정상_권한자는_통과한다() throws Exception {
     Holder holder = emailHolder();
     long grantId = returnGrant(holder);
     for (int i = 0; i < 5; i++) {
       assertError(
-          mockMvc.perform(
-              postRequest(RETURN, grantAuthBody(grantId, "EMAIL", "wrong-password")).apply(null)),
+          mockMvc.perform(fromIp("10.1.0.1", grantId, "wrong-password")),
           ErrorCode.INVALID_CREDENTIALS);
     }
 
-    assertError(
-            mockMvc.perform(
-                postRequest(RETURN, grantAuthBody(grantId, "EMAIL", PASSWORD)).apply(null)),
-            ErrorCode.LOGIN_LOCKED)
+    assertError(mockMvc.perform(fromIp("10.1.0.1", grantId, PASSWORD)), ErrorCode.RATE_LIMITED)
+        .andExpect(jsonPath("$.retryAfterSeconds").isNumber());
+    mockMvc.perform(fromIp("10.1.0.2", grantId, PASSWORD)).andExpect(status().isOk());
+  }
+
+  @Test
+  void 제3자의_대입_실패는_계정_로그인을_잠그지_않는다() throws Exception {
+    Holder holder = emailHolder();
+    long grantId = returnGrant(holder);
+    for (int i = 0; i < 5; i++) {
+      assertError(
+          mockMvc.perform(fromIp("10.1.0.3", grantId, "wrong-password")),
+          ErrorCode.INVALID_CREDENTIALS);
+    }
+
+    mockMvc
+        .perform(
+            com.sairo.be.support.AuthFlowSupport.jsonPost(
+                "/api/auth/login",
+                "{\"email\":\""
+                    + holder.user().getEmail()
+                    + "\",\"password\":\""
+                    + PASSWORD
+                    + "\"}"))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void 여러_접속지에서_실패가_쌓여도_권한자를_잠그지_않고_시도_간격만_늘린다() throws Exception {
+    Holder holder = emailHolder();
+    long grantId = returnGrant(holder);
+    for (int ip = 10; ip < 16; ip++) {
+      for (int i = 0; i < 5; i++) {
+        assertError(
+            mockMvc.perform(fromIp("10.2.0." + ip, grantId, "wrong-password")),
+            ErrorCode.INVALID_CREDENTIALS);
+      }
+    }
+
+    mockMvc.perform(fromIp("10.2.0.99", grantId, PASSWORD)).andExpect(status().isOk());
+    assertError(mockMvc.perform(fromIp("10.2.0.98", grantId, PASSWORD)), ErrorCode.RATE_LIMITED)
         .andExpect(jsonPath("$.retryAfterSeconds").isNumber());
   }
 
