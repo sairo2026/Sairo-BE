@@ -29,7 +29,42 @@ MIGRATE_ENV_FILE="${ENV_DIR}/migrate.env"
 LAST_GOOD_FILE="${COMPOSE_DIR}/last-good-tag"
 VERIFIED_GOOD_FILE="${COMPOSE_DIR}/last-good-verified"
 API_DISABLED_FILE="${COMPOSE_DIR}/api-deploy-disabled"
-HEALTH_URL="http://127.0.0.1:8080/actuator/health"
+
+# Zero-downtime layout. The api runs in one of two compose slots with the same
+# image: `api` on host port 8080 and `api-alt` on 8081. nginx reaches the live
+# slot through the `sairo_api` upstream defined in NGINX_UPSTREAM_CONF; the
+# upstream also lists a backup answering 503 with a JSON body and Retry-After,
+# so even a gap with no live slot is a clean, retryable 503 instead of a 502.
+#
+# Blue/green (start the idle slot, switch nginx, stop the old slot) runs two
+# JVMs at once for about a minute, so it is used only when the host has enough
+# available memory. Both versions then run against the same database for that
+# time, which requires every migration to be backward compatible (expand
+# first, contract in a later release): the old version must keep working
+# against the schema the new version's migration produced. The migration step
+# still runs before anything is switched. Otherwise the live slot is recreated
+# in place, as before, with the backup 503 covering the gap.
+SLOT_PRIMARY_SERVICE="api"
+SLOT_PRIMARY_PORT=8080
+SLOT_ALT_SERVICE="api-alt"
+SLOT_ALT_PORT=8081
+MAINTENANCE_PORT=8099
+NGINX_DIR="${SAIRO_NGINX_DIR:-/etc/nginx}"
+NGINX_UPSTREAM_CONF="${NGINX_DIR}/conf.d/sairo-api-upstream.conf"
+NGINX_BACKUP_ROOT="${COMPOSE_DIR}/nginx-backup"
+ZERO_DOWNTIME_DISABLED_FILE="${COMPOSE_DIR}/zero-downtime-disabled"
+MEMINFO_FILE="${SAIRO_MEMINFO_FILE:-/proc/meminfo}"
+DEPLOY_MODE="${DEPLOY_MODE:-auto}"
+OVERLAP_MIN_AVAILABLE_MB="${OVERLAP_MIN_AVAILABLE_MB:-900}"
+DRAIN_SECONDS="${DRAIN_SECONDS:-5}"
+if [[ "${DEPLOY_MODE}" != "auto" && "${DEPLOY_MODE}" != "in-place" ]]; then
+  echo "[deploy] DEPLOY_MODE must be auto or in-place" >&2
+  exit 1
+fi
+if [[ ! "${OVERLAP_MIN_AVAILABLE_MB}" =~ ^[0-9]+$ || ! "${DRAIN_SECONDS}" =~ ^[0-9]+$ ]]; then
+  echo "[deploy] OVERLAP_MIN_AVAILABLE_MB and DRAIN_SECONDS must be non-negative integers" >&2
+  exit 1
+fi
 
 mkdir -p "${ENV_DIR}"
 chmod 700 "${ENV_DIR}"
@@ -337,7 +372,7 @@ umask 077
 } > "${REDIS_ENV_FILE}"
 chmod 600 "${REDIS_ENV_FILE}"
 
-unset REDIS_PASSWORD APP_SECRET_JSONMIGRATOR_SECRET_JSON APP_SECRETS_JSON DB_APP_PASSWORD DB_MIGRATOR_PASSWORD \
+unset REDIS_PASSWORD APP_SECRET_JSON MIGRATOR_SECRET_JSON APP_SECRETS_JSON DB_APP_PASSWORD DB_MIGRATOR_PASSWORD \
   KAKAO_REST_API_KEY KAKAO_CLIENT_SECRET KAKAO_ADMIN_KEY KAKAO_APP_ID PUBLIC_LINK_HMAC_SECRET \
   AUTH_TICKET_SECRET AUTH_RATE_LIMIT_HMAC_SECRET AUTH_KAKAO_KEY_HMAC_SECRET \
   AUTH_UNSUBSCRIBE_SECRET AUTH_KAKAO_KEY_ENCRYPTION_SECRET BILLING_KEY_ENCRYPTION_SECRET \
@@ -373,23 +408,221 @@ run_migration() {
     docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" run --rm migrate
 }
 
-deploy_tag() {
-  local tag="$1"
-  echo "[deploy] pulling ${tag}"
-  IMAGE_TAG="${tag}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
-    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" pull api
-  echo "[deploy] starting ${tag}"
-  IMAGE_TAG="${tag}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
-    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" up -d api
+compose_run() {
+  IMAGE_TAG="${IMAGE_TAG}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
+    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" "$@"
 }
 
+deploy_tag() {
+  local tag="$1"
+  local service="$2"
+  echo "[deploy] pulling ${tag} for ${service}"
+  IMAGE_TAG="${tag}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
+    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" pull "${service}"
+  echo "[deploy] starting ${tag} as ${service}"
+  IMAGE_TAG="${tag}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
+    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" up -d "${service}"
+}
+
+# Only reports healthy once the slot's own port answers both the aggregate
+# health and the readiness probe.
 wait_for_healthy() {
+  local port="$1"
   for _ in $(seq 1 "${HEALTH_ATTEMPTS}"); do
-    if curl -fsS "${HEALTH_URL}" >/dev/null 2>&1; then
+    if curl -fsS "http://127.0.0.1:${port}/actuator/health" >/dev/null 2>&1 \
+      && curl -fsS "http://127.0.0.1:${port}/actuator/health/readiness" >/dev/null 2>&1; then
       return 0
     fi
     sleep "${HEALTH_INTERVAL_SECONDS}"
   done
+  return 1
+}
+
+stop_service() {
+  IMAGE_TAG="${IMAGE_TAG}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
+    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" stop "$@"
+}
+
+service_for_port() {
+  if [ "$1" = "${SLOT_ALT_PORT}" ]; then
+    echo "${SLOT_ALT_SERVICE}"
+  else
+    echo "${SLOT_PRIMARY_SERVICE}"
+  fi
+}
+
+other_port() {
+  if [ "$1" = "${SLOT_ALT_PORT}" ]; then
+    echo "${SLOT_PRIMARY_PORT}"
+  else
+    echo "${SLOT_ALT_PORT}"
+  fi
+}
+
+available_memory_mb() {
+  awk '/^MemAvailable:/ {print int($2 / 1024)}' "${MEMINFO_FILE}" 2>/dev/null || true
+}
+
+# ---- nginx upstream management ------------------------------------------------
+# Every nginx change is validated with `nginx -t` before the reload and is
+# restored automatically when validation, the reload or the post-reload probe
+# fails. None of these functions may fail a deploy by themselves.
+
+nginx_reload() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl reload nginx
+  else
+    nginx -s reload
+  fi
+}
+
+render_upstream_conf() {
+  local port="$1"
+  cat <<EOF
+# Managed by deploy.sh from the Sairo-BE repository. Do not edit by hand.
+# sairo_api points at the live api slot. The backup server below only answers
+# when that slot refuses connections, so a deploy gap is a retryable 503.
+upstream sairo_api {
+    server 127.0.0.1:${port} max_fails=0;
+    server 127.0.0.1:${MAINTENANCE_PORT} backup;
+}
+
+server {
+    listen 127.0.0.1:${MAINTENANCE_PORT};
+    access_log off;
+
+    location / {
+        default_type application/json;
+        add_header Retry-After 5 always;
+        add_header Cache-Control "no-store" always;
+        return 503 '{"code":"SERVICE_UNAVAILABLE","message":"서버를 업데이트하는 중입니다. 잠시 후 다시 시도해 주세요."}';
+    }
+}
+EOF
+}
+
+nginx_current_port() {
+  sed -n 's/^[[:space:]]*server 127\.0\.0\.1:\([0-9][0-9]*\) max_fails=0;.*/\1/p' \
+    "${NGINX_UPSTREAM_CONF}" 2>/dev/null | head -n 1
+}
+
+nginx_routing_ready() {
+  [ -f "${NGINX_UPSTREAM_CONF}" ] \
+    && grep -rqE 'proxy_pass[[:space:]]+http://sairo_api' "${NGINX_DIR}" 2>/dev/null
+}
+
+# Succeeds only when nginx accepts the config, reloads, and the backup
+# listener of the freshly loaded config answers 503.
+nginx_validate_and_reload() {
+  nginx -t >/dev/null 2>&1 || return 1
+  nginx_reload >/dev/null 2>&1 || return 1
+  local code
+  for _ in 1 2 3 4 5; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
+      "http://127.0.0.1:${MAINTENANCE_PORT}/" 2>/dev/null || true)
+    if [ "${code}" = "503" ]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+nginx_switch_port() {
+  local port="$1"
+  local saved
+  # Called inside `if`, where `set -e` does not apply: check each step.
+  saved=$(mktemp "${COMPOSE_DIR}/sairo-api-upstream.conf.XXXXXX") || return 1
+  if ! cp -p "${NGINX_UPSTREAM_CONF}" "${saved}"; then
+    rm -f "${saved}"
+    return 1
+  fi
+  if { render_upstream_conf "${port}" > "${NGINX_UPSTREAM_CONF}" \
+    && chmod 644 "${NGINX_UPSTREAM_CONF}" \
+    && nginx_validate_and_reload; }; then
+    rm -f "${saved}"
+    return 0
+  fi
+  echo "[deploy] nginx did not accept the switch to port ${port}, restoring the previous upstream" >&2
+  cp -p "${saved}" "${NGINX_UPSTREAM_CONF}"
+  rm -f "${saved}"
+  if ! { nginx -t >/dev/null 2>&1 && nginx_reload >/dev/null 2>&1; }; then
+    echo "[deploy] WARNING: nginx could not be reloaded with the restored upstream, check it manually" >&2
+  fi
+  return 1
+}
+
+# One-time (idempotent) switch of the existing `proxy_pass http://127.0.0.1:8080`
+# lines to the managed upstream. Only touches files that match exactly, keeps
+# a copy of each, and puts everything back if nginx rejects the result.
+nginx_bootstrap() {
+  if ! command -v nginx >/dev/null 2>&1 || [ ! -d "${NGINX_DIR}" ]; then
+    echo "[deploy] nginx not found, skipping nginx upstream management"
+    return 1
+  fi
+  if nginx_routing_ready; then
+    return 0
+  fi
+  if [ -f "${ZERO_DOWNTIME_DISABLED_FILE}" ]; then
+    echo "[deploy] ${ZERO_DOWNTIME_DISABLED_FILE} exists, nginx upstream management is off"
+    return 1
+  fi
+  local files=() file
+  while IFS= read -r file; do
+    if [ -n "${file}" ] && [ "${file}" != "${NGINX_UPSTREAM_CONF}" ]; then
+      files+=("${file}")
+    fi
+  done < <(grep -rlE 'proxy_pass[[:space:]]+http://(127\.0\.0\.1|localhost):8080' "${NGINX_DIR}" 2>/dev/null || true)
+  if [ "${#files[@]}" -eq 0 ]; then
+    echo "[deploy] no nginx proxy_pass to 127.0.0.1:8080 found, skipping nginx upstream management" >&2
+    return 1
+  fi
+  for file in "${files[@]}"; do
+    # The upstream name changes the default Host header, so only rewrite files
+    # that set it explicitly.
+    if ! grep -qE 'proxy_set_header[[:space:]]+Host[[:space:]]' "${file}"; then
+      echo "[deploy] ${file} does not set the Host header explicitly, skipping nginx upstream management" >&2
+      return 1
+    fi
+  done
+
+  local backup_dir index=0
+  backup_dir="${NGINX_BACKUP_ROOT}/$(date -u +%Y%m%dT%H%M%SZ)"
+  # This function runs inside an `if`, where `set -e` does not apply, so every
+  # step that matters checks its own result.
+  if ! mkdir -p "${backup_dir}" || ! : > "${backup_dir}/manifest"; then
+    echo "[deploy] could not create ${backup_dir}, skipping nginx upstream management" >&2
+    return 1
+  fi
+  for file in "${files[@]}"; do
+    if ! cp -p "${file}" "${backup_dir}/${index}"; then
+      echo "[deploy] could not back up ${file}, skipping nginx upstream management" >&2
+      return 1
+    fi
+    printf '%s\t%s\n' "${index}" "${file}" >> "${backup_dir}/manifest"
+    index=$((index + 1))
+  done
+
+  echo "[deploy] pointing nginx at the managed sairo_api upstream, originals saved in ${backup_dir}"
+  local tab=$'\t' saved_index saved_file applied=true
+  for file in "${files[@]}"; do
+    sed -i -E 's#(proxy_pass[[:space:]]+http://)(127\.0\.0\.1|localhost):8080#\1sairo_api#' "${file}" \
+      || applied=false
+  done
+  if [ "${applied}" = "true" ]; then
+    { render_upstream_conf "${SLOT_PRIMARY_PORT}" > "${NGINX_UPSTREAM_CONF}" \
+      && chmod 644 "${NGINX_UPSTREAM_CONF}" \
+      && nginx_validate_and_reload; } && return 0
+  fi
+
+  echo "[deploy] nginx rejected the upstream change, restoring the previous configuration" >&2
+  while IFS="${tab}" read -r saved_index saved_file; do
+    cp -p "${backup_dir}/${saved_index}" "${saved_file}"
+  done < "${backup_dir}/manifest"
+  rm -f "${NGINX_UPSTREAM_CONF}"
+  if ! { nginx -t >/dev/null 2>&1 && nginx_reload >/dev/null 2>&1; }; then
+    echo "[deploy] WARNING: nginx could not be reloaded with the restored configuration, check it manually" >&2
+  fi
   return 1
 }
 
@@ -400,16 +633,63 @@ fi
 
 if [ -f "${API_DISABLED_FILE}" ]; then
   echo "[deploy] migration applied, api deployment is disabled by ${API_DISABLED_FILE}"
-  IMAGE_TAG="${IMAGE_TAG}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
-    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" stop api
+  stop_service "${SLOT_PRIMARY_SERVICE}" "${SLOT_ALT_SERVICE}"
   echo "[deploy] api stopped, remove ${API_DISABLED_FILE} and redeploy to resume api deployment"
   exit 0
 fi
 
-deploy_tag "${IMAGE_TAG}"
+# Decide where the new version runs. nginx's upstream is the source of truth
+# for which slot is live; without managed nginx the primary slot is used.
+NGINX_MANAGED=false
+if nginx_bootstrap; then
+  NGINX_MANAGED=true
+fi
+ACTIVE_PORT="${SLOT_PRIMARY_PORT}"
+if [ "${NGINX_MANAGED}" = "true" ]; then
+  ACTIVE_PORT=$(nginx_current_port || true)
+  if [ "${ACTIVE_PORT}" != "${SLOT_PRIMARY_PORT}" ] && [ "${ACTIVE_PORT}" != "${SLOT_ALT_PORT}" ]; then
+    ACTIVE_PORT="${SLOT_PRIMARY_PORT}"
+  fi
+fi
+ACTIVE_SERVICE=$(service_for_port "${ACTIVE_PORT}")
+
+TARGET_PORT="${ACTIVE_PORT}"
+USE_BLUE_GREEN=false
+if [ "${NGINX_MANAGED}" != "true" ]; then
+  echo "[deploy] deploy mode: in-place (nginx upstream is not managed)"
+elif [ "${DEPLOY_MODE}" = "in-place" ] || [ -f "${ZERO_DOWNTIME_DISABLED_FILE}" ]; then
+  echo "[deploy] deploy mode: in-place (requested)"
+else
+  AVAILABLE_MB=$(available_memory_mb)
+  if [[ ! "${AVAILABLE_MB}" =~ ^[0-9]+$ ]]; then
+    echo "[deploy] deploy mode: in-place (available memory could not be read)"
+  elif [ "${AVAILABLE_MB}" -lt "${OVERLAP_MIN_AVAILABLE_MB}" ]; then
+    echo "[deploy] deploy mode: in-place (${AVAILABLE_MB}MB available, ${OVERLAP_MIN_AVAILABLE_MB}MB needed to run two api instances)"
+  else
+    USE_BLUE_GREEN=true
+    TARGET_PORT=$(other_port "${ACTIVE_PORT}")
+    echo "[deploy] deploy mode: blue/green (${AVAILABLE_MB}MB available), ${ACTIVE_SERVICE} stays live until the new instance is ready"
+  fi
+fi
+TARGET_SERVICE=$(service_for_port "${TARGET_PORT}")
+
+deploy_tag "${IMAGE_TAG}" "${TARGET_SERVICE}"
 
 echo "[deploy] waiting up to ${HEALTH_WAIT_SECONDS}s for health check"
-if wait_for_healthy; then
+if wait_for_healthy "${TARGET_PORT}"; then
+  if [ "${USE_BLUE_GREEN}" = "true" ]; then
+    echo "[deploy] ${TARGET_SERVICE} is ready, switching nginx to port ${TARGET_PORT}"
+    if ! nginx_switch_port "${TARGET_PORT}"; then
+      echo "[deploy] nginx switch failed, stopping ${TARGET_SERVICE}; ${ACTIVE_SERVICE} keeps serving the previous version" >&2
+      stop_service "${TARGET_SERVICE}" || true
+      exit 1
+    fi
+    sleep "${DRAIN_SECONDS}"
+    echo "[deploy] stopping previous instance ${ACTIVE_SERVICE}"
+    stop_service "${ACTIVE_SERVICE}" || echo "[deploy] could not stop ${ACTIVE_SERVICE}, continuing" >&2
+  elif [ "${NGINX_MANAGED}" = "true" ] && [ "${ACTIVE_PORT}" != "${TARGET_PORT}" ]; then
+    nginx_switch_port "${TARGET_PORT}" || true
+  fi
   echo "[deploy] healthy, recording ${IMAGE_TAG} as last-good"
   echo "${IMAGE_TAG}" > "${LAST_GOOD_FILE}"
   echo "${IMAGE_TAG}" > "${VERIFIED_GOOD_FILE}"
@@ -418,12 +698,20 @@ if wait_for_healthy; then
 fi
 
 echo "[deploy] health check failed for ${IMAGE_TAG}"
+if [ "${USE_BLUE_GREEN}" = "true" ]; then
+  # Nothing was switched, so the previous version never stopped serving and
+  # there is nothing to roll back.
+  echo "[deploy] ${IMAGE_TAG} never became ready, ${ACTIVE_SERVICE} keeps serving the previous version" >&2
+  compose_run logs --tail 80 "${TARGET_SERVICE}" >&2 || true
+  stop_service "${TARGET_SERVICE}" || true
+  exit 1
+fi
 if [ -n "${ROLLBACK_TAG}" ] && [ "${ROLLBACK_TAG}" != "${IMAGE_TAG}" ]; then
   echo "[deploy] rolling back to ${ROLLBACK_TAG}"
-  deploy_tag "${ROLLBACK_TAG}"
+  deploy_tag "${ROLLBACK_TAG}" "${TARGET_SERVICE}"
 
   echo "[deploy] waiting for health check after rollback"
-  if wait_for_healthy; then
+  if wait_for_healthy "${TARGET_PORT}"; then
     echo "[deploy] rollback to ${ROLLBACK_TAG} is healthy"
   else
     echo "[deploy] rollback failed health check" >&2
@@ -431,9 +719,7 @@ if [ -n "${ROLLBACK_TAG}" ] && [ "${ROLLBACK_TAG}" != "${IMAGE_TAG}" ]; then
 else
   echo "[deploy] no verified rollback target, ${IMAGE_TAG} is left running for inspection" >&2
   echo "[deploy] the previous image was never confirmed healthy against the current schema, so no automatic rollback was attempted" >&2
-  IMAGE_TAG="${IMAGE_TAG}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
-    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" ps api >&2 || true
-  IMAGE_TAG="${IMAGE_TAG}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
-    docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" logs --tail 80 api >&2 || true
+  compose_run ps "${TARGET_SERVICE}" >&2 || true
+  compose_run logs --tail 80 "${TARGET_SERVICE}" >&2 || true
 fi
 exit 1

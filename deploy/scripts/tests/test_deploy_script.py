@@ -36,7 +36,16 @@ echo "IMAGE_TAG=${IMAGE_TAG:-} $*" >> "${STUB_DIR}/docker.log"
 if [ "$1" = "login" ]; then cat > /dev/null; exit 0; fi
 case "$*" in
   *"run --rm migrate"*) exit "$(cat "${STUB_DIR}/migrate-exit" 2>/dev/null || echo 0)" ;;
-  *"up -d api"*) echo "${IMAGE_TAG}" > "${STUB_DIR}/current-tag" ;;
+  *"up -d api-alt"*)
+    echo "${IMAGE_TAG}" > "${STUB_DIR}/current-tag"
+    echo "${IMAGE_TAG}" > "${STUB_DIR}/running-api-alt" ;;
+  *"up -d api"*)
+    echo "${IMAGE_TAG}" > "${STUB_DIR}/current-tag"
+    echo "${IMAGE_TAG}" > "${STUB_DIR}/running-api" ;;
+  *" stop "*)
+    for word in "$@"; do
+      case "${word}" in api|api-alt) rm -f "${STUB_DIR}/running-${word}" ;; esac
+    done ;;
   "image ls "*) cat "${STUB_DIR}/images" 2>/dev/null ;;
   "ps -a "*) cat "${STUB_DIR}/in-use" 2>/dev/null ;;
   "info "*) exit 1 ;;
@@ -50,10 +59,44 @@ exit 0
 """
 
 CURL_STUB = """#!/usr/bin/env bash
+url=""
+for arg in "$@"; do
+  case "${arg}" in http*) url="${arg}" ;; esac
+done
+case "${url}" in
+  *:8099/*)
+    printf '%s' "$(cat "${STUB_DIR}/maintenance-code" 2>/dev/null || echo 503)"
+    exit 0 ;;
+esac
 count=$(cat "${STUB_DIR}/curl-count" 2>/dev/null || echo 0)
 echo $((count + 1)) > "${STUB_DIR}/curl-count"
-current=$(cat "${STUB_DIR}/current-tag" 2>/dev/null || echo none)
+case "${url}" in
+  *:8081/*) slot=running-api-alt ;;
+  *) slot=running-api ;;
+esac
+current=$(cat "${STUB_DIR}/${slot}" 2>/dev/null || echo none)
 grep -qx "${current}" "${STUB_DIR}/healthy-tags" 2>/dev/null
+"""
+
+# `nginx -t` fails while the file named by the stub's `nginx-reject` token
+# appears anywhere under the nginx directory.
+NGINX_STUB = """#!/usr/bin/env bash
+case "$1" in
+  -t)
+    if [ -f "${STUB_DIR}/nginx-reject" ] \\
+      && grep -rqF "$(cat "${STUB_DIR}/nginx-reject")" "${SAIRO_NGINX_DIR}"; then
+      echo "nginx: configuration file test failed" >&2
+      exit 1
+    fi
+    echo "NGINX test" >> "${STUB_DIR}/docker.log" ;;
+  -s) echo "NGINX reload" >> "${STUB_DIR}/docker.log" ;;
+esac
+exit 0
+"""
+
+SYSTEMCTL_STUB = """#!/usr/bin/env bash
+echo "NGINX reload" >> "${STUB_DIR}/docker.log"
+exit 0
 """
 
 DF_STUB = """#!/usr/bin/env bash
@@ -103,14 +146,18 @@ class DeployScriptTests(unittest.TestCase):
         self.stub = self.tmp / "stub"
         self.bin = self.tmp / "bin"
         self.deploy_dir = self.tmp / "deploy"
-        for directory in (self.stub, self.bin, self.deploy_dir):
+        self.nginx_dir = self.tmp / "nginx"
+        for directory in (self.stub, self.bin, self.deploy_dir, self.nginx_dir):
             directory.mkdir()
+        (self.nginx_dir / "conf.d").mkdir()
         for name, body in (
             ("aws", AWS_STUB),
             ("docker", DOCKER_STUB),
             ("curl", CURL_STUB),
             ("sleep", SLEEP_STUB),
             ("df", DF_STUB),
+            ("nginx", NGINX_STUB),
+            ("systemctl", SYSTEMCTL_STUB),
         ):
             path = self.bin / name
             path.write_text(body, encoding="utf-8", newline="\n")
@@ -134,6 +181,8 @@ class DeployScriptTests(unittest.TestCase):
                 "PATH": f"{self.bin}{os.pathsep}{env['PATH']}",
                 "STUB_DIR": self.stub.as_posix(),
                 "SAIRO_DEPLOY_DIR": self.deploy_dir.as_posix(),
+                "SAIRO_NGINX_DIR": self.nginx_dir.as_posix(),
+                "SAIRO_MEMINFO_FILE": (self.stub / "meminfo").as_posix(),
             }
         )
         env.update(extra_env or {})
@@ -528,6 +577,432 @@ class DeployScriptTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("MIN_FREE_DISK_MB", result.stderr)
+
+    # ---- zero-downtime deploy: nginx upstream and blue/green ----
+
+    APP_CONF = (
+        "server {\n"
+        "  listen 443 ssl;\n"
+        "  location /api/ {\n"
+        "    proxy_set_header Host $host;\n"
+        "    proxy_pass http://127.0.0.1:8080;\n"
+        "  }\n"
+        "  location / {\n"
+        "    proxy_pass http://127.0.0.1:3000;\n"
+        "  }\n"
+        "}\n"
+    )
+
+    def write_app_conf(self, text=None):
+        path = self.nginx_dir / "app.conf"
+        path.write_bytes((text or self.APP_CONF).encode())
+        return path
+
+    def upstream_conf(self):
+        return self.nginx_dir / "conf.d" / "sairo-api-upstream.conf"
+
+    def upstream_port(self):
+        for line in self.upstream_conf().read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("server 127.0.0.1:") and "max_fails=0" in line:
+                return line.split(":")[1].split()[0]
+        return None
+
+    def set_memory(self, available_mb):
+        (self.stub / "meminfo").write_text(
+            f"MemTotal: 2000000 kB\nMemAvailable: {available_mb * 1024} kB\n", encoding="utf-8"
+        )
+
+    def prepare_managed_nginx(self, port="8080", running=None, memory_mb=4000):
+        """nginx already switched to the managed upstream, as after the first deploy."""
+        self.write_app_conf(self.APP_CONF.replace("127.0.0.1:8080", "sairo_api"))
+        text = (
+            "upstream sairo_api {\n"
+            f"    server 127.0.0.1:{port} max_fails=0;\n"
+            "    server 127.0.0.1:8099 backup;\n"
+            "}\n"
+        )
+        self.upstream_conf().write_text(text, encoding="utf-8")
+        service = "api-alt" if port == "8081" else "api"
+        (self.stub / f"running-{service}").write_text((running or OLD_TAG) + "\n", encoding="utf-8")
+        self.set_memory(memory_mb)
+
+    def docker_lines(self):
+        return self.docker_log().splitlines()
+
+    def index_of(self, needle, start=0):
+        for index, line in enumerate(self.docker_lines()):
+            if index >= start and needle in line:
+                return index
+        self.fail(f"{needle!r} not found in docker log:\n{self.docker_log()}")
+
+    def started(self):
+        return [
+            line.rsplit(" ", 1)[1]
+            for line in self.docker_lines()
+            if " up -d " in line and not line.startswith("NGINX")
+        ]
+
+    def stopped(self):
+        return [
+            line.split(" stop ", 1)[1].split()
+            for line in self.docker_lines()
+            if " stop " in line
+        ]
+
+    def reloads(self):
+        return [line for line in self.docker_lines() if line == "NGINX reload"]
+
+    def test_first_deploy_points_nginx_at_the_managed_upstream_and_keeps_other_proxies(self):
+        self.write_app_conf()
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = (self.nginx_dir / "app.conf").read_text(encoding="utf-8")
+        self.assertIn("proxy_pass http://sairo_api;", text)
+        self.assertIn("proxy_pass http://127.0.0.1:3000;", text)
+        self.assertNotIn("127.0.0.1:8080", text)
+        self.assertEqual(self.upstream_port(), "8080")
+        self.assertEqual(len(self.reloads()), 1)
+        manifests = list((self.deploy_dir / "nginx-backup").glob("*/manifest"))
+        self.assertEqual(len(manifests), 1)
+        saved = manifests[0].parent / "0"
+        self.assertEqual(saved.read_bytes(), self.APP_CONF.encode())
+
+    def test_upstream_conf_has_backup_with_json_503_and_retry_after(self):
+        self.write_app_conf()
+        self.set_healthy(NEW_TAG)
+
+        self.run_deploy()
+
+        text = self.upstream_conf().read_text(encoding="utf-8")
+        self.assertIn("server 127.0.0.1:8080 max_fails=0;", text)
+        self.assertIn("server 127.0.0.1:8099 backup;", text)
+        self.assertIn("listen 127.0.0.1:8099;", text)
+        self.assertIn("default_type application/json;", text)
+        self.assertIn("add_header Retry-After 5 always;", text)
+        self.assertIn("return 503 ", text)
+        self.assertIn('"code":"SERVICE_UNAVAILABLE"', text)
+
+    def test_bootstrap_is_idempotent(self):
+        self.write_app_conf()
+        self.set_healthy(NEW_TAG)
+        self.run_deploy()
+        first = (self.nginx_dir / "app.conf").read_bytes()
+        reloads = len(self.reloads())
+
+        self.run_deploy()
+
+        self.assertEqual((self.nginx_dir / "app.conf").read_bytes(), first)
+        self.assertEqual(len(list((self.deploy_dir / "nginx-backup").glob("*/manifest"))), 1)
+        self.assertEqual(len(self.reloads()), reloads)
+
+    def test_rejected_nginx_config_is_restored_and_deploy_continues_in_place(self):
+        self.write_app_conf()
+        (self.stub / "nginx-reject").write_text("sairo_api", encoding="utf-8")
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.nginx_dir / "app.conf").read_bytes(), self.APP_CONF.encode())
+        self.assertFalse(self.upstream_conf().exists())
+        self.assertIn("restoring the previous configuration", result.stderr)
+        self.assertEqual(self.started(), ["api"])
+
+    def test_failed_probe_of_the_maintenance_listener_restores_nginx(self):
+        self.write_app_conf()
+        (self.stub / "maintenance-code").write_text("000", encoding="utf-8")
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.nginx_dir / "app.conf").read_bytes(), self.APP_CONF.encode())
+        self.assertFalse(self.upstream_conf().exists())
+
+    def test_nginx_proxy_without_explicit_host_header_is_left_alone(self):
+        original = self.APP_CONF.replace("    proxy_set_header Host $host;\n", "")
+        self.write_app_conf(original)
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.nginx_dir / "app.conf").read_bytes(), original.encode())
+        self.assertFalse(self.upstream_conf().exists())
+        self.assertEqual(self.reloads(), [])
+
+    def test_no_matching_nginx_proxy_leaves_nginx_untouched(self):
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.upstream_conf().exists())
+        self.assertEqual(self.reloads(), [])
+        self.assertEqual(self.started(), ["api"])
+
+    def test_migration_failure_does_not_touch_nginx(self):
+        self.write_app_conf()
+        (self.stub / "migrate-exit").write_text("1", encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual((self.nginx_dir / "app.conf").read_bytes(), self.APP_CONF.encode())
+        self.assertFalse(self.upstream_conf().exists())
+
+    def test_blue_green_starts_idle_slot_switches_nginx_then_stops_old_slot(self):
+        self.prepare_managed_nginx(port="8080")
+        self.set_healthy(NEW_TAG, OLD_TAG)
+        (self.deploy_dir / "last-good-tag").write_text(OLD_TAG + "\n", encoding="utf-8")
+        (self.deploy_dir / "last-good-verified").write_text(OLD_TAG + "\n", encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.started(), ["api-alt"])
+        self.assertEqual(self.upstream_port(), "8081")
+        self.assertEqual(self.stopped(), [["api"]])
+        up = self.index_of("up -d api-alt")
+        reload_index = self.index_of("NGINX reload", up)
+        stop = self.index_of(" stop api", reload_index)
+        self.assertLess(up, reload_index)
+        self.assertLess(reload_index, stop)
+        self.assertEqual(self.read("last-good-tag"), NEW_TAG)
+        self.assertEqual(self.read("last-good-verified"), NEW_TAG)
+
+    def test_blue_green_waits_for_both_health_and_readiness_of_the_new_slot_port(self):
+        self.prepare_managed_nginx(port="8080")
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.curl_count(), 2)
+
+    def test_next_blue_green_deploy_flips_back_to_the_primary_slot(self):
+        self.prepare_managed_nginx(port="8081", running=OLD_TAG)
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.started(), ["api"])
+        self.assertEqual(self.upstream_port(), "8080")
+        self.assertEqual(self.stopped(), [["api-alt"]])
+
+    def test_unready_new_slot_never_touches_nginx_or_the_live_slot(self):
+        self.prepare_managed_nginx(port="8080")
+        (self.deploy_dir / "last-good-tag").write_text(OLD_TAG + "\n", encoding="utf-8")
+        (self.deploy_dir / "last-good-verified").write_text(OLD_TAG + "\n", encoding="utf-8")
+        self.set_healthy(OLD_TAG)
+        conf_before = self.upstream_conf().read_bytes()
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.upstream_conf().read_bytes(), conf_before)
+        self.assertEqual(self.reloads(), [])
+        self.assertEqual(self.stopped(), [["api-alt"]])
+        self.assertEqual(self.started(), ["api-alt"])
+        self.assertNotIn("rolling back", result.stdout)
+        self.assertEqual(self.read("last-good-tag"), OLD_TAG)
+        self.assertEqual(
+            (self.stub / "running-api").read_text(encoding="utf-8").strip(), OLD_TAG
+        )
+        self.assertIn("keeps serving the previous version", result.stderr)
+
+    def test_unready_new_slot_does_not_prune(self):
+        self.prepare_managed_nginx(port="8080")
+        self.set_healthy(OLD_TAG)
+        self.set_images(NEW_TAG, OLD_TAG, "d" * 40)
+
+        self.run_deploy()
+
+        self.assertEqual(self.removed(), [])
+
+    def test_rejected_switch_restores_nginx_and_keeps_the_live_slot(self):
+        self.prepare_managed_nginx(port="8080")
+        (self.deploy_dir / "last-good-tag").write_text(OLD_TAG + "\n", encoding="utf-8")
+        self.set_healthy(NEW_TAG, OLD_TAG)
+        (self.stub / "nginx-reject").write_text("127.0.0.1:8081", encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.upstream_port(), "8080")
+        self.assertEqual(self.stopped(), [["api-alt"]])
+        self.assertEqual(self.read("last-good-tag"), OLD_TAG)
+        self.assertIn("restoring the previous upstream", result.stderr)
+
+    def test_low_memory_recreates_the_live_slot_in_place_without_switching(self):
+        self.prepare_managed_nginx(port="8081", memory_mb=300)
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.started(), ["api-alt"])
+        self.assertEqual(self.stopped(), [])
+        self.assertEqual(self.upstream_port(), "8081")
+        self.assertEqual(self.reloads(), [])
+        self.assertIn("in-place", result.stdout)
+        self.assertIn("300MB available", result.stdout)
+
+    def test_unreadable_memory_falls_back_to_in_place(self):
+        self.prepare_managed_nginx(port="8080")
+        (self.stub / "meminfo").unlink()
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.started(), ["api"])
+        self.assertEqual(self.stopped(), [])
+
+    def test_memory_threshold_can_be_tuned_by_environment(self):
+        self.prepare_managed_nginx(port="8080", memory_mb=500)
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy(extra_env={"OVERLAP_MIN_AVAILABLE_MB": "400"})
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.started(), ["api-alt"])
+
+    def test_in_place_mode_can_be_forced(self):
+        self.prepare_managed_nginx(port="8080")
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy(extra_env={"DEPLOY_MODE": "in-place"})
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.started(), ["api"])
+        self.assertEqual(self.stopped(), [])
+
+    def test_disabled_marker_forces_in_place_and_skips_bootstrap(self):
+        self.write_app_conf()
+        (self.deploy_dir / "zero-downtime-disabled").write_text("", encoding="utf-8")
+        self.set_memory(4000)
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.nginx_dir / "app.conf").read_bytes(), self.APP_CONF.encode())
+        self.assertEqual(self.started(), ["api"])
+
+    def test_invalid_deploy_mode_is_rejected_before_deploying(self):
+        result = self.run_deploy(extra_env={"DEPLOY_MODE": "fast"})
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("DEPLOY_MODE", result.stderr)
+        self.assertNotIn("up -d", self.docker_log())
+
+    def test_in_place_failure_still_rolls_back_to_the_verified_tag_on_the_live_slot(self):
+        self.prepare_managed_nginx(port="8081", memory_mb=300)
+        (self.deploy_dir / "last-good-tag").write_text(OLD_TAG + "\n", encoding="utf-8")
+        (self.deploy_dir / "last-good-verified").write_text(OLD_TAG + "\n", encoding="utf-8")
+        self.set_healthy(OLD_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.started(), ["api-alt", "api-alt"])
+        self.assertIn(f"rollback to {OLD_TAG} is healthy", result.stdout)
+
+    def test_blue_green_prune_keeps_new_previous_and_running_images(self):
+        self.prepare_managed_nginx(port="8080")
+        (self.deploy_dir / "last-good-tag").write_text(OLD_TAG + "\n", encoding="utf-8")
+        self.set_healthy(NEW_TAG, OLD_TAG)
+        stale = "d" * 40
+        self.set_images(NEW_TAG, OLD_TAG, stale)
+        self.set_in_use(NEW_TAG, OLD_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.removed_images(), [f"{REPO}:{stale}"])
+
+    def test_api_disabled_marker_stops_both_slots(self):
+        (self.deploy_dir / "api-deploy-disabled").write_text("", encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.stopped(), [["api", "api-alt"]])
+        self.assertNotIn("up -d", self.docker_log())
+
+
+COMPOSE_FILE = DEPLOY_SCRIPT.parent / "docker-compose.prod.yml"
+
+
+def compose_available():
+    if not shutil.which("docker"):
+        return False
+    try:
+        return (
+            subprocess.run(
+                ["docker", "compose", "version"], capture_output=True, timeout=60
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+@unittest.skipUnless(compose_available(), "docker with the compose plugin is required")
+class ApiSlotComposeTests(unittest.TestCase):
+    def rendered(self):
+        tmp = Path(tempfile.mkdtemp(prefix="slot-compose-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        shutil.copy(COMPOSE_FILE, tmp / "docker-compose.prod.yml")
+        (tmp / "env").mkdir()
+        for name in ("app.env", "migrate.env"):
+            (tmp / "env" / name).write_text("", encoding="utf-8")
+        env = dict(os.environ)
+        env.update({"ECR_REPOSITORY_URI": "example.invalid/sairo-be", "IMAGE_TAG": NEW_TAG})
+        result = subprocess.run(
+            [
+                "docker", "compose",
+                "-f", (tmp / "docker-compose.prod.yml").as_posix(),
+                "--project-directory", tmp.as_posix(),
+                "config", "--format", "json",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)["services"]
+
+    def test_both_slots_run_the_same_image_on_distinct_loopback_ports(self):
+        services = self.rendered()
+
+        self.assertEqual(services["api"]["image"], services["api-alt"]["image"])
+        self.assertEqual(services["api"]["image"], f"example.invalid/sairo-be:{NEW_TAG}")
+        ports = {
+            name: [(p["host_ip"], int(p["published"]), p["target"]) for p in services[name]["ports"]]
+            for name in ("api", "api-alt")
+        }
+        self.assertEqual(ports["api"], [("127.0.0.1", 8080, 8080)])
+        self.assertEqual(ports["api-alt"], [("127.0.0.1", 8081, 8080)])
+
+    def test_slots_share_runtime_settings_and_allow_graceful_shutdown(self):
+        services = self.rendered()
+
+        for name in ("api", "api-alt"):
+            with self.subTest(service=name):
+                service = services[name]
+                self.assertEqual(service["environment"]["SPRING_PROFILES_ACTIVE"], "prod")
+                self.assertEqual(service["restart"], "unless-stopped")
+                self.assertEqual(service["stop_grace_period"], "40s")
+                self.assertIn("redis", service["depends_on"])
+                self.assertEqual(service["volumes"][0]["source"], "bootstrap-data")
 
 
 if __name__ == "__main__":
