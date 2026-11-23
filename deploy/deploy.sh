@@ -478,12 +478,13 @@ nginx_reload() {
 
 render_upstream_conf() {
   local port="$1"
+  local state="${2:-}"
   cat <<EOF
 # Managed by deploy.sh from the Sairo-BE repository. Do not edit by hand.
 # sairo_api points at the live api slot. The backup server below only answers
 # when that slot refuses connections, so a deploy gap is a retryable 503.
 upstream sairo_api {
-    server 127.0.0.1:${port} max_fails=0;
+    server 127.0.0.1:${port} max_fails=0${state:+ ${state}};
     server 127.0.0.1:${MAINTENANCE_PORT} backup;
 }
 
@@ -502,7 +503,7 @@ EOF
 }
 
 nginx_current_port() {
-  sed -n 's/^[[:space:]]*server 127\.0\.0\.1:\([0-9][0-9]*\) max_fails=0;.*/\1/p' \
+  sed -n 's/^[[:space:]]*server 127\.0\.0\.1:\([0-9][0-9]*\) max_fails=0\( down\)\{0,1\};.*/\1/p' \
     "${NGINX_UPSTREAM_CONF}" 2>/dev/null | head -n 1
 }
 
@@ -530,6 +531,7 @@ nginx_validate_and_reload() {
 
 nginx_switch_port() {
   local port="$1"
+  local state="${2:-}"
   local saved
   # Called inside `if`, where `set -e` does not apply: check each step.
   saved=$(mktemp "${COMPOSE_DIR}/sairo-api-upstream.conf.XXXXXX") || return 1
@@ -537,7 +539,7 @@ nginx_switch_port() {
     rm -f "${saved}"
     return 1
   fi
-  if { render_upstream_conf "${port}" > "${NGINX_UPSTREAM_CONF}" \
+  if { render_upstream_conf "${port}" "${state}" > "${NGINX_UPSTREAM_CONF}" \
     && chmod 644 "${NGINX_UPSTREAM_CONF}" \
     && nginx_validate_and_reload; }; then
     rm -f "${saved}"
@@ -626,6 +628,36 @@ nginx_bootstrap() {
   return 1
 }
 
+# While the live slot is recreated in place, its published port accepts a
+# connection before the application listens and then resets it. nginx retries
+# such a failure on the backup only for requests it may safely repeat, so a
+# POST would end as a 502. Marking the slot `down` for the duration sends every
+# request to the backup, which answers the retryable 503 for all methods.
+MAINTENANCE_ACTIVE=false
+
+enter_maintenance() {
+  if nginx_switch_port "$1" down; then
+    MAINTENANCE_ACTIVE=true
+    echo "[deploy] nginx answers 503 with Retry-After while the api is recreated"
+  else
+    echo "[deploy] could not enable the maintenance answer in nginx, recreating without it" >&2
+  fi
+}
+
+leave_maintenance() {
+  [ "${MAINTENANCE_ACTIVE}" = "true" ] || return 0
+  for _ in 1 2 3; do
+    if nginx_switch_port "$1"; then
+      MAINTENANCE_ACTIVE=false
+      echo "[deploy] nginx routes to port $1 again"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "[deploy] WARNING: nginx still answers the maintenance 503, deploy again or restore ${NGINX_UPSTREAM_CONF} by hand" >&2
+  return 0
+}
+
 if ! run_migration "${IMAGE_TAG}"; then
   echo "[deploy] migration failed for ${IMAGE_TAG}, leaving current api container untouched" >&2
   exit 1
@@ -673,6 +705,13 @@ else
 fi
 TARGET_SERVICE=$(service_for_port "${TARGET_PORT}")
 
+# Whatever way the script ends after this point, nginx must not be left in the
+# maintenance state.
+trap 'leave_maintenance "${ACTIVE_PORT}"' EXIT
+if [ "${NGINX_MANAGED}" = "true" ] && [ "${USE_BLUE_GREEN}" != "true" ]; then
+  enter_maintenance "${ACTIVE_PORT}"
+fi
+
 deploy_tag "${IMAGE_TAG}" "${TARGET_SERVICE}"
 
 echo "[deploy] waiting up to ${HEALTH_WAIT_SECONDS}s for health check"
@@ -687,8 +726,8 @@ if wait_for_healthy "${TARGET_PORT}"; then
     sleep "${DRAIN_SECONDS}"
     echo "[deploy] stopping previous instance ${ACTIVE_SERVICE}"
     stop_service "${ACTIVE_SERVICE}" || echo "[deploy] could not stop ${ACTIVE_SERVICE}, continuing" >&2
-  elif [ "${NGINX_MANAGED}" = "true" ] && [ "${ACTIVE_PORT}" != "${TARGET_PORT}" ]; then
-    nginx_switch_port "${TARGET_PORT}" || true
+  else
+    leave_maintenance "${ACTIVE_PORT}"
   fi
   echo "[deploy] healthy, recording ${IMAGE_TAG} as last-good"
   echo "${IMAGE_TAG}" > "${LAST_GOOD_FILE}"
