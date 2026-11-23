@@ -36,6 +36,28 @@ public class BillingQueryRepository {
         .single();
   }
 
+  /**
+   * 사무소가 종료된 뒤 승인으로 결제된 청구서 가운데 승인 지연 환불 접수가 없는 것이다. 종료 전에 결제된 청구서는 종료 때 잔여기간 환불이 맡으므로 결제 시각이 종료 시각
+   * 이후인 것만 본다.
+   */
+  public List<Long> findLateApprovedInvoicesWithoutRefund() {
+    return jdbcClient
+        .sql(
+            """
+            SELECT i.id FROM billing_invoice i
+            JOIN office o ON o.id = i.office_id
+            WHERE i.status = 'PAID' AND o.closed_at IS NOT NULL AND i.paid_at >= o.closed_at
+              AND EXISTS (SELECT 1 FROM billing_charge_attempt a
+                          WHERE a.invoice_id = i.id AND a.result = 'SUCCESS')
+              AND NOT EXISTS (SELECT 1 FROM refund_request r
+                              WHERE r.invoice_id = i.id AND r.reason_code = 'LATE_APPROVAL')
+            ORDER BY i.id
+            LIMIT 200
+            """)
+        .query(Long.class)
+        .list();
+  }
+
   public int countBillableMembers(long officeId) {
     Integer count =
         jdbcClient

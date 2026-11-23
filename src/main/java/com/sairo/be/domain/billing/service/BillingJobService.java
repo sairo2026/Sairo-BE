@@ -53,6 +53,7 @@ public class BillingJobService {
   private final BillingNoticeDispatcher noticeDispatcher;
   private final BillingReconciliationService reconciliationService;
   private final LiveChargingGuard liveChargingGuard;
+  private final LateApprovalRefunds lateApprovalRefunds;
 
   public BillingJobService(
       SubscriptionRepository subscriptionRepository,
@@ -70,7 +71,8 @@ public class BillingJobService {
       AuthSuspensionService authSuspensionService,
       BillingNoticeDispatcher noticeDispatcher,
       BillingReconciliationService reconciliationService,
-      LiveChargingGuard liveChargingGuard) {
+      LiveChargingGuard liveChargingGuard,
+      LateApprovalRefunds lateApprovalRefunds) {
     this.subscriptionRepository = subscriptionRepository;
     this.invoiceRepository = invoiceRepository;
     this.customerRepository = customerRepository;
@@ -87,6 +89,7 @@ public class BillingJobService {
     this.noticeDispatcher = noticeDispatcher;
     this.reconciliationService = reconciliationService;
     this.liveChargingGuard = liveChargingGuard;
+    this.lateApprovalRefunds = lateApprovalRefunds;
   }
 
   public void runAll(Instant now) {
@@ -98,6 +101,7 @@ public class BillingJobService {
     runDelinquency(now);
     runPrePaymentExpiry(now);
     runReconciliation();
+    runLateApprovalRefundSweep();
     authSuspensionService.expireSuspensions(now);
     runDailyReconciliation(now);
   }
@@ -338,6 +342,18 @@ public class BillingJobService {
       } catch (RuntimeException e) {
         log.warn("결제 결과 확인에 실패했습니다. invoiceId={}", invoice.getId(), e);
       }
+    }
+  }
+
+  /** 종료한 사무소에 늦게 승인된 결제 가운데 환불 접수가 없는 것을 찾아 접수한다. 실패해도 다음 주기에 다시 시도한다. */
+  public void runLateApprovalRefundSweep() {
+    try {
+      int created = lateApprovalRefunds.sweep();
+      if (created > 0) {
+        log.warn("종료한 사무소의 늦은 승인 결제 환불을 접수했습니다. count={}", created);
+      }
+    } catch (RuntimeException e) {
+      log.warn("종료한 사무소의 늦은 승인 결제 환불 접수 점검에 실패했습니다.", e);
     }
   }
 

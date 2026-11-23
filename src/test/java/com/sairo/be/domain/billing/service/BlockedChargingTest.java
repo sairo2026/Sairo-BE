@@ -86,7 +86,8 @@ class BlockedChargingTest {
         mock(AuthSuspensionService.class),
         mock(BillingNoticeDispatcher.class),
         mock(BillingReconciliationService.class),
-        guard);
+        guard,
+        mock(LateApprovalRefunds.class));
   }
 
   private void assertNoRepositoryOrGatewayUse() {
@@ -169,6 +170,7 @@ class BlockedChargingTest {
             transactionTemplate,
             mock(BillingNoticeDispatcher.class),
             liveGuard(false),
+            mock(LateApprovalRefunds.class),
             CLOCK);
 
     assertThatThrownBy(() -> service.charge(1L))
