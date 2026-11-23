@@ -425,13 +425,21 @@ deploy_tag() {
 }
 
 # Only reports healthy once the slot's own port answers both the aggregate
-# health and the readiness probe.
+# health and the readiness probe on HEALTH_STABLE_PASSES consecutive checks, so
+# an instance that answers once and then drops out again is not promoted.
+HEALTH_STABLE_PASSES=3
 wait_for_healthy() {
   local port="$1"
+  local passes=0
   for _ in $(seq 1 "${HEALTH_ATTEMPTS}"); do
     if curl -fsS "http://127.0.0.1:${port}/actuator/health" >/dev/null 2>&1 \
       && curl -fsS "http://127.0.0.1:${port}/actuator/health/readiness" >/dev/null 2>&1; then
-      return 0
+      passes=$((passes + 1))
+      if [ "${passes}" -ge "${HEALTH_STABLE_PASSES}" ]; then
+        return 0
+      fi
+    else
+      passes=0
     fi
     sleep "${HEALTH_INTERVAL_SECONDS}"
   done
