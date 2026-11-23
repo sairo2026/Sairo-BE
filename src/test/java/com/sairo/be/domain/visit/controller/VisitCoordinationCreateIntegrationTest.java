@@ -286,10 +286,18 @@ class VisitCoordinationCreateIntegrationTest extends VisitIntegrationTestBase {
         ErrorCode.RESOURCE_NOT_FOUND);
   }
 
+  /** 대표 본인이 분모 1명이라 한도가 5명이므로 보조원을 5명 더 두어 총 6명으로 한도를 넘긴다. */
+  private void exceedDeputyLimit(com.sairo.be.domain.office.entity.Office office) {
+    for (int i = 0; i < 5; i++) {
+      staffIn(office, OfficeMembershipRole.DEPUTY);
+    }
+  }
+
   @Test
   void 중개보조원은_본인을_담당자로만_만들_수_있고_한도_초과_중에는_잠긴다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     var deputy = staffIn(owner.office(), OfficeMembershipRole.DEPUTY);
+    exceedDeputyLimit(owner.office());
     Cookie ownerCookie = cookieOf(owner);
     Cookie deputyCookie = cookieOf(deputy);
     long customer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
@@ -338,6 +346,7 @@ class VisitCoordinationCreateIntegrationTest extends VisitIntegrationTestBase {
   void 대표가_중개보조원을_담당자로_지정해도_한도_초과_중에는_잠긴다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     var deputy = staffIn(owner.office(), OfficeMembershipRole.DEPUTY);
+    exceedDeputyLimit(owner.office());
     Cookie ownerCookie = cookieOf(owner);
     long customer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
     long property = newProperty(ownerCookie);

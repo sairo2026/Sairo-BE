@@ -5,7 +5,6 @@ import static com.sairo.be.global.support.TimeRules.toDisplayOffset;
 import com.sairo.be.domain.auth.entity.AppUser;
 import com.sairo.be.domain.auth.repository.AppUserRepository;
 import com.sairo.be.domain.auth.service.KakaoLoginService;
-import com.sairo.be.domain.auth.service.PasswordAttemptGuard;
 import com.sairo.be.domain.auth.service.PasswordHasher;
 import com.sairo.be.domain.billing.dto.request.GrantAuthRequest;
 import com.sairo.be.domain.billing.dto.response.GrantAuthResponse;
@@ -36,7 +35,6 @@ public class GrantAuthService {
   private final ArchiveGrantRepository archiveGrantRepository;
   private final AppUserRepository appUserRepository;
   private final PasswordHasher passwordHasher;
-  private final PasswordAttemptGuard attemptGuard;
   private final StringRedisTemplate redis;
   private final RequestRateLimiter rateLimiter;
   private final GrantSessionManager sessionManager;
@@ -47,7 +45,6 @@ public class GrantAuthService {
       ArchiveGrantRepository archiveGrantRepository,
       AppUserRepository appUserRepository,
       PasswordHasher passwordHasher,
-      PasswordAttemptGuard attemptGuard,
       StringRedisTemplate redis,
       RequestRateLimiter rateLimiter,
       GrantSessionManager sessionManager,
@@ -56,7 +53,6 @@ public class GrantAuthService {
     this.archiveGrantRepository = archiveGrantRepository;
     this.appUserRepository = appUserRepository;
     this.passwordHasher = passwordHasher;
-    this.attemptGuard = attemptGuard;
     this.redis = redis;
     this.rateLimiter = rateLimiter;
     this.sessionManager = sessionManager;
@@ -76,7 +72,7 @@ public class GrantAuthService {
         appUserRepository
             .findById(grant.userId())
             .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
-    verifyCredential(user, request);
+    verifyCredential(user, request, clientIp);
     if (!grant.usable()) {
       throw new BusinessException(
           type == GrantType.RETURN
@@ -114,17 +110,36 @@ public class GrantAuthService {
         grant.isUsable(clock.instant()));
   }
 
-  private void verifyCredential(AppUser user, GrantAuthRequest request) {
+  /**
+   * 권한 ID만 알면 누구나 시도할 수 있으므로 계정 잠금을 쓰지 않는다. 같은 접속지의 연속 실패는 그 접속지만 거절하고, 접속지를 바꿔 실패가 크게 쌓인
+   * 권한 ID는 잠그지 않고 시도 간격만 늘려 정상 권한자가 간격 안에 다시 시도하면 통과하게 한다. 이미 한도를 넘은 접속지는 간격 슬롯을 쓰지 못한다.
+   */
+  private void throttleBeforeCheck(String grantKey, String ipKey) {
+    RequestRateLimiter.Result mine = rateLimiter.peek(BillingRateLimits.GRANT_AUTH_FAILURE_IP, ipKey);
+    if (mine.count() >= BillingRateLimits.GRANT_AUTH_FAILURE_IP.limit()) {
+      throw BusinessException.rateLimited(mine.retryAfterSeconds());
+    }
+    RequestRateLimiter.Result all =
+        rateLimiter.peek(BillingRateLimits.GRANT_AUTH_FAILURE_GLOBAL, grantKey);
+    if (all.count() >= BillingRateLimits.GRANT_AUTH_FAILURE_GLOBAL.limit()) {
+      rateLimiter.hit(BillingRateLimits.GRANT_AUTH_PACE, grantKey);
+    }
+  }
+
+  private void verifyCredential(AppUser user, GrantAuthRequest request, String clientIp) {
     if (request.authMethod() == GrantAuthRequest.AuthMethod.EMAIL) {
       if (user.getPasswordHash() == null) {
         throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
       }
-      attemptGuard.assertNotLocked(user.getEmail());
+      String grantKey = String.valueOf(request.grantId());
+      String ipKey = grantKey + "|" + clientIp;
+      throttleBeforeCheck(grantKey, ipKey);
       if (!passwordHasher.matches(request.credential(), user.getPasswordHash())) {
-        attemptGuard.recordFailure(user.getEmail());
+        rateLimiter.increment(BillingRateLimits.GRANT_AUTH_FAILURE_IP, ipKey);
+        rateLimiter.increment(BillingRateLimits.GRANT_AUTH_FAILURE_GLOBAL, grantKey);
         throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
       }
-      attemptGuard.reset(user.getEmail());
+      rateLimiter.reset(BillingRateLimits.GRANT_AUTH_FAILURE_IP, ipKey);
       return;
     }
     String providerKey =
