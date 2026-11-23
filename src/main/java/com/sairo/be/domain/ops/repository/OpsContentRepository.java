@@ -57,6 +57,13 @@ public class OpsContentRepository {
 
   public record PolicyFilter(String docType, String status) {}
 
+  public record UpcomingTerms(
+      String termsCode,
+      String termsVersion,
+      Instant effectiveAt,
+      boolean reconsentRequired,
+      String changeSummary) {}
+
   public record PolicyRow(
       long id,
       String docType,
@@ -370,6 +377,35 @@ public class OpsContentRepository {
         .param("operator", operatorId)
         .param("id", id)
         .update();
+  }
+
+  /** 시행 시각이 아직 오지 않은 이용약관·개인정보처리방침·구독 구매 약관 행 가운데 시행 시각이 until 이하인 것이다. */
+  public List<UpcomingTerms> upcomingTerms(Instant now, Instant until) {
+    return jdbcClient
+        .sql(
+            "SELECT terms_code, terms_version, effective_at, reconsent_required, change_summary"
+                + " FROM terms_catalog WHERE effective_at > :now AND effective_at <= :until"
+                + " AND terms_code IN ('TOS', 'PRIVACY', 'SUBSCRIPTION_PURCHASE')"
+                + " ORDER BY effective_at, terms_code")
+        .param("now", Timestamp.from(now))
+        .param("until", Timestamp.from(until))
+        .query(
+            (rs, i) ->
+                new UpcomingTerms(
+                    rs.getString("terms_code"),
+                    rs.getString("terms_version"),
+                    rs.getTimestamp("effective_at").toInstant(),
+                    rs.getBoolean("reconsent_required"),
+                    rs.getString("change_summary")))
+        .list();
+  }
+
+  /** 끝나지 않은 구독이 있는 사무소 ID다. */
+  public List<Long> officeIdsWithOpenSubscription() {
+    return jdbcClient
+        .sql("SELECT office_id FROM subscription WHERE status <> 'ENDED' ORDER BY office_id")
+        .query(Long.class)
+        .list();
   }
 
   public java.util.List<Long> activeUserIds() {
