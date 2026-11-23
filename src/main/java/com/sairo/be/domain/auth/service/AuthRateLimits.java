@@ -11,6 +11,8 @@ public final class AuthRateLimits {
       RateLimitRule.of("auth-email-send-interval", 1, RESEND_INTERVAL);
   public static final RateLimitRule EMAIL_SEND_HOURLY =
       RateLimitRule.of("auth-email-send-hourly", 5, Duration.ofHours(1));
+  public static final RateLimitRule EMAIL_SEND_SIGNUP_IP_HOURLY =
+      RateLimitRule.of("auth-email-send-signup-ip-hourly", 20, Duration.ofHours(1));
   public static final RateLimitRule EMAIL_VERIFY_IP =
       RateLimitRule.of("auth-email-verify-ip", 30, Duration.ofSeconds(60));
 

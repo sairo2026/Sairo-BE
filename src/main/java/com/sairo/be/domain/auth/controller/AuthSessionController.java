@@ -134,8 +134,9 @@ public class AuthSessionController {
   @PostMapping("/signup/email/verification")
   @ResponseStatus(HttpStatus.ACCEPTED)
   public VerificationSendResponse sendSignupEmailVerification(
-      @Valid @RequestBody EmailVerificationRequest request) {
-    return emailVerificationService.sendSignup(request.email());
+      @Valid @RequestBody EmailVerificationRequest request, HttpServletRequest httpRequest) {
+    return emailVerificationService.sendSignup(
+        request.email(), ClientRequestInfo.from(httpRequest).ipAddress());
   }
 
   @Operation(summary = "이메일 인증 완료", description = "인증 토큰을 소진하고 서명된 이메일 인증 티켓을 발급한다.")
