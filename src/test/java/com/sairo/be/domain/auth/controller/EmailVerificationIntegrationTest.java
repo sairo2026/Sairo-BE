@@ -109,6 +109,23 @@ class EmailVerificationIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
+  void 같은_접속지는_서로_다른_주소로_시간당_20회까지_허용하고_21번째는_429다() throws Exception {
+    for (int i = 0; i < 20; i++) {
+      mockMvc
+          .perform(
+              jsonPost(
+                  "/api/auth/signup/email/verification",
+                  "{\"email\":\"user" + i + "@example.com\"}"))
+          .andExpect(status().isAccepted());
+    }
+
+    assertError(
+        mockMvc.perform(
+            jsonPost("/api/auth/signup/email/verification", "{\"email\":\"user20@example.com\"}")),
+        ErrorCode.RATE_LIMITED);
+  }
+
+  @Test
   void 재발송하면_이전_토큰은_무효가_되고_새_토큰만_쓸_수_있다() throws Exception {
     send(EMAIL);
     String first = flow.lastMailToken(EMAIL);
@@ -149,7 +166,8 @@ class EmailVerificationIntegrationTest extends AuthIntegrationTestBase {
     String token = flow.lastMailToken(EMAIL);
     Timestamp past = Timestamp.from(Instant.now().minus(31, ChronoUnit.MINUTES));
     jdbcTemplate.update(
-        "UPDATE email_verification_token SET issued_at = ?, expires_at = ?::timestamptz + interval '30 minutes'",
+        "UPDATE email_verification_token SET issued_at = ?, expires_at = ?::timestamptz + interval"
+            + " '30 minutes'",
         past,
         past);
 
