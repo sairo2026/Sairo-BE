@@ -9,9 +9,15 @@ spring:
       redis:
         configure-action: none
 
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
   # Flyway runs separately via the "migrate" profile (see application-migrate.yml).
   flyway:
     enabled: false
+
+server:
+  shutdown: graceful
 
 kakao:
   redirect-uri: ${KAKAO_REDIRECT_URI_PROD}
