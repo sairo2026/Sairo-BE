@@ -123,7 +123,7 @@ class RedisAuthenticatedIntegrationTest extends AuthIntegrationTestBase {
     assertThat(indexed(indexKey(PrincipalSessions.memberPrincipalName(user.getId())), id)).isTrue();
 
     redisTemplate.expire(SESSION_PREFIX + "sessions:expires:" + id, Duration.ofSeconds(100));
-    assertThat(ttl(SESSION_PREFIX + "sessions:expires:" + id)).isLessThan(100_000);
+    assertThat(ttl(SESSION_PREFIX + "sessions:expires:" + id)).isLessThanOrEqualTo(100_000);
 
     mockMvc.perform(get("/api/auth/context").cookie(cookie)).andExpect(status().isOk());
 
