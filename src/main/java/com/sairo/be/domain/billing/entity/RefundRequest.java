@@ -19,6 +19,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RefundRequest {
 
+  public static final String MANUAL_REFERENCE_PREFIX = "MANUAL:";
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
@@ -187,6 +189,25 @@ public class RefundRequest {
     this.status = RefundStatus.FAILED;
     this.failureReason = reason;
     this.resolvedAt = now;
+  }
+
+  /**
+   * PG가 취소를 확정 거절해 실패로 끝난 환불을 승인 상태로 되돌린다. 멱등키는 비워 다음 실행에서 새로 정한다. 같은 키로 다시 보내면 PG가 첫 거절 응답을 그대로
+   * 돌려줄 수 있기 때문이다.
+   */
+  public void reopenFromFailure() {
+    this.status = RefundStatus.APPROVED;
+    this.pgIdempotencyKey = null;
+    this.failureReason = null;
+    this.resolvedAt = null;
+  }
+
+  /** 운영자가 PG 관리자 화면에서 직접 취소한 것을 확인해 완료로 닫는다. PG 환불 참조에는 접두어를 붙여 자동 취소와 구분한다. */
+  public void markResolvedManually(String reference, Instant now) {
+    this.status = RefundStatus.COMPLETED;
+    this.pgRefundId = MANUAL_REFERENCE_PREFIX + reference;
+    this.resolvedAt = now;
+    this.failureReason = null;
   }
 
   public void markVerifying(String pgRefundId) {

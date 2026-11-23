@@ -124,6 +124,9 @@ public final class OpsBillingResponses {
   @Schema(description = "PG 취소 실행 결과. 불확실하면 VERIFYING, 확정 성공이면 COMPLETED, 확정 실패면 FAILED")
   public record RefundExecuteResponse(Long refundId, String status, String failureReason) {}
 
+  @Schema(description = "실패 환불 재처리 결과. 되돌리면 APPROVED, 직접 처리로 닫으면 COMPLETED")
+  public record RefundReprocessResponse(Long refundId, String status) {}
+
   @Schema(description = "PG 거래 대사 항목")
   public record ReconciliationItem(
       Long entryId,
