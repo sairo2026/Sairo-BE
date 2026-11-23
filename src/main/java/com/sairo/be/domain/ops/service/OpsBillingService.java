@@ -4,9 +4,12 @@ import static com.sairo.be.global.support.TimeRules.toDisplayOffset;
 
 import com.sairo.be.domain.billing.entity.RefundRequest;
 import com.sairo.be.domain.billing.service.RefundProcessingService;
+import com.sairo.be.domain.billing.service.RefundProcessingService.Reopened;
 import com.sairo.be.domain.billing.service.RefundProcessingService.ReviewCommand;
 import com.sairo.be.domain.legal.service.RetentionRuleLookup;
 import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.ReconciliationResolveRequest;
+import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.RefundManualResolveRequest;
+import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.RefundReopenRequest;
 import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.RefundReviewRequest;
 import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.TaxDocumentAmendRequest;
 import com.sairo.be.domain.ops.dto.request.OpsBillingRequests.TaxDocumentRecordRequest;
@@ -19,6 +22,7 @@ import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.ReconciliationRe
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.RefundDetail;
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.RefundExecuteResponse;
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.RefundItem;
+import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.RefundReprocessResponse;
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.RefundReviewResponse;
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.TaxDocumentItem;
 import com.sairo.be.domain.ops.dto.response.OpsBillingResponses.TaxDocumentResponse;
@@ -277,6 +281,73 @@ public class OpsBillingService {
         refund.getId(),
         refund.getStatus().name(),
         refund.getStatus().name().equals("FAILED") ? refund.getFailureReason() : null);
+  }
+
+  /**
+   * PG가 확정 거절해 실패로 끝난 환불을 승인 상태로 되돌린다. 운영자가 PG 관리자 화면에서 아직 취소되지 않았음을 확인했다고 밝혀야 하고 사유가 필수다. 상태 변경과
+   * 감사 기록은 한 트랜잭션이다. 이후 실행은 새 멱등키로 나간다.
+   */
+  @Transactional
+  public RefundReprocessResponse reopenRefund(
+      long operatorId, long refundId, RefundReopenRequest body, HttpSession session) {
+    refunds.find(refundId);
+    stepUp.require(session);
+    String reason = blankToNull(body.reason());
+    if (reason == null) {
+      throw OpsQueryParams.invalid("reason", FieldErrorCode.REQUIRED, "되돌리는 사유를 적어야 합니다.");
+    }
+    if (!Boolean.TRUE.equals(body.pgStateConfirmed())) {
+      throw OpsQueryParams.invalid(
+          "pgStateConfirmed", FieldErrorCode.REQUIRED, "PG에서 아직 취소되지 않았음을 확인해야 합니다.");
+    }
+    Reopened previous = refunds.reopenFailed(refundId);
+    auditLog.insert(
+        operatorId,
+        "REFUND_REOPENED",
+        "REFUND_REQUEST",
+        refundId,
+        "FAILED -> APPROVED. 사유: "
+            + reason
+            + ". PG 미취소 확인. 이전 멱등키 "
+            + previous.previousIdempotencyKey()
+            + ". 이전 실패 사유: "
+            + previous.previousFailureReason(),
+        clock.instant());
+    return new RefundReprocessResponse(refundId, "APPROVED");
+  }
+
+  /** 실패로 끝난 환불을 PG 관리자 화면에서 직접 취소했을 때 근거를 남기고 완료로 닫는다. 청구서 환불 상태도 함께 맞춘다. */
+  @Transactional
+  public RefundReprocessResponse resolveRefundManually(
+      long operatorId, long refundId, RefundManualResolveRequest body, HttpSession session) {
+    refunds.find(refundId);
+    stepUp.require(session);
+    String reference = blankToNull(body.reference());
+    String reason = blankToNull(body.reason());
+    if (reference == null) {
+      throw OpsQueryParams.invalid("reference", FieldErrorCode.REQUIRED, "PG 취소 근거를 적어야 합니다.");
+    }
+    if (reason == null) {
+      throw OpsQueryParams.invalid("reason", FieldErrorCode.REQUIRED, "직접 처리한 사유를 적어야 합니다.");
+    }
+    if (!Boolean.TRUE.equals(body.pgCancelConfirmed())) {
+      throw OpsQueryParams.invalid(
+          "pgCancelConfirmed", FieldErrorCode.REQUIRED, "PG에서 취소된 금액을 확인해야 합니다.");
+    }
+    RefundRequest refund = refunds.resolveFailedManually(refundId, operatorId, reference);
+    auditLog.insert(
+        operatorId,
+        "REFUND_RESOLVED_MANUALLY",
+        "REFUND_REQUEST",
+        refundId,
+        "FAILED -> COMPLETED "
+            + refund.getRefundAmount()
+            + "원. 근거: "
+            + reference
+            + ". 사유: "
+            + reason,
+        clock.instant());
+    return new RefundReprocessResponse(refundId, "COMPLETED");
   }
 
   // 대사

@@ -641,4 +641,241 @@ class OpsBillingIntegrationTest extends OpsConsoleTestBase {
         .andExpect(jsonPath("$.status").value("APPROVED"))
         .andExpect(jsonPath("$.refundAmount").value(1));
   }
+
+  /** 승인한 뒤 PG가 취소를 확정 거절해 FAILED로 남은 환불 하나를 만든다. */
+  private long failedRefund(long invoiceId, String orderId) throws Exception {
+    attempt(invoiceId, 1, "SUCCESS", orderId, Instant.now());
+    long refundId = refund(invoiceId, "INCORRECT_CHARGE", "INVOICE", invoiceId);
+    post(REFUNDS + "/" + refundId + "/review", "{\"decision\":\"APPROVE\"}", billingSession)
+        .andExpect(status().isOk());
+    stepUp(billingSession);
+    paymentGateway.respondToCancelWith(PaymentStatus.FAILED);
+    post(REFUNDS + "/" + refundId + "/execute", "", billingSession)
+        .andExpect(jsonPath("$.status").value("FAILED"));
+    paymentGateway.respondToCancelWith(PaymentStatus.SUCCEEDED);
+    return refundId;
+  }
+
+  private String reopenBody(boolean confirmed) {
+    return "{\"reason\":\"PG 관리자 화면에서 미취소 확인\",\"pgStateConfirmed\":" + confirmed + "}";
+  }
+
+  private static final String RESOLVE_BODY =
+      "{\"reference\":\"TOSS-CANCEL-1\",\"reason\":\"관리자 화면에서 직접 취소\",\"pgCancelConfirmed\":true}";
+
+  private String refundStatus(long refundId) {
+    return jdbcTemplate.queryForObject(
+        "SELECT status FROM refund_request WHERE id = ?", String.class, refundId);
+  }
+
+  private String invoiceStatus(long invoiceId) {
+    return jdbcTemplate.queryForObject(
+        "SELECT status FROM billing_invoice WHERE id = ?", String.class, invoiceId);
+  }
+
+  @Test
+  void 실패한_환불은_다시_열어_새_멱등키로_실행하면_완료되고_감사_기록이_남는다() throws Exception {
+    long invoiceId = invoice("PAID", 30_000);
+    long refundId = failedRefund(invoiceId, "ORDER-R1");
+    String reopen = REFUNDS + "/" + refundId + "/reopen";
+    String firstKey = paymentGateway.cancels().get(0).idempotencyKey();
+
+    assertError(post(reopen, reopenBody(true), billing2Session), ErrorCode.STEP_UP_REQUIRED);
+    stepUp(billing2Session);
+    post(reopen, reopenBody(false), billing2Session).andExpect(status().isBadRequest());
+    post(reopen, "{\"pgStateConfirmed\":true}", billing2Session).andExpect(status().isBadRequest());
+    assertThat(refundStatus(refundId)).isEqualTo("FAILED");
+
+    post(reopen, reopenBody(true), billing2Session)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("APPROVED"));
+    assertThat(refundStatus(refundId)).isEqualTo("APPROVED");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT pg_idempotency_key FROM refund_request WHERE id = ?",
+                String.class,
+                refundId))
+        .isNull();
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT detail FROM ops_audit_log WHERE action_type = 'REFUND_REOPENED' AND"
+                    + " operator_account_id = ? AND target_id = ?",
+                String.class,
+                billing2.id(),
+                refundId))
+        .contains("FAILED -> APPROVED")
+        .contains("PG 미취소 확인")
+        .contains(firstKey)
+        .contains("STUB_CANCEL_DECLINED");
+    assertError(post(reopen, reopenBody(true), billing2Session), ErrorCode.INVALID_TRANSITION);
+
+    post(REFUNDS + "/" + refundId + "/execute", "", billing2Session)
+        .andExpect(jsonPath("$.status").value("COMPLETED"));
+    assertThat(paymentGateway.cancels()).hasSize(2);
+    assertThat(paymentGateway.cancels().get(1).idempotencyKey()).isNotEqualTo(firstKey);
+    assertThat(invoiceStatus(invoiceId)).isEqualTo("FULLY_REFUNDED");
+    assertThat(auditCount("REFUND_REOPENED")).isEqualTo(1);
+    assertError(post(reopen, reopenBody(true), billing2Session), ErrorCode.INVALID_TRANSITION);
+  }
+
+  @Test
+  void 실패한_환불을_직접_처리로_닫으면_완료와_청구서_상태가_맞춰지고_PG_취소는_다시_나가지_않는다() throws Exception {
+    long invoiceId = invoice("PAID", 30_000);
+    long refundId = failedRefund(invoiceId, "ORDER-R2");
+    String resolve = REFUNDS + "/" + refundId + "/resolve-manually";
+
+    assertError(post(resolve, RESOLVE_BODY, billing2Session), ErrorCode.STEP_UP_REQUIRED);
+    stepUp(billing2Session);
+    post(
+            resolve,
+            "{\"reference\":\"X\",\"reason\":\"y\",\"pgCancelConfirmed\":false}",
+            billing2Session)
+        .andExpect(status().isBadRequest());
+    post(resolve, RESOLVE_BODY, billing2Session)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+    assertThat(refundStatus(refundId)).isEqualTo("COMPLETED");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT pg_refund_id FROM refund_request WHERE id = ?", String.class, refundId))
+        .isEqualTo("MANUAL:TOSS-CANCEL-1");
+    assertThat(invoiceStatus(invoiceId)).isEqualTo("FULLY_REFUNDED");
+    assertThat(paymentGateway.cancels()).hasSize(1);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT detail FROM ops_audit_log WHERE action_type = 'REFUND_RESOLVED_MANUALLY'"
+                    + " AND operator_account_id = ? AND target_id = ?",
+                String.class,
+                billing2.id(),
+                refundId))
+        .contains("FAILED -> COMPLETED")
+        .contains("TOSS-CANCEL-1");
+    assertError(post(resolve, RESOLVE_BODY, billing2Session), ErrorCode.INVALID_TRANSITION);
+    assertError(
+        post(REFUNDS + "/" + refundId + "/reopen", reopenBody(true), billing2Session),
+        ErrorCode.INVALID_TRANSITION);
+    assertError(
+        post(REFUNDS + "/" + refundId + "/execute", "", billing2Session),
+        ErrorCode.INVALID_TRANSITION);
+    assertThat(paymentGateway.cancels()).hasSize(1);
+  }
+
+  @Test
+  void 이미_다른_환불로_전액_환불됐으면_다시_열기와_직접_처리와_실행이_모두_막힌다() throws Exception {
+    long invoiceId = invoice("PAID", 30_000);
+    long failed = failedRefund(invoiceId, "ORDER-R3");
+    long other = refund(invoiceId, "LATE_APPROVAL", "LATE_APPROVAL", 9L);
+    post(REFUNDS + "/" + other + "/review", "{\"decision\":\"APPROVE\"}", billingSession)
+        .andExpect(status().isOk());
+    stepUp(billingSession);
+    post(REFUNDS + "/" + other + "/execute", "", billingSession)
+        .andExpect(jsonPath("$.status").value("COMPLETED"));
+    assertThat(invoiceStatus(invoiceId)).isEqualTo("FULLY_REFUNDED");
+    int cancels = paymentGateway.cancels().size();
+
+    stepUp(billing2Session);
+    assertError(
+        post(REFUNDS + "/" + failed + "/reopen", reopenBody(true), billing2Session),
+        ErrorCode.INVALID_TRANSITION);
+    assertError(
+        post(REFUNDS + "/" + failed + "/resolve-manually", RESOLVE_BODY, billing2Session),
+        ErrorCode.INVALID_TRANSITION);
+    assertThat(refundStatus(failed)).isEqualTo("FAILED");
+    assertThat(paymentGateway.cancels()).hasSize(cancels);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(refund_amount), 0) FROM refund_request WHERE invoice_id = ?"
+                    + " AND status = 'COMPLETED'",
+                Long.class,
+                invoiceId))
+        .isEqualTo(30_000L);
+
+    long invoice2 = invoice("PAID", 30_000);
+    attempt(invoice2, 1, "SUCCESS", "ORDER-R4", Instant.now());
+    long approved = refund(invoice2, "DUPLICATE_CHARGE", "INVOICE", invoice2);
+    post(REFUNDS + "/" + approved + "/review", "{\"decision\":\"APPROVE\"}", billingSession)
+        .andExpect(status().isOk());
+    jdbcTemplate.update(
+        "UPDATE billing_invoice SET status = 'FULLY_REFUNDED' WHERE id = ?", invoice2);
+    assertError(
+        post(REFUNDS + "/" + approved + "/execute", "", billingSession),
+        ErrorCode.INVALID_TRANSITION);
+    assertThat(paymentGateway.cancels()).hasSize(cancels);
+  }
+
+  @Test
+  void 이미_취소된_결제라는_거절은_다시_열_수_없다() throws Exception {
+    long invoiceId = invoice("PAID", 30_000);
+    long refundId = failedRefund(invoiceId, "ORDER-R5");
+    jdbcTemplate.update(
+        "UPDATE refund_request SET failure_reason = ? WHERE id = ?",
+        "결제대행사가 취소를 거절했습니다. 코드 ALREADY_CANCELED_PAYMENT",
+        refundId);
+    stepUp(billing2Session);
+
+    assertError(
+        post(REFUNDS + "/" + refundId + "/reopen", reopenBody(true), billing2Session),
+        ErrorCode.INVALID_TRANSITION);
+    assertThat(refundStatus(refundId)).isEqualTo("FAILED");
+  }
+
+  @Test
+  void 다시_열기와_직접_처리는_결제담당만_할_수_있고_정책_외_보상_승인자는_직접_처리할_수_없다() throws Exception {
+    Cookie support = sessionOf(operator("김지원", OperatorRole.SUPPORT));
+    for (String path : new String[] {"/1/reopen", "/1/resolve-manually"}) {
+      assertError(post(REFUNDS + path, "{}", null), ErrorCode.UNAUTHENTICATED);
+      assertError(post(REFUNDS + path, "{}", support), ErrorCode.FORBIDDEN);
+    }
+
+    long invoiceId = invoice("PAID", 30_000);
+    attempt(invoiceId, 1, "SUCCESS", "ORDER-R6", Instant.now());
+    long policy = refund(invoiceId, "POLICY_COMPENSATION", "POLICY_COMPENSATION", null);
+    post(
+            REFUNDS + "/" + policy + "/review",
+            "{\"decision\":\"APPROVE\",\"reasonEventId\":\"5\"}",
+            billingSession)
+        .andExpect(status().isOk());
+    stepUp(billing2Session);
+    paymentGateway.respondToCancelWith(PaymentStatus.FAILED);
+    post(REFUNDS + "/" + policy + "/execute", "", billing2Session)
+        .andExpect(jsonPath("$.status").value("FAILED"));
+    stepUp(billingSession);
+
+    assertError(
+        post(REFUNDS + "/" + policy + "/resolve-manually", RESOLVE_BODY, billingSession),
+        ErrorCode.SELF_APPROVAL_FORBIDDEN);
+    assertError(
+        post(REFUNDS + "/999999/reopen", reopenBody(true), billingSession),
+        ErrorCode.RESOURCE_NOT_FOUND);
+    post(REFUNDS + "/" + policy + "/resolve-manually", RESOLVE_BODY, billing2Session)
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void 같은_실패_환불을_동시에_다시_열어도_한_번만_열리고_PG_취소는_한_번만_나간다() throws Exception {
+    long invoiceId = invoice("PAID", 30_000);
+    long refundId = failedRefund(invoiceId, "ORDER-R7");
+    stepUp(billing2Session);
+    java.util.concurrent.ExecutorService pool =
+        java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      java.util.concurrent.Callable<Integer> reopen =
+          () ->
+              post(REFUNDS + "/" + refundId + "/reopen", reopenBody(true), billing2Session)
+                  .andReturn()
+                  .getResponse()
+                  .getStatus();
+      var first = pool.submit(reopen);
+      var second = pool.submit(reopen);
+      assertThat(List.of(first.get(), second.get())).containsExactlyInAnyOrder(200, 409);
+    } finally {
+      pool.shutdownNow();
+    }
+    assertThat(auditCount("REFUND_REOPENED")).isEqualTo(1);
+    post(REFUNDS + "/" + refundId + "/execute", "", billing2Session)
+        .andExpect(jsonPath("$.status").value("COMPLETED"));
+    assertThat(paymentGateway.cancels()).hasSize(2);
+    assertThat(invoiceStatus(invoiceId)).isEqualTo("FULLY_REFUNDED");
+  }
 }

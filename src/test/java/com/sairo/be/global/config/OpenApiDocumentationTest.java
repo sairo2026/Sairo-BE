@@ -187,6 +187,8 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/ops/refund-requests/{refundId}", Set.of("200")),
           Map.entry("POST /api/ops/refund-requests/{refundId}/review", Set.of("200")),
           Map.entry("POST /api/ops/refund-requests/{refundId}/execute", Set.of("200")),
+          Map.entry("POST /api/ops/refund-requests/{refundId}/reopen", Set.of("200")),
+          Map.entry("POST /api/ops/refund-requests/{refundId}/resolve-manually", Set.of("200")),
           Map.entry("GET /api/ops/billing/reconciliation", Set.of("200")),
           Map.entry("POST /api/ops/billing/reconciliation/{entryId}/resolve", Set.of("200")),
           Map.entry("GET /api/ops/billing/tax-documents", Set.of("200")),
