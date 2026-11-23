@@ -53,6 +53,7 @@ public class BillingChargeService {
   private final TransactionTemplate transactionTemplate;
   private final BillingNoticeDispatcher noticeDispatcher;
   private final LiveChargingGuard liveChargingGuard;
+  private final LateApprovalRefunds lateApprovalRefunds;
   private final Clock clock;
 
   public BillingChargeService(
@@ -69,6 +70,7 @@ public class BillingChargeService {
       TransactionTemplate transactionTemplate,
       BillingNoticeDispatcher noticeDispatcher,
       LiveChargingGuard liveChargingGuard,
+      LateApprovalRefunds lateApprovalRefunds,
       Clock clock) {
     this.invoiceRepository = invoiceRepository;
     this.attemptRepository = attemptRepository;
@@ -83,6 +85,7 @@ public class BillingChargeService {
     this.transactionTemplate = transactionTemplate;
     this.noticeDispatcher = noticeDispatcher;
     this.liveChargingGuard = liveChargingGuard;
+    this.lateApprovalRefunds = lateApprovalRefunds;
     this.clock = clock;
   }
 
@@ -244,7 +247,11 @@ public class BillingChargeService {
         attempt.markSuccess(result.paymentKey(), now);
         invoice.markPaid(now);
         // 사무소 종료도 같은 구독 잠금을 사용하므로 여기서 확정된 종료 여부를 읽는다.
-        if (!queryRepository.isOfficeClosed(invoice.getOfficeId())) {
+        if (queryRepository.isOfficeClosed(invoice.getOfficeId())) {
+          // 종료한 사무소는 되살리지 않고, 승인된 결제는 같은 트랜잭션에서 전액 환불 접수로 이어 붙인다.
+          // 접수에 실패하면 승인 반영도 함께 되돌아가 시도가 확인 중으로 남고, 기존 결제 결과 확인이 다시 반영한다.
+          lateApprovalRefunds.requestIfMissing(invoice, attempt.getId(), now);
+        } else {
           transitions.onPaid(subscription, invoice);
         }
       }

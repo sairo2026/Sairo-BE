@@ -8,10 +8,12 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 
+import com.sairo.be.domain.billing.service.RefundProcessingService.ReviewCommand;
 import com.sairo.be.domain.billing.service.SystemJobRunService.RerunOutcome;
 import com.sairo.be.domain.office.entity.OfficeMembershipRole;
 import com.sairo.be.domain.office.repository.OfficeMembershipRepository;
 import com.sairo.be.domain.office.repository.OfficeRepository;
+import com.sairo.be.domain.ops.service.OpsBillingService;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.port.PaymentGateway.PaymentStatus;
@@ -19,6 +21,7 @@ import com.sairo.be.global.port.stub.StubPaymentGateway;
 import com.sairo.be.global.security.StaffPrincipal;
 import com.sairo.be.global.security.StaffRole;
 import com.sairo.be.global.security.StepUpState;
+import com.sairo.be.global.support.PageQuery;
 import com.sairo.be.global.support.TextCipher;
 import com.sairo.be.support.AuthIntegrationTestBase;
 import com.sairo.be.support.IntegrationTest;
@@ -61,6 +64,9 @@ class BillingCrashScenarioIntegrationTest extends AuthIntegrationTestBase {
   @Autowired private SystemJobRunService jobRunService;
   @MockitoSpyBean private StubPaymentGateway gateway;
   @MockitoSpyBean private SubscriptionTransitions transitions;
+  @MockitoSpyBean private LateApprovalRefunds lateApprovalRefunds;
+  @Autowired private RefundProcessingService refundProcessingService;
+  @Autowired private OpsBillingService opsBillingService;
   @Autowired private OfficeRepository officeRepository;
   @Autowired private OfficeMembershipRepository officeMembershipRepository;
 
@@ -585,6 +591,223 @@ class BillingCrashScenarioIntegrationTest extends AuthIntegrationTestBase {
     assertThat(count("SELECT count(*) FROM billing_invoice")).isEqualTo(1);
     assertThat(count("SELECT count(*) FROM billing_charge_attempt")).isEqualTo(1);
     assertThat(gateway.charges()).hasSize(1);
+  }
+
+  private long lateRefunds() {
+    return count("SELECT count(*) FROM refund_request WHERE reason_code = 'LATE_APPROVAL'");
+  }
+
+  private long invoiceAmount() {
+    return count("SELECT amount FROM billing_invoice");
+  }
+
+  private long refundId() {
+    return count("SELECT id FROM refund_request WHERE reason_code = 'LATE_APPROVAL'");
+  }
+
+  /** 갱신 청구를 확인 중으로 남기고 사무소를 닫은 뒤 결제대행사가 승인으로 확정한 상태까지 만든다. */
+  private Due verifyingThenClosedThenApproved() {
+    Due due = activeDue();
+    gateway.respondWith(PaymentStatus.VERIFYING);
+    jobService.runRenewals(Instant.now());
+    assertThat(invoiceStatus()).isEqualTo("VERIFYING");
+    closeOffice(due);
+    gateway.resolve(lastOrderId(), PaymentStatus.SUCCEEDED);
+    return due;
+  }
+
+  @Test
+  void 처리_중_청구가_종료_뒤_승인되면_구독은_끝난_상태로_남고_전액_환불이_승인_대기로_접수되며_PG_취소와_고객_안내는_없다() throws Exception {
+    Due due = activeDue();
+    long invoiceId =
+        fixtures
+            .invoice(due.officeId(), due.subscriptionId(), due.consentId())
+            .status("UNBILLED")
+            .period(due.periodEnd(), due.periodEnd().plus(Duration.ofDays(30)))
+            .insert();
+    var chargeStarted = new CountDownLatch(1);
+    var officeClosed = new CountDownLatch(1);
+    doAnswer(
+            invocation -> {
+              chargeStarted.countDown();
+              assertThat(officeClosed.await(10, TimeUnit.SECONDS)).isTrue();
+              return invocation.callRealMethod();
+            })
+        .when(gateway)
+        .charge(any());
+
+    var charging = executor.submit(() -> chargeService.charge(invoiceId));
+    long noticesBefore;
+    try {
+      assertThat(chargeStarted.await(10, TimeUnit.SECONDS)).isTrue();
+      closeOffice(due);
+    } finally {
+      officeClosed.countDown();
+    }
+    noticesBefore = notices(due);
+
+    assertThat(charging.get(10, TimeUnit.SECONDS).isPaid()).isTrue();
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+    assertThat(lateRefunds()).isEqualTo(1);
+    assertThat(
+            jdbcTemplate.queryForMap(
+                "SELECT status, refund_amount, entitlement_amount, original_approved_amount,"
+                    + " reason_event_type, reason_event_id FROM refund_request"))
+        .containsEntry("status", "RECEIVED")
+        .containsEntry("refund_amount", invoiceAmount())
+        .containsEntry("entitlement_amount", invoiceAmount())
+        .containsEntry("original_approved_amount", invoiceAmount())
+        .containsEntry("reason_event_type", "LATE_APPROVAL")
+        .containsEntry("reason_event_id", count("SELECT id FROM billing_charge_attempt"));
+    assertThat(gateway.cancels()).isEmpty();
+    assertThat(notices(due)).isEqualTo(noticesBefore);
+  }
+
+  @Test
+  void 확인_중이던_청구가_종료_뒤_조회로_승인되면_구독은_끝난_상태로_남고_전액_환불이_한_건만_접수된다() {
+    Due due = verifyingThenClosedThenApproved();
+
+    jobService.runReconciliation();
+    jobService.runReconciliation();
+
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+    assertThat(lateRefunds()).isEqualTo(1);
+    assertThat(count("SELECT count(*) FROM refund_request")).isEqualTo(1);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM refund_request WHERE reason_code = 'LATE_APPROVAL'",
+                String.class))
+        .isEqualTo("RECEIVED");
+    assertThat(gateway.cancels()).isEmpty();
+  }
+
+  @Test
+  void 같은_승인_결과가_동시에_여러_번_전달돼도_환불_접수는_한_건이다() throws Exception {
+    verifyingThenClosedThenApproved();
+    long invoiceId = count("SELECT id FROM billing_invoice");
+
+    runConcurrently(4, () -> chargeService.reconcile(invoiceId));
+    assertThat(chargeService.reconcile(invoiceId)).isEmpty();
+
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+    assertThat(lateRefunds()).isEqualTo(1);
+  }
+
+  @Test
+  void 환불_접수_생성이_실패하면_승인_반영도_되돌아가_확인_중으로_남고_다음_결제_결과_확인에서_접수된다() {
+    Due due = verifyingThenClosedThenApproved();
+    doThrow(new IllegalStateException("환불 접수 저장 실패"))
+        .doCallRealMethod()
+        .when(lateApprovalRefunds)
+        .requestIfMissing(any(), any(), any());
+
+    jobService.runReconciliation();
+
+    assertThat(invoiceStatus()).isEqualTo("VERIFYING");
+    assertThat(lateRefunds()).isZero();
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+
+    jobService.runReconciliation();
+
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+    assertThat(lateRefunds()).isEqualTo(1);
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+    assertThat(gateway.charges()).hasSize(1);
+  }
+
+  @Test
+  void 누락된_환불_접수는_점검이_한_번만_만들고_종료_전에_결제된_청구서는_건드리지_않는다() {
+    Due due = verifyingThenClosedThenApproved();
+    jobService.runReconciliation();
+    assertThat(lateRefunds()).isEqualTo(1);
+    jdbcTemplate.update("DELETE FROM refund_request");
+    assertThat(lateRefunds()).isZero();
+
+    jobService.runLateApprovalRefundSweep();
+    jobService.runLateApprovalRefundSweep();
+
+    assertThat(lateRefunds()).isEqualTo(1);
+    assertThat(
+            count(
+                "SELECT count(*) FROM system_job_run WHERE job_name = 'billing-late-approval-refund'"
+                    + " AND status = 'SUCCESS'"))
+        .isEqualTo(1);
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+    assertThat(gateway.cancels()).isEmpty();
+  }
+
+  @Test
+  void 종료_전에_결제된_청구서는_점검이_승인_지연_환불을_접수하지_않는다() {
+    Due due = activeDue();
+    jobService.runRenewals(Instant.now());
+    assertThat(invoiceStatus()).isEqualTo("PAID");
+    closeOffice(due);
+
+    long before = count("SELECT count(*) FROM refund_request");
+
+    jobService.runLateApprovalRefundSweep();
+
+    assertThat(lateRefunds()).isZero();
+    assertThat(count("SELECT count(*) FROM refund_request")).isEqualTo(before);
+  }
+
+  @Test
+  void 운영자는_승인_지연_환불을_목록에서_보고_검토해_실행하며_결제대행사_모의_취소로_전액_환불된다() {
+    Due due = verifyingThenClosedThenApproved();
+    jobService.runReconciliation();
+    long refundId = refundId();
+    long operatorId = fixtures.approverOperator();
+
+    var queue = opsBillingService.refundQueue("RECEIVED", due.officeId(), PageQuery.of(0, 25));
+    assertThat(queue.items())
+        .singleElement()
+        .satisfies(
+            item -> {
+              assertThat(item.refundId()).isEqualTo(refundId);
+              assertThat(item.reasonCode()).isEqualTo("LATE_APPROVAL");
+              assertThat(item.refundAmount()).isEqualTo(invoiceAmount());
+            });
+
+    var approved =
+        refundProcessingService.review(
+            refundId, operatorId, new ReviewCommand(true, null, null, null));
+    assertThat(approved.getRefundAmount()).isEqualTo(invoiceAmount());
+    assertThat(gateway.cancels()).isEmpty();
+
+    gateway.throwOnNextCancel(new IllegalStateException("취소 응답 시간 초과"));
+    assertThat(refundProcessingService.execute(refundId, operatorId).getStatus().name())
+        .isEqualTo("VERIFYING");
+    assertThat(refundProcessingService.execute(refundId, operatorId).getStatus().name())
+        .isEqualTo("COMPLETED");
+
+    assertThat(gateway.cancels()).hasSize(2);
+    assertThat(gateway.cancels().get(0).idempotencyKey())
+        .isEqualTo(gateway.cancels().get(1).idempotencyKey());
+    assertThat(gateway.cancels().get(1).amount()).isEqualTo(invoiceAmount());
+    assertThat(invoiceStatus()).isEqualTo("FULLY_REFUNDED");
+    assertThat(subscriptionStatus(due)).isEqualTo("ENDED");
+    assertThat(lateRefunds()).isEqualTo(1);
+  }
+
+  @Test
+  void 결제대행사가_취소를_거절하면_환불은_실패로_남고_같은_접수를_다시_실행할_수_없으며_새_접수도_만들어지지_않는다() {
+    verifyingThenClosedThenApproved();
+    jobService.runReconciliation();
+    long refundId = refundId();
+    long operatorId = fixtures.approverOperator();
+    refundProcessingService.review(refundId, operatorId, new ReviewCommand(true, null, null, null));
+    gateway.respondToCancelWith(PaymentStatus.FAILED);
+
+    assertThat(refundProcessingService.execute(refundId, operatorId).getStatus().name())
+        .isEqualTo("FAILED");
+    assertThatThrownBy(() -> refundProcessingService.execute(refundId, operatorId))
+        .isInstanceOf(BusinessException.class);
+    jobService.runLateApprovalRefundSweep();
+
+    assertThat(lateRefunds()).isEqualTo(1);
+    assertThat(invoiceStatus()).isEqualTo("PAID");
   }
 
   @Test
