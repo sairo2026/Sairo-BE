@@ -131,7 +131,9 @@ class PurchaseConsentIntegrationTest extends BillingIntegrationTestBase {
             jsonPath("$.cancellationTerms")
                 .value("해지를 예약하면 이미 결제한 이용 기간이 끝날 때까지 이용할 수 있고 그 기간의 환불은 없습니다."))
         .andExpect(
-            jsonPath("$.refundTerms").value("바로 종료, 인증 중단, 서비스 장애의 경우에는 남은 기간을 일할 계산하여 환불합니다."))
+            jsonPath("$.refundTerms")
+                .value(
+                    "사무소를 지금 바로 종료하거나 인증이 중단된 경우에는 남은 기간을 일할 계산하여 환불하고, 서비스 장애의 경우에는 회사가 장애의 영향을 확인해 정한 금액을 환불하며 이미 결제한 금액을 넘지 않습니다. 사무소를 종료한 뒤 승인된 결제는 운영자가 검토하여 전액 환불합니다."))
         .andExpect(
             jsonPath("$.checkItems[0]")
                 .value(
@@ -139,7 +141,7 @@ class PurchaseConsentIntegrationTest extends BillingIntegrationTestBase {
         .andExpect(
             jsonPath("$.checkItems[1]")
                 .value(
-                    "[필수] 해지와 환불 조건을 확인했습니다. 해지를 예약하면 이미 결제한 이용 기간이 끝날 때까지 이용할 수 있고 그 기간의 환불은 없습니다. 바로 종료, 인증 중단, 서비스 장애의 경우에는 남은 기간을 일할 계산하여 환불합니다."))
+                    "[필수] 해지와 환불 조건을 확인했습니다. 해지를 예약하면 이미 결제한 이용 기간이 끝날 때까지 이용할 수 있고 그 기간의 환불은 없습니다. 사무소를 지금 바로 종료하거나 인증이 중단된 경우에는 남은 기간을 일할 계산하여 환불하고, 서비스 장애의 경우에는 회사가 장애의 영향을 확인해 정한 금액을 환불하며 이미 결제한 금액을 넘지 않습니다. 사무소를 종료한 뒤 승인된 결제는 운영자가 검토하여 전액 환불합니다."))
         .andExpect(
             jsonPath("$.errorMessages.TERMS_VERSION_CHANGED")
                 .value("결제 조건 안내가 새로 바뀌었습니다. 새 조건을 확인하고 다시 동의해 주세요."))
