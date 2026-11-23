@@ -127,6 +127,11 @@ class RedisAuthenticatedIntegrationTest extends AuthIntegrationTestBase {
 
     mockMvc.perform(get("/api/auth/context").cookie(cookie)).andExpect(status().isOk());
 
+    long deadline = System.currentTimeMillis() + 5_000;
+    while (ttl(SESSION_PREFIX + "sessions:expires:" + id) <= idleMillis - 60_000
+        && System.currentTimeMillis() < deadline) {
+      Thread.sleep(100);
+    }
     assertThat(ttl(SESSION_PREFIX + "sessions:expires:" + id)).isGreaterThan(idleMillis - 60_000);
   }
 
