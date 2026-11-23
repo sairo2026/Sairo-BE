@@ -10,7 +10,8 @@ public final class PurchaseConsentTexts {
   public static final String CANCELLATION_TERMS =
       "해지를 예약하면 이미 결제한 이용 기간이 끝날 때까지 이용할 수 있고 그 기간의 환불은 없습니다.";
   public static final String REFUND_TERMS =
-      "사무소를 지금 바로 종료하거나 인증이 중단된 경우에는 남은 기간을 일할 계산하여 환불하고, 서비스 장애의 경우에는 회사가 장애의 영향을 확인해 정한 금액을 환불하며 이미 결제한 금액을 넘지 않습니다. 사무소를 종료한 뒤 승인된 결제는 운영자가 검토하여 전액 환불합니다.";
+      "사무소를 지금 바로 종료하거나 인증이 중단된 경우에는 남은 기간을 일할 계산하여 환불하고, 서비스 장애의 경우에는 회사가 장애의 영향을 확인해 정한 금액을 환불하며"
+          + " 이미 결제한 금액을 넘지 않습니다. 사무소를 종료한 뒤 승인된 결제는 전액 환불 요청으로 접수하고 운영자가 환불 금액을 확인합니다.";
 
   public static final Map<String, String> ERROR_MESSAGES =
       Map.of(
