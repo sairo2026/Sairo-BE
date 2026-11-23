@@ -68,9 +68,8 @@ class GrantAuthIntegrationTest extends GrantTestBase {
 
   private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder fromIp(
       String ip, long grantId, String credential) {
-    return org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(RETURN)
-        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-        .content(grantAuthBody(grantId, "EMAIL", credential))
+    return postRequest(RETURN, grantAuthBody(grantId, "EMAIL", credential))
+        .apply(null)
         .with(
             request -> {
               request.setRemoteAddr(ip);
@@ -105,15 +104,13 @@ class GrantAuthIntegrationTest extends GrantTestBase {
 
     mockMvc
         .perform(
-            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
-                    "/api/auth/login")
-                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                .content(
-                    "{\"email\":\""
-                        + holder.user().getEmail()
-                        + "\",\"password\":\""
-                        + PASSWORD
-                        + "\"}"))
+            com.sairo.be.support.AuthFlowSupport.jsonPost(
+                "/api/auth/login",
+                "{\"email\":\""
+                    + holder.user().getEmail()
+                    + "\",\"password\":\""
+                    + PASSWORD
+                    + "\"}"))
         .andExpect(status().isOk());
   }
 
