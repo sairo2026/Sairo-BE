@@ -7,10 +7,14 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
 
   Optional<Subscription> findByOfficeId(Long officeId);
+
+  @Query("select s.id from Subscription s where s.officeId = :officeId")
+  Optional<Long> findIdByOfficeId(Long officeId);
 
   List<Subscription> findByStatusAndFirstBillingScheduledAtLessThanEqual(
       SubscriptionStatus status, Instant at);
