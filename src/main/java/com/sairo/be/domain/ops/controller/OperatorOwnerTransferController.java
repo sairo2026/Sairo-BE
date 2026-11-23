@@ -48,6 +48,7 @@ public class OperatorOwnerTransferController {
 
   @Operation(summary = "대표 이전 최종 승인", description = "전제 조건을 다시 확인하고 기존 대표를 소속공인중개사로, 후보를 대표로 바꾼다.")
   @PostMapping("/{transferId}/approve")
+  @RequiresOperatorRole(OperatorRole.REVIEW)
   public OwnerTransferResponse approve(
       @PathVariable Long transferId, @AuthenticationPrincipal OperatorPrincipal principal) {
     return transferService.approve(principal.operatorId(), transferId);
