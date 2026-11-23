@@ -271,7 +271,7 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
         mockMvc.perform(get("/api/offices/current/employment-roster")), ErrorCode.UNAUTHENTICATED);
   }
 
-  private com.fasterxml.jackson.databind.JsonNode quotaOf() throws Exception {
+  private tools.jackson.databind.JsonNode quotaOf() throws Exception {
     return AuthFlowSupport.json(
             mockMvc
                 .perform(
