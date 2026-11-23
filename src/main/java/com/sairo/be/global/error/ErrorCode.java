@@ -35,7 +35,8 @@ public enum ErrorCode {
   SELF_APPROVAL_FORBIDDEN(HttpStatus.FORBIDDEN, "운영 승인 요청자·수혜자의 자기 승인"),
   DOWNLOAD_NOT_APPROVED(HttpStatus.FORBIDDEN, "다운로드 승인이 없는 접근으로 파일 요청"),
   RECONSENT_REQUIRED(HttpStatus.FORBIDDEN, "재동의가 필요한 약관 개정이 있어 업무 요청이 제한됨"),
-  OFFICE_WRITE_RESTRICTED(HttpStatus.FORBIDDEN, "인증 회수·결제 전·미납 제한·구독 종료로 읽기만 가능한 사무소에서 업무 데이터 쓰기를 시도함"),
+  OFFICE_WRITE_RESTRICTED(
+      HttpStatus.FORBIDDEN, "인증 회수·결제 전·미납 제한·구독 종료로 읽기만 가능한 사무소에서 업무 데이터 쓰기를 시도함"),
   APPLY_GRANT_INACTIVE(HttpStatus.FORBIDDEN, "신청 허용이 회수·만료됐거나 출입승인이 끝나 신청 권한이 없음"),
   APPROVER_READ_ONLY(HttpStatus.FORBIDDEN, "공동 승인자 출입승인으로 조건 입력·신청 비교·선택·평가·선호 지정을 시도함"),
   RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),

@@ -275,7 +275,8 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
     return AuthFlowSupport.json(
             mockMvc
                 .perform(
-                    get("/api/offices/current/employment-roster?page=0&size=25").cookie(ownerCookie))
+                    get("/api/offices/current/employment-roster?page=0&size=25")
+                        .cookie(ownerCookie))
                 .andExpect(status().isOk())
                 .andReturn())
         .get("quota");
@@ -296,7 +297,8 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
         office.getId(),
         owner.membership().getId());
     assertThat(quotaOf().get("qualifiedCount").asLong()).isEqualTo(1);
-    jdbcTemplate.update("UPDATE employment_roster SET membership_id = NULL, person_name = ?",
+    jdbcTemplate.update(
+        "UPDATE employment_roster SET membership_id = NULL, person_name = ?",
         owner.user().getName());
     assertThat(quotaOf().get("qualifiedCount").asLong()).isEqualTo(1);
   }

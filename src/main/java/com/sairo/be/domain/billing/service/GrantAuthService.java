@@ -111,11 +111,12 @@ public class GrantAuthService {
   }
 
   /**
-   * 권한 ID만 알면 누구나 시도할 수 있으므로 계정 잠금을 쓰지 않는다. 같은 접속지의 연속 실패는 그 접속지만 거절하고, 접속지를 바꿔 실패가 크게 쌓인
-   * 권한 ID는 잠그지 않고 시도 간격만 늘려 정상 권한자가 간격 안에 다시 시도하면 통과하게 한다. 이미 한도를 넘은 접속지는 간격 슬롯을 쓰지 못한다.
+   * 권한 ID만 알면 누구나 시도할 수 있으므로 계정 잠금을 쓰지 않는다. 같은 접속지의 연속 실패는 그 접속지만 거절하고, 접속지를 바꿔 실패가 크게 쌓인 권한 ID는
+   * 잠그지 않고 시도 간격만 늘려 정상 권한자가 간격 안에 다시 시도하면 통과하게 한다. 이미 한도를 넘은 접속지는 간격 슬롯을 쓰지 못한다.
    */
   private void throttleBeforeCheck(String grantKey, String ipKey) {
-    RequestRateLimiter.Result mine = rateLimiter.peek(BillingRateLimits.GRANT_AUTH_FAILURE_IP, ipKey);
+    RequestRateLimiter.Result mine =
+        rateLimiter.peek(BillingRateLimits.GRANT_AUTH_FAILURE_IP, ipKey);
     if (mine.count() >= BillingRateLimits.GRANT_AUTH_FAILURE_IP.limit()) {
       throw BusinessException.rateLimited(mine.retryAfterSeconds());
     }
