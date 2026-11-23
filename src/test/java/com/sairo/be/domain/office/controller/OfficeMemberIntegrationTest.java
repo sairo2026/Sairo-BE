@@ -479,7 +479,7 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
     long id = transferTo(agent);
     Cookie agentCookie = cookieOf(agent);
     post("/api/owner-transfers/" + id + "/accept", "", agentCookie);
-    Cookie operator = operatorSession(createOperator("9001001", "김운영", OperatorRole.OPS));
+    Cookie operator = operatorSession(createOperator("9001001", "김심사", OperatorRole.REVIEW));
     post("/api/ops/owner-transfers/" + id + "/approve", "", operator)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.status").value("COMPLETED"))
@@ -513,8 +513,11 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
   void 운영자_최종_승인은_전제가_깨지면_409이고_없으면_404_운영자가_아니면_거절한다() throws Exception {
     var agent = staffIn(OfficeMembershipRole.AGENT);
     long id = transferTo(agent);
-    Cookie operator = operatorSession(createOperator("9001002", "김운영", OperatorRole.OPS));
+    Cookie operator = operatorSession(createOperator("9001002", "김심사", OperatorRole.REVIEW));
+    Cookie supportOperator =
+        operatorSession(createOperator("9001003", "김지원", OperatorRole.SUPPORT));
     String url = "/api/ops/owner-transfers/" + id + "/approve";
+    assertError(post(url, "", supportOperator), ErrorCode.FORBIDDEN);
     assertError(post(url, "", operator), ErrorCode.TRANSFER_PRECONDITION_FAILED);
     post("/api/owner-transfers/" + id + "/accept", "", cookieOf(agent));
     jdbcTemplate.update(
@@ -555,7 +558,7 @@ class OfficeMemberIntegrationTest extends OpsIntegrationTestBase {
   private void completeTransfer(TestData.Staff agent, String operatorNo) throws Exception {
     long id = transferTo(agent);
     post("/api/owner-transfers/" + id + "/accept", "", cookieOf(agent));
-    Cookie operator = operatorSession(createOperator(operatorNo, "김운영", OperatorRole.OPS));
+    Cookie operator = operatorSession(createOperator(operatorNo, "김심사", OperatorRole.REVIEW));
     post("/api/ops/owner-transfers/" + id + "/approve", "", operator).andExpect(status().isOk());
   }
 
