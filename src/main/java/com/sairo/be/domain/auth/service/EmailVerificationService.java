@@ -79,7 +79,8 @@ public class EmailVerificationService {
     return verify(userId, EmailVerificationPurpose.LINK, token, clientIp);
   }
 
-  public VerificationSendResponse sendSignup(String rawEmail) {
+  public VerificationSendResponse sendSignup(String rawEmail, String clientIp) {
+    rateLimiter.hit(AuthRateLimits.EMAIL_SEND_SIGNUP_IP_HOURLY, clientIp);
     return send(null, EmailVerificationPurpose.SIGNUP, rawEmail);
   }
 
