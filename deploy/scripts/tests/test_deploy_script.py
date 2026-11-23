@@ -70,6 +70,7 @@ case "${url}" in
 esac
 count=$(cat "${STUB_DIR}/curl-count" 2>/dev/null || echo 0)
 echo $((count + 1)) > "${STUB_DIR}/curl-count"
+if grep -qx "$((count + 1))" "${STUB_DIR}/curl-fail-calls" 2>/dev/null; then exit 1; fi
 case "${url}" in
   *:8081/*) slot=running-api-alt ;;
   *) slot=running-api ;;
@@ -782,7 +783,35 @@ class DeployScriptTests(unittest.TestCase):
         result = self.run_deploy()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.curl_count(), 2)
+        # health + readiness on each of three consecutive checks
+        self.assertEqual(self.curl_count(), 6)
+
+    def test_a_probe_that_drops_out_again_restarts_the_stability_count(self):
+        self.prepare_managed_nginx(port="8080")
+        self.set_healthy(NEW_TAG)
+        # Call 5 is the health probe of the third check; it fails once.
+        (self.stub / "curl-fail-calls").write_text("5\n", encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # two passing checks (4 calls), one failed health probe, three more passing checks (6 calls)
+        self.assertEqual(self.curl_count(), 11)
+
+    def test_never_stable_probe_is_not_promoted(self):
+        self.prepare_managed_nginx(port="8080")
+        (self.deploy_dir / "last-good-tag").write_text(OLD_TAG + "\n", encoding="utf-8")
+        (self.deploy_dir / "last-good-verified").write_text(OLD_TAG + "\n", encoding="utf-8")
+        self.set_healthy(NEW_TAG, OLD_TAG)
+        # Every second call fails, so no check pair ever passes three times in a row.
+        calls = "\n".join(str(n) for n in range(2, 400, 2)) + "\n"
+        (self.stub / "curl-fail-calls").write_text(calls, encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.upstream_port(), "8080")
+        self.assertEqual(self.read("last-good-tag"), OLD_TAG)
 
     def test_next_blue_green_deploy_flips_back_to_the_primary_slot(self):
         self.prepare_managed_nginx(port="8081", running=OLD_TAG)
