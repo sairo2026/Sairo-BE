@@ -70,6 +70,7 @@ case "${url}" in
 esac
 count=$(cat "${STUB_DIR}/curl-count" 2>/dev/null || echo 0)
 echo $((count + 1)) > "${STUB_DIR}/curl-count"
+if grep -qx "$((count + 1))" "${STUB_DIR}/curl-fail-calls" 2>/dev/null; then exit 1; fi
 case "${url}" in
   *:8081/*) slot=running-api-alt ;;
   *) slot=running-api ;;
@@ -665,7 +666,8 @@ class DeployScriptTests(unittest.TestCase):
         self.assertIn("proxy_pass http://127.0.0.1:3000;", text)
         self.assertNotIn("127.0.0.1:8080", text)
         self.assertEqual(self.upstream_port(), "8080")
-        self.assertEqual(len(self.reloads()), 1)
+        # bootstrap, maintenance answer on for the in-place recreate, routing restored
+        self.assertEqual(len(self.reloads()), 3)
         manifests = list((self.deploy_dir / "nginx-backup").glob("*/manifest"))
         self.assertEqual(len(manifests), 1)
         saved = manifests[0].parent / "0"
@@ -697,7 +699,8 @@ class DeployScriptTests(unittest.TestCase):
 
         self.assertEqual((self.nginx_dir / "app.conf").read_bytes(), first)
         self.assertEqual(len(list((self.deploy_dir / "nginx-backup").glob("*/manifest"))), 1)
-        self.assertEqual(len(self.reloads()), reloads)
+        # No bootstrap again; only the maintenance on/off pair of the in-place recreate.
+        self.assertEqual(len(self.reloads()), reloads + 2)
 
     def test_rejected_nginx_config_is_restored_and_deploy_continues_in_place(self):
         self.write_app_conf()
@@ -782,7 +785,35 @@ class DeployScriptTests(unittest.TestCase):
         result = self.run_deploy()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.curl_count(), 2)
+        # health + readiness on each of three consecutive checks
+        self.assertEqual(self.curl_count(), 6)
+
+    def test_a_probe_that_drops_out_again_restarts_the_stability_count(self):
+        self.prepare_managed_nginx(port="8080")
+        self.set_healthy(NEW_TAG)
+        # Call 5 is the health probe of the third check; it fails once.
+        (self.stub / "curl-fail-calls").write_text("5\n", encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # two passing checks (4 calls), one failed health probe, three more passing checks (6 calls)
+        self.assertEqual(self.curl_count(), 11)
+
+    def test_never_stable_probe_is_not_promoted(self):
+        self.prepare_managed_nginx(port="8080")
+        (self.deploy_dir / "last-good-tag").write_text(OLD_TAG + "\n", encoding="utf-8")
+        (self.deploy_dir / "last-good-verified").write_text(OLD_TAG + "\n", encoding="utf-8")
+        self.set_healthy(NEW_TAG, OLD_TAG)
+        # Every second call fails, so no check pair ever passes three times in a row.
+        calls = "\n".join(str(n) for n in range(2, 400, 2)) + "\n"
+        (self.stub / "curl-fail-calls").write_text(calls, encoding="utf-8")
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.upstream_port(), "8080")
+        self.assertEqual(self.read("last-good-tag"), OLD_TAG)
 
     def test_next_blue_green_deploy_flips_back_to_the_primary_slot(self):
         self.prepare_managed_nginx(port="8081", running=OLD_TAG)
@@ -849,9 +880,45 @@ class DeployScriptTests(unittest.TestCase):
         self.assertEqual(self.started(), ["api-alt"])
         self.assertEqual(self.stopped(), [])
         self.assertEqual(self.upstream_port(), "8081")
-        self.assertEqual(self.reloads(), [])
         self.assertIn("in-place", result.stdout)
         self.assertIn("300MB available", result.stdout)
+        # Maintenance answer on before the slot is recreated, routing restored after.
+        up = self.index_of("up -d api-alt")
+        self.assertEqual(len(self.reloads()), 2)
+        self.assertLess(self.index_of("NGINX reload"), up)
+        self.assertGreater(self.index_of("NGINX reload", up), up)
+        self.assertNotIn(" down;", self.upstream_conf().read_text(encoding="utf-8"))
+
+    def test_in_place_marks_the_live_slot_down_while_it_is_recreated(self):
+        self.prepare_managed_nginx(port="8080", memory_mb=300)
+        self.set_healthy(NEW_TAG)
+        seen = self.stub / "conf-during-up"
+        docker = self.bin / "docker"
+        original = docker.read_text(encoding="utf-8")
+        docker.write_text(
+            original.replace(
+                '*"up -d api"*)',
+                '*"up -d api"*)\n    cp "${SAIRO_NGINX_DIR}/conf.d/sairo-api-upstream.conf" "${STUB_DIR}/conf-during-up"',
+                1,
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("server 127.0.0.1:8080 max_fails=0 down;", seen.read_text(encoding="utf-8"))
+        self.assertEqual(self.upstream_port(), "8080")
+
+    def test_failed_in_place_deploy_without_rollback_target_restores_routing(self):
+        self.prepare_managed_nginx(port="8080", memory_mb=300)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        conf = self.upstream_conf().read_text(encoding="utf-8")
+        self.assertNotIn(" down;", conf)
+        self.assertEqual(self.upstream_port(), "8080")
 
     def test_unreadable_memory_falls_back_to_in_place(self):
         self.prepare_managed_nginx(port="8080")
