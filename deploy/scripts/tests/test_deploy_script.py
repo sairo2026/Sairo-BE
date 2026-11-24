@@ -910,6 +910,21 @@ class DeployScriptTests(unittest.TestCase):
         self.assertIn("server 127.0.0.1:8080 max_fails=0 down;", seen.read_text(encoding="utf-8"))
         self.assertEqual(self.upstream_port(), "8080")
 
+    def test_in_place_aborts_before_recreating_live_slot_if_maintenance_switch_fails(self):
+        self.prepare_managed_nginx(port="8080", memory_mb=300)
+        (self.deploy_dir / "last-good-tag").write_text(OLD_TAG + "\n", encoding="utf-8")
+        (self.stub / "nginx-reject").write_text(" down;", encoding="utf-8")
+        self.set_healthy(NEW_TAG)
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("maintenance", result.stderr)
+        self.assertEqual(self.started(), [])
+        self.assertEqual(self.upstream_port(), "8080")
+        self.assertNotIn(" down;", self.upstream_conf().read_text(encoding="utf-8"))
+        self.assertEqual(self.read("last-good-tag"), OLD_TAG)
+
     def test_failed_in_place_deploy_without_rollback_target_restores_routing(self):
         self.prepare_managed_nginx(port="8080", memory_mb=300)
 

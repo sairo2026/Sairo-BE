@@ -648,7 +648,8 @@ enter_maintenance() {
     MAINTENANCE_ACTIVE=true
     echo "[deploy] nginx answers 503 with Retry-After while the api is recreated"
   else
-    echo "[deploy] could not enable the maintenance answer in nginx, recreating without it" >&2
+    echo "[deploy] could not enable the maintenance answer in nginx" >&2
+    return 1
   fi
 }
 
@@ -717,7 +718,10 @@ TARGET_SERVICE=$(service_for_port "${TARGET_PORT}")
 # maintenance state.
 trap 'leave_maintenance "${ACTIVE_PORT}"' EXIT
 if [ "${NGINX_MANAGED}" = "true" ] && [ "${USE_BLUE_GREEN}" != "true" ]; then
-  enter_maintenance "${ACTIVE_PORT}"
+  if ! enter_maintenance "${ACTIVE_PORT}"; then
+    echo "[deploy] aborting before recreating the live api container" >&2
+    exit 1
+  fi
 fi
 
 deploy_tag "${IMAGE_TAG}" "${TARGET_SERVICE}"
