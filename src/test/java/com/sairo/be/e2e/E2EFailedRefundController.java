@@ -3,11 +3,13 @@ package com.sairo.be.e2e;
 import com.sairo.be.global.security.access.AccessPermission;
 import com.sairo.be.global.security.access.RequiresAccess;
 import com.sairo.be.support.fixture.BillingFixtures;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
@@ -33,9 +35,24 @@ public class E2EFailedRefundController {
   private final JdbcTemplate jdbc;
   private final byte[] expectedToken;
 
-  E2EFailedRefundController(JdbcTemplate jdbc, @Value("${E2E_FIXTURE_TOKEN}") String fixtureToken) {
+  E2EFailedRefundController(
+      JdbcTemplate jdbc,
+      @Value("${E2E_FIXTURE_TOKEN}") String fixtureToken,
+      @Value("${spring.datasource.url:}") String jdbcUrl) {
     if (fixtureToken.length() < 32) {
       throw new IllegalStateException("E2E fixture token must have at least 32 characters");
+    }
+    URI database;
+    try {
+      database = URI.create(jdbcUrl.substring("jdbc:".length()));
+    } catch (RuntimeException invalidUrl) {
+      throw new IllegalStateException("E2E fixture requires a loopback PostgreSQL URL");
+    }
+    if (!jdbcUrl.startsWith("jdbc:")
+        || !"postgresql".equals(database.getScheme())
+        || database.getHost() == null
+        || !Set.of("localhost", "127.0.0.1", "::1", "[::1]").contains(database.getHost())) {
+      throw new IllegalStateException("E2E fixture requires a loopback PostgreSQL URL");
     }
     this.jdbc = jdbc;
     this.expectedToken = fixtureToken.getBytes(StandardCharsets.UTF_8);
@@ -103,7 +120,7 @@ public class E2EFailedRefundController {
     authenticate(token);
     Integer count =
         jdbc.queryForObject(
-            "SELECT count(*) FROM ops_audit_log WHERE target_id = ?"
+            "SELECT count(*) FROM ops_audit_log WHERE target_type = 'REFUND_REQUEST' AND target_id = ?"
                 + " AND action_type IN ('REFUND_REOPENED', 'REFUND_RESOLVED_MANUALLY')",
             Integer.class,
             refundId);
