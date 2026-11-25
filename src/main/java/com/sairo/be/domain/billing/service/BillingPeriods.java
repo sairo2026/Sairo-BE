@@ -13,7 +13,7 @@ public final class BillingPeriods {
 
   private BillingPeriods() {}
 
-  public static Instant boundary(Instant anchor, int monthsAfterAnchor) {
+  public static Instant boundary(Instant anchor, long monthsAfterAnchor) {
     return TimeRules.toDisplay(anchor).plusMonths(monthsAfterAnchor).toInstant();
   }
 
