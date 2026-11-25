@@ -87,7 +87,8 @@ class BlockedChargingTest {
         mock(BillingNoticeDispatcher.class),
         mock(BillingReconciliationService.class),
         guard,
-        mock(LateApprovalRefunds.class));
+        mock(LateApprovalRefunds.class),
+        mock(PromotionService.class));
   }
 
   private void assertNoRepositoryOrGatewayUse() {

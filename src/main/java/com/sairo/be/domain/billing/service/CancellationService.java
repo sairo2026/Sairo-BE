@@ -39,6 +39,7 @@ public class CancellationService {
   private final AdvisoryLock advisoryLock;
   private final BillingNoticeDispatcher noticeDispatcher;
   private final Clock clock;
+  private final PromotionService promotions;
 
   public CancellationService(
       BillingContextService context,
@@ -48,7 +49,8 @@ public class CancellationService {
       StepUpState stepUpState,
       AdvisoryLock advisoryLock,
       BillingNoticeDispatcher noticeDispatcher,
-      Clock clock) {
+      Clock clock,
+      PromotionService promotions) {
     this.context = context;
     this.cancellationRepository = cancellationRepository;
     this.invoiceRepository = invoiceRepository;
@@ -57,6 +59,7 @@ public class CancellationService {
     this.advisoryLock = advisoryLock;
     this.noticeDispatcher = noticeDispatcher;
     this.clock = clock;
+    this.promotions = promotions;
   }
 
   @Transactional
@@ -119,5 +122,6 @@ public class CancellationService {
     invoiceRepository.saveAll(open);
     consentWithdrawals.record(subscription, now);
     subscription.end(now);
+    promotions.onSubscriptionEnded(subscription.getId(), "CANCELLED", now);
   }
 }

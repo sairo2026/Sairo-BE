@@ -58,6 +58,7 @@ public class OfficeCloseService {
   private final StepUpState stepUpState;
   private final AdvisoryLock advisoryLock;
   private final Clock clock;
+  private final PromotionService promotions;
 
   public OfficeCloseService(
       OfficeClosureMembershipService membershipService,
@@ -69,7 +70,8 @@ public class OfficeCloseService {
       SupportInquiryService supportInquiryService,
       StepUpState stepUpState,
       AdvisoryLock advisoryLock,
-      Clock clock) {
+      Clock clock,
+      PromotionService promotions) {
     this.membershipService = membershipService;
     this.subscriptionRepository = subscriptionRepository;
     this.invoiceRepository = invoiceRepository;
@@ -80,6 +82,7 @@ public class OfficeCloseService {
     this.stepUpState = stepUpState;
     this.advisoryLock = advisoryLock;
     this.clock = clock;
+    this.promotions = promotions;
   }
 
   @Transactional
@@ -118,6 +121,7 @@ public class OfficeCloseService {
     advisoryLock.lockForTransaction("billing:subscription:" + subscriptionId);
     Subscription subscription = subscriptionRepository.findById(subscriptionId).orElseThrow();
     if (subscription.getStatus() == SubscriptionStatus.ENDED) {
+      promotions.onSubscriptionEnded(subscriptionId, "ENDED", now);
       return;
     }
     if (subscription.getStatus() != SubscriptionStatus.SUSPENDED) {
@@ -130,6 +134,7 @@ public class OfficeCloseService {
     }
     subscription.end(now);
     subscriptionRepository.save(subscription);
+    promotions.onSubscriptionEnded(subscriptionId, "ENDED", now);
   }
 
   private static String parse(JsonNode body) {

@@ -13,6 +13,7 @@ import com.sairo.be.domain.billing.repository.BillingCustomerRepository;
 import com.sairo.be.domain.billing.repository.BillingQueryRepository;
 import com.sairo.be.domain.billing.repository.BillingQueryRepository.ApprovedAgreementRow;
 import com.sairo.be.domain.billing.repository.BillingQueryRepository.LatestInvoiceRow;
+import com.sairo.be.domain.billing.repository.PromotionRepository;
 import com.sairo.be.domain.billing.repository.SubscriptionPurchaseConsentRepository;
 import com.sairo.be.domain.billing.service.PriceScheduleSelector.PriceSelection;
 import com.sairo.be.domain.legal.service.TermsCatalogService;
@@ -41,6 +42,7 @@ public class SubscriptionCurrentService {
   private final SubscriptionPurchaseConsentRepository consentRepository;
   private final TermsAgreementRepository termsAgreementRepository;
   private final TermsCatalogService termsCatalogService;
+  private final PromotionRepository promotionRepository;
 
   public SubscriptionCurrentService(
       BillingContextService context,
@@ -50,7 +52,8 @@ public class SubscriptionCurrentService {
       BillingCustomerRepository customerRepository,
       SubscriptionPurchaseConsentRepository consentRepository,
       TermsAgreementRepository termsAgreementRepository,
-      TermsCatalogService termsCatalogService) {
+      TermsCatalogService termsCatalogService,
+      PromotionRepository promotionRepository) {
     this.context = context;
     this.priceSelector = priceSelector;
     this.purchaseQuote = purchaseQuote;
@@ -59,6 +62,7 @@ public class SubscriptionCurrentService {
     this.consentRepository = consentRepository;
     this.termsAgreementRepository = termsAgreementRepository;
     this.termsCatalogService = termsCatalogService;
+    this.promotionRepository = promotionRepository;
   }
 
   public SubscriptionCurrentResponse current(StaffPrincipal principal) {
@@ -72,7 +76,11 @@ public class SubscriptionCurrentService {
         queryRepository.findActiveCancellationEffectiveAt(subscription.getId());
     SubscriptionStatus status = subscription.getStatus();
 
-    Instant nextChargeAt = nextChargeAt(subscription, cancellation.isPresent());
+    boolean promotionActive = promotionRepository.activeGrantForOffice(officeId).isPresent();
+    boolean promotionConversionPending =
+        promotionRepository.conversionBoundary(subscription.getId()).isPresent();
+    Instant nextChargeAt =
+        promotionActive ? null : nextChargeAt(subscription, cancellation.isPresent());
     Long nextChargeAmount =
         status == SubscriptionStatus.PRE_PAYMENT
             ? prePaymentAmount(officeId, subscription)
@@ -115,7 +123,9 @@ public class SubscriptionCurrentService {
         toDisplayOffset(currentPeriodEnd(subscription)),
         toDisplayOffset(nextChargeAt),
         nextChargeAmount,
-        toDisplayOffset(subscription.getFirstBillingScheduledAt()),
+        promotionActive || promotionConversionPending
+            ? null
+            : toDisplayOffset(subscription.getFirstBillingScheduledAt()),
         toDisplayOffset(subscription.getPrePaymentSince()),
         pastDue ? toDisplayOffset(subscription.getPastDueSince()) : null,
         pastDue && subscription.getPastDueSince() != null
@@ -206,6 +216,12 @@ public class SubscriptionCurrentService {
     Optional<SubscriptionPurchaseConsent> latest =
         consentRepository.findFirstBySubscriptionIdOrderByIdDesc(subscription.getId());
     if (latest.isEmpty() || !latest.get().isAgreed()) {
+      return false;
+    }
+    if (promotionRepository
+        .conversionBoundary(subscription.getId())
+        .filter(boundary -> !latest.get().getRecordedAt().isAfter(boundary))
+        .isPresent()) {
       return false;
     }
     Optional<TermsVersionView> inForce = termsCatalogService.findInForceByCode(PURCHASE_TERMS_CODE);

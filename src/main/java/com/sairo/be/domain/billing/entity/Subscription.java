@@ -46,6 +46,9 @@ public class Subscription {
   @Column(name = "trial_event_id")
   private Long trialEventId;
 
+  @Column(name = "promotion_campaign_id")
+  private Long promotionCampaignId;
+
   @Column(name = "current_period_start")
   private Instant currentPeriodStart;
 
@@ -107,8 +110,14 @@ public class Subscription {
     this.trialStartedAt = startedAt;
     this.trialEndsAt = endsAt;
     this.trialEventId = trialEventId;
+    this.promotionCampaignId = null;
     this.firstBillingScheduledAt = endsAt;
     this.prePaymentSince = null;
+  }
+
+  public void applyPromotionTrial(Instant startedAt, Instant endsAt, Long campaignId) {
+    applyTrial(startedAt, endsAt, null);
+    this.promotionCampaignId = campaignId;
   }
 
   public void extendTrial(Instant endsAt, Long trialEventId) {
