@@ -120,12 +120,13 @@ public class PromotionRepository {
 
   public boolean isApprovedOwnerMembership(long membershipId, long officeId) {
     return jdbc.sql(
-            "SELECT EXISTS(SELECT 1 FROM office_membership WHERE id = :membership"
-                + " AND office_id = :office AND role = 'OWNER' AND status = 'APPROVED')")
+            "SELECT id FROM office_membership WHERE id = :membership"
+                + " AND office_id = :office AND role = 'OWNER' AND status = 'APPROVED' FOR SHARE")
         .param("membership", membershipId)
         .param("office", officeId)
-        .query(Boolean.class)
-        .single();
+        .query(Long.class)
+        .optional()
+        .isPresent();
   }
 
   public boolean hasGrantForSubscription(long subscriptionId) {

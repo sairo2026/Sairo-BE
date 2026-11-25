@@ -21,6 +21,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -100,16 +101,21 @@ public class PromotionService {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
     requireBillingOperator(operatorId);
-    long id =
-        promotions.createCampaign(
-            name.strip(),
-            code,
-            startsAt,
-            endsAt,
-            freeMonths,
-            maxOffices,
-            operatorId,
-            selfRedeemable);
+    long id;
+    try {
+      id =
+          promotions.createCampaign(
+              name.strip(),
+              code,
+              startsAt,
+              endsAt,
+              freeMonths,
+              maxOffices,
+              operatorId,
+              selfRedeemable);
+    } catch (DuplicateKeyException ignored) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
     operators.record(
         operatorId,
         "PROMOTION_CAMPAIGN_CREATED",

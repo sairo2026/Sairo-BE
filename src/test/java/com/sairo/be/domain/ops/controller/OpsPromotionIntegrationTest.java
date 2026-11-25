@@ -66,6 +66,13 @@ class OpsPromotionIntegrationTest extends OpsConsoleTestBase {
             .getResponse()
             .getContentAsString();
     long campaignId = Long.parseLong(response.replaceAll("(?s).*\"id\":(\\d+).*", "$1"));
+    String duplicateResponse =
+        post(ROOT + "/campaigns", body, creatorSession)
+            .andExpect(status().isConflict())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    assertThat(duplicateResponse).doesNotContain(code);
     String redeem = "{\"code\":\"" + code + "\"}";
 
     post("/api/billing/promotion-periods/redeem", redeem, memberSession(member))
