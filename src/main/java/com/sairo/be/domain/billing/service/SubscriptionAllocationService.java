@@ -60,6 +60,7 @@ public class SubscriptionAllocationService {
     Subscription subscription = existing.get();
     advisoryLock.lockForTransaction("billing:subscription:" + subscription.getId());
     if (subscription.getStatus() != SubscriptionStatus.PRE_PAYMENT
+        || subscription.getPromotionCampaignId() != null
         || queryRepository.countInvoices(subscription.getId()) > 0) {
       return subscription;
     }
@@ -83,6 +84,7 @@ public class SubscriptionAllocationService {
     Optional<StartCustomerEventRow> startEvent =
         queryRepository.findStartCustomerEventFor(officeId);
     if (!eligibleStatus
+        || subscription.getPromotionCampaignId() != null
         || startEvent.isEmpty()
         || queryRepository.countInvoices(subscription.getId()) > 0) {
       return Optional.of(subscription);

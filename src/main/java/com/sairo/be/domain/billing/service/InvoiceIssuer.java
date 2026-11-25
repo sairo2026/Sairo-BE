@@ -6,6 +6,7 @@ import com.sairo.be.domain.billing.entity.Subscription;
 import com.sairo.be.domain.billing.entity.SubscriptionPurchaseConsent;
 import com.sairo.be.domain.billing.repository.BillingInvoiceRepository;
 import com.sairo.be.domain.billing.repository.BillingQueryRepository;
+import com.sairo.be.domain.billing.repository.PromotionRepository;
 import com.sairo.be.domain.billing.service.PriceScheduleSelector.PriceSelection;
 import java.time.Instant;
 import java.util.Optional;
@@ -22,6 +23,7 @@ public class InvoiceIssuer {
   private final ConsentChecker consentChecker;
   private final BillingInvoiceRepository invoiceRepository;
   private final BillingQueryRepository queryRepository;
+  private final PromotionRepository promotionRepository;
 
   public InvoiceIssuer(
       PriceScheduleSelector priceSelector,
@@ -29,17 +31,22 @@ public class InvoiceIssuer {
       VatCalculator vatCalculator,
       ConsentChecker consentChecker,
       BillingInvoiceRepository invoiceRepository,
-      BillingQueryRepository queryRepository) {
+      BillingQueryRepository queryRepository,
+      PromotionRepository promotionRepository) {
     this.priceSelector = priceSelector;
     this.context = context;
     this.vatCalculator = vatCalculator;
     this.consentChecker = consentChecker;
     this.invoiceRepository = invoiceRepository;
     this.queryRepository = queryRepository;
+    this.promotionRepository = promotionRepository;
   }
 
   public Optional<BillingInvoice> issue(
       Subscription subscription, Instant periodStart, Instant periodEnd, Instant dueAt) {
+    if (promotionRepository.requiresReconciliation(subscription.getId())) {
+      return Optional.empty();
+    }
     Long officeId = subscription.getOfficeId();
     PriceSelection selection = priceSelector.select(officeId, periodStart);
     int memberCount = context.billableMembers(officeId);
@@ -49,6 +56,12 @@ public class InvoiceIssuer {
     Optional<SubscriptionPurchaseConsent> consent =
         consentChecker.findValid(subscription.getId(), amount);
     if (consent.isEmpty()) {
+      return Optional.empty();
+    }
+    if (promotionRepository
+        .conversionBoundary(subscription.getId())
+        .filter(boundary -> !consent.get().getRecordedAt().isAfter(boundary))
+        .isPresent()) {
       return Optional.empty();
     }
     long vat = vatCalculator.vatAmount(amount);
