@@ -70,6 +70,7 @@ public enum ErrorCode {
   CONTRACT_ACTION_NOT_ALLOWED(HttpStatus.CONFLICT, "매매 계약에 허용되지 않는 전이·명령"),
   VERSION_CONFLICT(HttpStatus.CONFLICT, "다른 곳에서 먼저 수정되었습니다. 새로 고친 뒤 다시 시도해 주세요."),
   PAYMENT_VERIFYING(HttpStatus.CONFLICT, "직전 결제 결과가 확인 중이라 새 결제를 요청할 수 없음"),
+  BILLING_AMOUNT_UNSUPPORTED(HttpStatus.CONFLICT, "PG 자동결제 최소 금액 미만은 승인 요청할 수 없음"),
   CANCELLATION_ALREADY_EFFECTIVE(HttpStatus.CONFLICT, "이미 발효된 해지 예약의 철회 시도"),
   IMPORT_NOT_CANCELLABLE(HttpStatus.CONFLICT, "취소 기한 경과 또는 취소할 수 있는 신규 데이터 없음"),
   APPROVAL_INVALIDATED(HttpStatus.CONFLICT, "운영 승인 실행 직전 무효화 확인"),

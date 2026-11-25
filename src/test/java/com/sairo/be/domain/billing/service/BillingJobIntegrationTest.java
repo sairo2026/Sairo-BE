@@ -381,6 +381,89 @@ class BillingJobIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
+  void 무료_요금은_PG_청구서를_발행하지_않고_운영_작업_실패로_남긴다() {
+    Instant periodEnd = daysFromNow(-1);
+    Ready ready = activeDue(periodEnd.minus(30, ChronoUnit.DAYS), periodEnd);
+    fixtures.price("ZERO-UNSUPPORTED", "STANDARD", daysFromNow(-2), "ACTIVE", 0);
+
+    jobService.runRenewals(Instant.now());
+
+    assertThat(count("SELECT count(*) FROM billing_invoice")).isZero();
+    assertThat(gateway.charges()).isEmpty();
+    assertThat(subscription(ready).get("status")).isEqualTo("ACTIVE");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM system_job_run WHERE job_name = 'billing-renewal'",
+                String.class))
+        .isEqualTo("FAILED");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT error_code FROM system_job_run WHERE job_name = 'billing-renewal'",
+                String.class))
+        .isEqualTo("BILLING_AMOUNT_UNSUPPORTED");
+  }
+
+  @Test
+  void 이전에_저장된_무료_청구서도_PG에_보내지_않고_실패로_표시한다() {
+    Instant periodEnd = daysFromNow(-1);
+    Ready ready = activeDue(periodEnd.minus(30, ChronoUnit.DAYS), periodEnd);
+    fixtures
+        .invoice(ready.owner().office().getId(), ready.subscriptionId(), ready.consentId())
+        .amount(0)
+        .status("UNBILLED")
+        .period(periodEnd, BillingPeriods.boundary(periodEnd, 1))
+        .insert();
+
+    jobService.runRenewals(Instant.now());
+
+    assertThat(gateway.charges()).isEmpty();
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM system_job_run WHERE job_name = 'billing-renewal'",
+                String.class))
+        .isEqualTo("FAILED");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT error_code FROM system_job_run WHERE job_name = 'billing-renewal'",
+                String.class))
+        .isEqualTo("BILLING_AMOUNT_UNSUPPORTED");
+  }
+
+  @Test
+  void 이전에_실패한_무료_청구서의_재시도도_PG에_보내지_않고_실패로_표시한다() {
+    Instant periodEnd = daysFromNow(-1);
+    Ready ready =
+        ready(
+            seed ->
+                seed.status("PAST_DUE_GRACE")
+                    .period(periodEnd.minus(30, ChronoUnit.DAYS), periodEnd)
+                    .pastDueSince(periodEnd),
+            true,
+            true);
+    fixtures
+        .invoice(ready.owner().office().getId(), ready.subscriptionId(), ready.consentId())
+        .amount(0)
+        .status("FAILED")
+        .period(periodEnd, BillingPeriods.boundary(periodEnd, 1))
+        .insert();
+    jdbcTemplate.update("UPDATE billing_invoice SET next_retry_at = now() - interval '1 minute'");
+
+    jobService.runRetries(Instant.now());
+
+    assertThat(gateway.charges()).isEmpty();
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT status FROM system_job_run WHERE job_name = 'billing-retry'",
+                String.class))
+        .isEqualTo("FAILED");
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT error_code FROM system_job_run WHERE job_name = 'billing-retry'",
+                String.class))
+        .isEqualTo("BILLING_AMOUNT_UNSUPPORTED");
+  }
+
+  @Test
   void 가격_인상에_동의하지_않으면_갱신_청구서를_만들지_않고_새_청구기간_시작에_종료하며_안내를_무동의_종료로_바꾼다() {
     Instant periodEnd = daysFromNow(-1);
     Ready ready = activeDue(periodEnd.minus(30, ChronoUnit.DAYS), periodEnd);

@@ -44,6 +44,8 @@ public class InvoiceIssuer {
     PriceSelection selection = priceSelector.select(officeId, periodStart);
     int memberCount = context.billableMembers(officeId);
     long amount = PriceCalculator.monthlyAmount(selection.table(), memberCount);
+    // 0원 혜택은 별도 내부 거래로 처리해야 한다. 미청구 청구서를 만들고 PG에 보내지 않는다.
+    BillingChargeService.requireSupportedPgAmount(amount);
     Optional<SubscriptionPurchaseConsent> consent =
         consentChecker.findValid(subscription.getId(), amount);
     if (consent.isEmpty()) {

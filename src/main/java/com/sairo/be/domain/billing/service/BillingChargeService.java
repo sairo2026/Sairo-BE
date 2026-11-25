@@ -36,6 +36,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class BillingChargeService {
 
   private static final String ORDER_NAME = "사이로 구독 이용료";
+  /** 토스페이먼츠 자동결제 승인 API는 0원 승인을 지원하지 않고 100원 이상을 안내한다. */
+  static final long MIN_PG_CHARGE_AMOUNT = 100;
 
   /** 토스 승인 요청 제한 시간(65초)을 넘겨도 결과를 반영하지 못한 시도는 프로세스가 중단된 것으로 본다. */
   static final Duration STALE_PROCESSING_AFTER = Duration.ofMinutes(15);
@@ -197,6 +199,7 @@ public class BillingChargeService {
     if (!invoice.isUnpaid()) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
+    requireSupportedPgAmount(invoice.getAmount());
     Optional<BillingChargeAttempt> last =
         attemptRepository.findFirstByInvoiceIdOrderByAttemptNoDesc(invoiceId);
     if (last.isPresent() && last.get().isInFlight()) {
@@ -225,6 +228,12 @@ public class BillingChargeService {
             invoice.getAmount(),
             ORDER_NAME,
             idempotencyKey));
+  }
+
+  static void requireSupportedPgAmount(long amount) {
+    if (amount < MIN_PG_CHARGE_AMOUNT) {
+      throw new BusinessException(ErrorCode.BILLING_AMOUNT_UNSUPPORTED);
+    }
   }
 
   private ChargeOutcome apply(Long invoiceId, Long attemptId, PaymentResult result) {

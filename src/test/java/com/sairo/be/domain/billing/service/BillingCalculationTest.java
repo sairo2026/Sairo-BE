@@ -7,6 +7,8 @@ import com.sairo.be.domain.billing.entity.SubscriptionPlan;
 import com.sairo.be.domain.billing.entity.SubscriptionStatus;
 import com.sairo.be.domain.billing.mapper.BillingMapper;
 import com.sairo.be.domain.billing.service.PriceCalculator.PriceTable;
+import com.sairo.be.global.error.BusinessException;
+import com.sairo.be.global.error.ErrorCode;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -93,6 +95,61 @@ class BillingCalculationTest {
     Instant anchor = Instant.parse("2027-07-01T00:00:00+09:00");
     assertThat(BillingPeriods.boundary(anchor, 1))
         .isEqualTo(Instant.parse("2027-08-01T00:00:00+09:00"));
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "2027-01-01T14:30:00+09:00, 2027-02-01T14:30:00+09:00",
+    "2027-01-15T00:00:00+09:00, 2027-02-15T00:00:00+09:00",
+    "2027-01-30T14:30:00+09:00, 2027-02-28T14:30:00+09:00",
+    "2027-01-31T14:30:00+09:00, 2027-02-28T14:30:00+09:00",
+    "2028-02-29T14:30:00+09:00, 2028-03-29T14:30:00+09:00",
+    "2027-03-31T14:30:00+09:00, 2027-04-30T14:30:00+09:00",
+    "2027-12-31T14:30:00+09:00, 2028-01-31T14:30:00+09:00"
+  })
+  void 월별_청구_경계는_KST_기준_날짜와_시각을_유지한다(String start, String expected) {
+    assertThat(BillingPeriods.boundary(Instant.parse(start), 1))
+        .isEqualTo(Instant.parse(expected));
+  }
+
+  @Test
+  void 월말_보정은_원래_청구일로_복귀하고_100년_이후에도_기준일을_잃지_않는다() {
+    Instant anchor = Instant.parse("2027-01-31T14:30:00+09:00");
+    assertThat(BillingJobService.nextBoundary(anchor, Instant.parse("2027-02-28T14:30:00+09:00")))
+        .isEqualTo(Instant.parse("2027-03-31T14:30:00+09:00"));
+    assertThat(BillingJobService.nextBoundary(anchor, Instant.parse("2128-02-29T14:30:00+09:00")))
+        .isEqualTo(Instant.parse("2128-03-31T14:30:00+09:00"));
+  }
+
+  @Test
+  void 스케줄러가_지연되어도_24회_갱신은_원래_월말_기준일을_유지한다() {
+    Instant anchor = Instant.parse("2027-01-31T14:30:00+09:00");
+    Instant previous = anchor;
+    for (int month = 1; month <= 24; month++) {
+      Instant expected = BillingPeriods.boundary(anchor, month);
+      assertThat(BillingJobService.nextBoundary(anchor, previous)).isEqualTo(expected);
+      previous = expected;
+    }
+  }
+
+  @Test
+  void 윤일_기준일은_평년에는_말일이고_다음_윤년에는_29일로_복귀한다() {
+    Instant anchor = Instant.parse("2028-02-29T00:00:00+09:00");
+    assertThat(BillingPeriods.boundary(anchor, 12))
+        .isEqualTo(Instant.parse("2029-02-28T00:00:00+09:00"));
+    assertThat(BillingPeriods.boundary(anchor, 48))
+        .isEqualTo(Instant.parse("2032-02-29T00:00:00+09:00"));
+  }
+
+  @Test
+  void PG가_지원하지_않는_0원과_최소금액_미만은_승인_요청_전에_차단한다() {
+    for (long amount : new long[] {0, 99}) {
+      assertThatThrownBy(() -> BillingChargeService.requireSupportedPgAmount(amount))
+          .isInstanceOf(BusinessException.class)
+          .extracting("errorCode")
+          .isEqualTo(ErrorCode.BILLING_AMOUNT_UNSUPPORTED);
+    }
+    BillingChargeService.requireSupportedPgAmount(100);
   }
 
   @Test

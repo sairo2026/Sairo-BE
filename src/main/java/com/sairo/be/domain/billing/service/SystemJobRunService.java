@@ -1,5 +1,6 @@
 package com.sairo.be.domain.billing.service;
 
+import com.sairo.be.global.error.BusinessException;
 import java.time.Instant;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
@@ -108,7 +109,11 @@ public class SystemJobRunService {
 
   private static String errorCode(RuntimeException e) {
     String code =
-        e instanceof SystemJobFailure failure ? failure.code() : e.getClass().getSimpleName();
+        e instanceof SystemJobFailure failure
+            ? failure.code()
+            : e instanceof BusinessException business
+                ? business.getErrorCode().name()
+                : e.getClass().getSimpleName();
     return code.length() > ERROR_CODE_MAX ? code.substring(0, ERROR_CODE_MAX) : code;
   }
 
