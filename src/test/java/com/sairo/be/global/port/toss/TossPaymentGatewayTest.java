@@ -7,6 +7,7 @@ import com.sairo.be.global.port.PaymentGateway.BillingKeyIssueException;
 import com.sairo.be.global.port.PaymentGateway.BillingKeyResult;
 import com.sairo.be.global.port.PaymentGateway.CancelCommand;
 import com.sairo.be.global.port.PaymentGateway.ChargeCommand;
+import com.sairo.be.global.port.PaymentGateway.ConfirmCommand;
 import com.sairo.be.global.port.PaymentGateway.PaymentGatewayUnavailableException;
 import com.sairo.be.global.port.PaymentGateway.PaymentResult;
 import com.sairo.be.global.port.PaymentGateway.PaymentStatus;
@@ -132,6 +133,52 @@ class TossPaymentGatewayTest {
         .contains("\"orderId\":\"order-000001\"")
         .contains("\"orderName\":\"사이로 월 구독\"")
         .contains("\"customerKey\":\"customer-key-0000000001\"");
+  }
+
+  @Test
+  void 승인된_카드_매출전표_링크만_결제_결과에_포함한다() {
+    String receipt = "https://dashboard.tosspayments.com/sales-slip?transactionId=example";
+    respond(
+        200,
+        "{\"paymentKey\":\"pk_1\",\"status\":\"DONE\",\"receipt\":{\"url\":\"" + receipt + "\"}}");
+    PaymentResult approved =
+        gateway.charge(new ChargeCommand("bk", "ck", "order-1", 100, "상품", "idem-1"));
+    assertThat(approved.receiptUrl()).isEqualTo(receipt);
+
+    for (String rejected :
+        List.of(
+            "javascript:alert(1)",
+            "https://dashboard.tosspayments.com.evil.example/sales-slip",
+            "https://user@dashboard.tosspayments.com/sales-slip",
+            "https://dashboard.tosspayments.com:444/sales-slip",
+            "https://dashboard.tosspayments.com/" + "a".repeat(2050))) {
+      respond(
+          200,
+          "{\"paymentKey\":\"pk_1\",\"status\":\"DONE\",\"receipt\":{\"url\":\""
+              + rejected
+              + "\"}}");
+      assertThat(gateway.inquire("order-1").receiptUrl()).isNull();
+    }
+
+    respond(
+        200,
+        "{\"paymentKey\":\"pk_1\",\"status\":\"ABORTED\",\"receipt\":{\"url\":\""
+            + receipt
+            + "\"}}");
+    PaymentResult failed = gateway.inquire("order-1");
+    assertThat(failed.receiptUrl()).isNull();
+  }
+
+  @Test
+  void 일반_결제_확정도_승인_응답의_매출전표_링크를_전달한다() {
+    String receipt = "https://merchants.tosspayments.com/web/serve/merchant/test/receipt/1";
+    respond(
+        200,
+        "{\"paymentKey\":\"pk_1\",\"status\":\"DONE\",\"receipt\":{\"url\":\"" + receipt + "\"}}");
+
+    PaymentResult confirmed = gateway.confirm(new ConfirmCommand("pk_1", "order-1", 100));
+
+    assertThat(confirmed.receiptUrl()).isEqualTo(receipt);
   }
 
   @Test

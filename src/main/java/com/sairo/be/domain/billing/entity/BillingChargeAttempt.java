@@ -46,6 +46,9 @@ public class BillingChargeAttempt {
   @Column(name = "pg_transaction_id", length = 200)
   private String pgTransactionId;
 
+  @Column(name = "pg_receipt_url", columnDefinition = "text")
+  private String pgReceiptUrl;
+
   @Column(name = "pg_order_id", nullable = false, length = 64, updatable = false)
   private String pgOrderId;
 
@@ -68,8 +71,13 @@ public class BillingChargeAttempt {
   }
 
   public void markSuccess(String paymentKey, Instant now) {
+    markSuccess(paymentKey, null, now);
+  }
+
+  public void markSuccess(String paymentKey, String receiptUrl, Instant now) {
     this.result = AttemptResult.SUCCESS;
     this.pgTransactionId = paymentKey;
+    this.pgReceiptUrl = receiptUrl;
     this.resolvedAt = now;
     this.failureCategory = null;
     this.failureReason = null;
