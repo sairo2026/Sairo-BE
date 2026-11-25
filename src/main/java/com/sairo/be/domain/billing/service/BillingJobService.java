@@ -57,6 +57,7 @@ public class BillingJobService {
   private final BillingReconciliationService reconciliationService;
   private final LiveChargingGuard liveChargingGuard;
   private final LateApprovalRefunds lateApprovalRefunds;
+  private final PromotionService promotions;
 
   public BillingJobService(
       SubscriptionRepository subscriptionRepository,
@@ -75,7 +76,8 @@ public class BillingJobService {
       BillingNoticeDispatcher noticeDispatcher,
       BillingReconciliationService reconciliationService,
       LiveChargingGuard liveChargingGuard,
-      LateApprovalRefunds lateApprovalRefunds) {
+      LateApprovalRefunds lateApprovalRefunds,
+      PromotionService promotions) {
     this.subscriptionRepository = subscriptionRepository;
     this.invoiceRepository = invoiceRepository;
     this.customerRepository = customerRepository;
@@ -93,10 +95,12 @@ public class BillingJobService {
     this.reconciliationService = reconciliationService;
     this.liveChargingGuard = liveChargingGuard;
     this.lateApprovalRefunds = lateApprovalRefunds;
+    this.promotions = promotions;
   }
 
   public void runAll(Instant now) {
     recoverInterruptedCharges(now);
+    promotions.runDue(now);
     runTrialEndingNotices(now);
     runFirstCharges(now);
     runRenewals(now);
@@ -136,6 +140,9 @@ public class BillingJobService {
     for (Subscription subscription :
         subscriptionRepository.findByStatusAndTrialEndsAtGreaterThanAndTrialEndsAtLessThanEqual(
             SubscriptionStatus.TRIAL, now, until)) {
+      if (promotions.preventsAutomaticCharge(subscription.getId())) {
+        continue;
+      }
       Instant endsAt = subscription.getTrialEndsAt();
       Duration remaining = Duration.between(now, endsAt);
       Integer days =
@@ -365,6 +372,9 @@ public class BillingJobService {
         transactionTemplate.execute(
             status -> {
               Subscription subscription = lockedSubscription(subscriptionId);
+              if (promotions.preventsAutomaticCharge(subscriptionId)) {
+                return null;
+              }
               if (subscription.getStatus() != SubscriptionStatus.TRIAL) {
                 return null;
               }

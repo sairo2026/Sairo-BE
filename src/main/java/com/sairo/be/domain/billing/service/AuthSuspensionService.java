@@ -35,6 +35,7 @@ public class AuthSuspensionService {
   private final ConsentWithdrawals consentWithdrawals;
   private final BillingNoticeDispatcher noticeDispatcher;
   private final AdvisoryLock advisoryLock;
+  private final PromotionService promotions;
 
   public AuthSuspensionService(
       SubscriptionRepository subscriptionRepository,
@@ -43,7 +44,8 @@ public class AuthSuspensionService {
       BillingQueryRepository queryRepository,
       ConsentWithdrawals consentWithdrawals,
       BillingNoticeDispatcher noticeDispatcher,
-      AdvisoryLock advisoryLock) {
+      AdvisoryLock advisoryLock,
+      PromotionService promotions) {
     this.subscriptionRepository = subscriptionRepository;
     this.invoiceRepository = invoiceRepository;
     this.remainingPeriodRefunds = remainingPeriodRefunds;
@@ -51,6 +53,7 @@ public class AuthSuspensionService {
     this.consentWithdrawals = consentWithdrawals;
     this.noticeDispatcher = noticeDispatcher;
     this.advisoryLock = advisoryLock;
+    this.promotions = promotions;
   }
 
   @Transactional
@@ -74,6 +77,7 @@ public class AuthSuspensionService {
     consentWithdrawals.record(subscription, now);
     subscription.suspend(now, remainingTrialSeconds);
     subscriptionRepository.save(subscription);
+    promotions.onAuthSuspended(subscription.getId());
   }
 
   @Transactional
@@ -89,7 +93,9 @@ public class AuthSuspensionService {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
     Long remaining = subscription.getTrialRemainingSeconds();
-    if (remaining != null && remaining > 0 && subscription.getTrialEventId() != null) {
+    if (promotions.onAuthResumed(subscription, now)) {
+      // The promotion retains its original end date; suspension never grants extra free time.
+    } else if (remaining != null && remaining > 0 && subscription.getTrialEventId() != null) {
       subscription.resumeTrial(now.plusSeconds(remaining));
     } else {
       subscription.resumeToPrePayment(now);
@@ -110,6 +116,7 @@ public class AuthSuspensionService {
         advisoryLock.lockForTransaction("billing:subscription:" + subscription.getId());
         subscription.end(deadline);
         subscriptionRepository.save(subscription);
+        promotions.onAuthExpired(subscription.getId(), deadline);
         noticeDispatcher.authSuspensionExpired(
             subscription.getOfficeId(),
             queryRepository.findRegistrationIdByOffice(subscription.getOfficeId()).orElse(null),
