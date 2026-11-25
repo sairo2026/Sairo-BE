@@ -254,7 +254,7 @@ public class BillingChargeService {
     FailureCategory category = null;
     switch (result.status()) {
       case SUCCEEDED -> {
-        attempt.markSuccess(result.paymentKey(), now);
+        attempt.markSuccess(result.paymentKey(), result.receiptUrl(), now);
         invoice.markPaid(now);
         // 사무소 종료도 같은 구독 잠금을 사용하므로 여기서 확정된 종료 여부를 읽는다.
         if (queryRepository.isOfficeClosed(invoice.getOfficeId())) {

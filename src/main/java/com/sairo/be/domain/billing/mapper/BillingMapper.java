@@ -6,6 +6,7 @@ import com.sairo.be.domain.billing.dto.response.BillingPlanListResponse;
 import com.sairo.be.domain.billing.dto.response.PublicPricingResponse;
 import com.sairo.be.domain.billing.dto.response.RefundRequestItemResponse;
 import com.sairo.be.domain.billing.dto.response.RefundRequestStatusResponse;
+import com.sairo.be.domain.billing.entity.AttemptResult;
 import com.sairo.be.domain.billing.entity.BillingChargeAttempt;
 import com.sairo.be.domain.billing.entity.BillingInvoice;
 import com.sairo.be.domain.billing.entity.RefundRequest;
@@ -181,7 +182,10 @@ public final class BillingMapper {
                         attempt.getFailureCategory() == null
                             ? null
                             : attempt.getFailureCategory().name(),
-                        TimeRules.toDisplayOffset(attempt.getAttemptedAt())))
+                        TimeRules.toDisplayOffset(attempt.getAttemptedAt()),
+                        attempt.getResult() == AttemptResult.SUCCESS
+                            ? attempt.getPgReceiptUrl()
+                            : null))
             .toList(),
         supplier == null
             ? null
