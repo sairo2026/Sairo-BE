@@ -29,9 +29,9 @@ class ErrorCodeTest {
 
   @Test
   void 문서가_정한_오류_코드를_모두_정의한다() {
-    assertThat(ErrorCode.values()).hasSize(151);
+    assertThat(ErrorCode.values()).hasSize(152);
     assertThat(Arrays.stream(ErrorCode.values()).filter(c -> c != ErrorCode.INTERNAL_ERROR))
-        .hasSize(150);
+        .hasSize(151);
   }
 
   @Test
@@ -40,6 +40,7 @@ class ErrorCodeTest {
     assertThat(ErrorCode.UNAUTHENTICATED.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
     assertThat(ErrorCode.WEBHOOK_AUTH_FAILED.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
     assertThat(ErrorCode.PAYMENT_FAILED.getStatus()).isEqualTo(HttpStatus.PAYMENT_REQUIRED);
+    assertThat(ErrorCode.BILLING_AMOUNT_UNSUPPORTED.getStatus()).isEqualTo(HttpStatus.CONFLICT);
     assertThat(ErrorCode.RECONSENT_REQUIRED.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
     assertThat(ErrorCode.RESOURCE_NOT_FOUND.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(ErrorCode.PUBLIC_LINK_EXPIRED.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
