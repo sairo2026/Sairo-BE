@@ -585,7 +585,7 @@ public class PromotionService {
                       .orElse(null);
               return new CurrentPromotion(
                   campaign.name(),
-                  campaign.code(),
+                  displayCode(campaign),
                   grant.startsAt(),
                   grant.freeEndsAt(),
                   "ACTIVE".equals(grant.status())
@@ -609,9 +609,7 @@ public class PromotionService {
                 new CampaignView(
                     c.id(),
                     c.name(),
-                    c.selfRedeemable()
-                        ? "****" + c.code().substring(c.code().length() - 4)
-                        : c.code(),
+                    displayCode(c),
                     c.startsAt(),
                     c.endsAt(),
                     c.freeMonths(),
@@ -620,6 +618,12 @@ public class PromotionService {
                     c.creatorId(),
                     c.selfRedeemable()))
         .toList();
+  }
+
+  private static String displayCode(Campaign campaign) {
+    return campaign.selfRedeemable()
+        ? "****" + campaign.code().substring(campaign.code().length() - 4)
+        : campaign.code();
   }
 
   @Transactional(readOnly = true)

@@ -81,6 +81,14 @@ class OpsPromotionIntegrationTest extends OpsConsoleTestBase {
         .andExpect(jsonPath("$[0].code").value("****ER01"));
     post("/api/billing/promotion-periods/redeem", redeem, memberSession(owner))
         .andExpect(status().isCreated());
+    mockMvc
+        .perform(get("/api/billing/promotion-periods/current").cookie(memberSession(owner)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.campaignCode").value("****ER01"));
+    mockMvc
+        .perform(get("/api/billing/promotion-periods").cookie(memberSession(owner)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].campaignCode").value("****ER01"));
     post("/api/billing/promotion-periods/redeem", redeem, memberSession(anotherOwner))
         .andExpect(status().isConflict());
     post("/api/billing/promotion-periods/redeem", redeem, memberSession(owner))

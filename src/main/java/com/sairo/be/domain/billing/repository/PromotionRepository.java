@@ -352,7 +352,8 @@ public class PromotionRepository {
             "SELECT p.id, p.period_start, p.period_end, p.list_amount, p.discount_amount,"
                 + " p.charged_amount, p.price_version, p.created_at, p.office_name_snapshot,"
                 + " p.plan_snapshot, g.free_ends_at, c.name AS campaign_name,"
-                + " c.code AS campaign_code FROM promotion_period p"
+                + " CASE WHEN c.self_redeemable THEN '****' || right(c.code, 4)"
+                + " ELSE c.code END AS campaign_code FROM promotion_period p"
                 + " JOIN promotion_grant g ON g.id = p.grant_id"
                 + " JOIN promotion_campaign c ON c.id = g.campaign_id"
                 + " WHERE p.office_id = :office ORDER BY p.period_start DESC LIMIT 1000")
