@@ -108,8 +108,7 @@ class BillingCalculationTest {
     "2027-12-31T14:30:00+09:00, 2028-01-31T14:30:00+09:00"
   })
   void 월별_청구_경계는_KST_기준_날짜와_시각을_유지한다(String start, String expected) {
-    assertThat(BillingPeriods.boundary(Instant.parse(start), 1))
-        .isEqualTo(Instant.parse(expected));
+    assertThat(BillingPeriods.boundary(Instant.parse(start), 1)).isEqualTo(Instant.parse(expected));
   }
 
   @Test

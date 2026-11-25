@@ -453,8 +453,7 @@ class BillingJobIntegrationTest extends AuthIntegrationTestBase {
     assertThat(gateway.charges()).isEmpty();
     assertThat(
             jdbcTemplate.queryForObject(
-                "SELECT status FROM system_job_run WHERE job_name = 'billing-retry'",
-                String.class))
+                "SELECT status FROM system_job_run WHERE job_name = 'billing-retry'", String.class))
         .isEqualTo("FAILED");
     assertThat(
             jdbcTemplate.queryForObject(

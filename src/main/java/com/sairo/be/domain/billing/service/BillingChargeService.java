@@ -36,6 +36,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class BillingChargeService {
 
   private static final String ORDER_NAME = "사이로 구독 이용료";
+
   /** 토스페이먼츠 자동결제 승인 API는 0원 승인을 지원하지 않고 100원 이상을 안내한다. */
   static final long MIN_PG_CHARGE_AMOUNT = 100;
 
