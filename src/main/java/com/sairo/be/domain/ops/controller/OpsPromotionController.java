@@ -59,7 +59,8 @@ public class OpsPromotionController {
             body.applicationStartsAt().toInstant(),
             body.applicationEndsAt().toInstant(),
             body.freeMonths(),
-            body.maxOffices());
+            body.maxOffices(),
+            Boolean.TRUE.equals(body.selfRedeemable()));
     return new IdResponse(id);
   }
 
@@ -118,7 +119,8 @@ public class OpsPromotionController {
       @NotNull OffsetDateTime applicationStartsAt,
       @NotNull OffsetDateTime applicationEndsAt,
       @Min(1) @Max(120) int freeMonths,
-      @Min(1) Integer maxOffices) {}
+      @Min(1) Integer maxOffices,
+      Boolean selfRedeemable) {}
 
   public record GrantRequest(@NotNull Long officeId) {}
 

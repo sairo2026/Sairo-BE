@@ -41,13 +41,115 @@ class OpsPromotionIntegrationTest extends OpsConsoleTestBase {
   }
 
   @Test
+  void 승인된_셀프_코드는_사무소_대표만_한번_적용하고_회원_행위자를_남긴다() throws Exception {
+    var owner = staff(OfficeMembershipRole.OWNER);
+    long officeId = owner.office().getId();
+    fixtures.subscription(officeId).prePaymentSince(Instant.now()).insert();
+    var member = staff(OfficeMembershipRole.AGENT);
+    fixtures.subscription(member.office().getId()).prePaymentSince(Instant.now()).insert();
+    var anotherOwner = staff(OfficeMembershipRole.OWNER);
+    fixtures.subscription(anotherOwner.office().getId()).prePaymentSince(Instant.now()).insert();
+    Instant now = Instant.now();
+    String code = "LAUNCH2026OWNER01";
+    String body =
+        "{\"name\":\"셀프 적용\",\"code\":\""
+            + code
+            + "\",\"applicationStartsAt\":\""
+            + kst(now.minusSeconds(60))
+            + "\",\"applicationEndsAt\":\""
+            + kst(now.plusSeconds(86_400))
+            + "\",\"freeMonths\":2,\"maxOffices\":1,\"selfRedeemable\":true}";
+    String response =
+        post(ROOT + "/campaigns", body, creatorSession)
+            .andExpect(status().isCreated())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    long campaignId = Long.parseLong(response.replaceAll("(?s).*\"id\":(\\d+).*", "$1"));
+    String redeem = "{\"code\":\"" + code + "\"}";
+
+    post("/api/billing/promotion-periods/redeem", redeem, memberSession(member))
+        .andExpect(status().isForbidden());
+    post("/api/billing/promotion-periods/redeem", redeem, memberSession(owner))
+        .andExpect(status().isConflict());
+    post(ROOT + "/campaigns/" + campaignId + "/activate", "{}", approverSession)
+        .andExpect(status().isOk());
+    mockMvc
+        .perform(get(ROOT + "/campaigns").cookie(creatorSession))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].selfRedeemable").value(true))
+        .andExpect(jsonPath("$[0].code").value("****ER01"));
+    post("/api/billing/promotion-periods/redeem", redeem, memberSession(owner))
+        .andExpect(status().isCreated());
+    post("/api/billing/promotion-periods/redeem", redeem, memberSession(anotherOwner))
+        .andExpect(status().isConflict());
+    post("/api/billing/promotion-periods/redeem", redeem, memberSession(owner))
+        .andExpect(status().isConflict());
+
+    assertThat(count("SELECT count(*) FROM promotion_grant WHERE office_id = ?", officeId))
+        .isEqualTo(1);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT redeemed_by_membership_id FROM promotion_grant WHERE office_id = ?",
+                Long.class,
+                officeId))
+        .isEqualTo(owner.membership().getId());
+    assertThat(
+            count(
+                "SELECT count(*) FROM promotion_grant WHERE office_id = ? AND granted_by_operator_id IS NULL",
+                officeId))
+        .isEqualTo(1);
+    assertThat(count("SELECT count(*) FROM billing_invoice")).isZero();
+    assertThat(count("SELECT count(*) FROM ops_audit_log WHERE detail LIKE ?", "%" + code + "%"))
+        .isZero();
+
+    long grantId =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM promotion_grant WHERE office_id = ?", Long.class, officeId);
+    post(ROOT + "/grants/" + grantId + "/revoke", "{}", creatorSession).andExpect(status().isOk());
+    String nextCode = "LAUNCH2026OWNER02";
+    String secondCampaign = body.replace(code, nextCode);
+    String secondResponse =
+        post(ROOT + "/campaigns", secondCampaign, creatorSession)
+            .andExpect(status().isCreated())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    long secondCampaignId =
+        Long.parseLong(secondResponse.replaceAll("(?s).*\"id\":(\\d+).*", "$1"));
+    post(ROOT + "/campaigns/" + secondCampaignId + "/activate", "{}", approverSession)
+        .andExpect(status().isOk());
+    post(
+            "/api/billing/promotion-periods/redeem",
+            "{\"code\":\"" + nextCode + "\"}",
+            memberSession(owner))
+        .andExpect(status().isConflict());
+  }
+
+  @Test
+  void 셀프_코드_추측은_사무소별_요청_제한에_걸린다() throws Exception {
+    var owner = staff(OfficeMembershipRole.OWNER);
+    String invalid = "{\"code\":\"INVALIDPROMO2026\"}";
+    for (int attempt = 0; attempt < 5; attempt++) {
+      post("/api/billing/promotion-periods/redeem", invalid, memberSession(owner))
+          .andExpect(status().isConflict());
+    }
+    post("/api/billing/promotion-periods/redeem", invalid, memberSession(owner))
+        .andExpect(status().isTooManyRequests());
+    assertThat(
+            count(
+                "SELECT count(*) FROM promotion_grant WHERE office_id = ?", owner.office().getId()))
+        .isZero();
+  }
+
+  @Test
   void 운영자_2인_승인_뒤_사무소에_0원_구독을_지급하고_동일_사무소_중복_지급을_막는다() throws Exception {
     var owner = staff(OfficeMembershipRole.OWNER);
     long officeId = owner.office().getId();
     long subscriptionId = fixtures.subscription(officeId).prePaymentSince(Instant.now()).insert();
     Instant now = Instant.now();
     String body =
-        "{\"name\":\"출시 무료\",\"code\":\"LAUNCH-TEST\","
+        "{\"name\":\"출시 무료\",\"code\":\"LAUNCH-TEST-2026A\","
             + "\"applicationStartsAt\":\""
             + kst(now.minusSeconds(60))
             + "\","
@@ -67,6 +169,11 @@ class OpsPromotionIntegrationTest extends OpsConsoleTestBase {
         .andExpect(status().isConflict());
     post(ROOT + "/campaigns/" + campaignId + "/activate", "{}", approverSession)
         .andExpect(status().isOk());
+    post(
+            "/api/billing/promotion-periods/redeem",
+            "{\"code\":\"LAUNCH-TEST-2026A\"}",
+            memberSession(owner))
+        .andExpect(status().isConflict());
     String grantBody = "{\"officeId\":" + officeId + "}";
     post(ROOT + "/campaigns/" + campaignId + "/grants", grantBody, creatorSession)
         .andExpect(status().isCreated());
