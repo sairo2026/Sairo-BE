@@ -13,9 +13,13 @@ import com.sairo.be.domain.billing.repository.PriceChangeNoticeRepository;
 import com.sairo.be.domain.billing.repository.SubscriptionCancellationRepository;
 import com.sairo.be.domain.billing.repository.SubscriptionRepository;
 import com.sairo.be.global.error.BusinessException;
+import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.support.AdvisoryLock;
+import com.sairo.be.global.support.TimeRules;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +34,6 @@ public class BillingJobService {
 
   private static final List<InvoiceStatus> UNPAID =
       List.of(InvoiceStatus.UNBILLED, InvoiceStatus.FAILED);
-  private static final int MAX_BOUNDARY_STEPS = 1200;
 
   /** 청구 배치의 스케줄러 잠금 최대 유지 시간과 같다. 이 시간이 지난 RUNNING 작업은 다른 실행이 아닌 중단된 실행으로 본다. */
   static final Duration STALE_JOB_AFTER = Duration.ofMinutes(30);
@@ -410,6 +413,9 @@ public class BillingJobService {
             });
       }
     } catch (BusinessException e) {
+      if (e.getErrorCode() == ErrorCode.BILLING_AMOUNT_UNSUPPORTED) {
+        throw e;
+      }
       log.warn("첫 청구를 건너뜁니다. subscriptionId={} code={}", subscriptionId, e.getErrorCode());
     }
   }
@@ -468,6 +474,9 @@ public class BillingJobService {
       try {
         chargeService.charge(invoiceId);
       } catch (BusinessException e) {
+        if (e.getErrorCode() == ErrorCode.BILLING_AMOUNT_UNSUPPORTED) {
+          throw e;
+        }
         log.warn("갱신 청구를 건너뜁니다. subscriptionId={} code={}", subscriptionId, e.getErrorCode());
       }
     }
@@ -489,6 +498,9 @@ public class BillingJobService {
       try {
         chargeService.charge(invoiceId);
       } catch (BusinessException e) {
+        if (e.getErrorCode() == ErrorCode.BILLING_AMOUNT_UNSUPPORTED) {
+          throw e;
+        }
         log.warn("재시도를 건너뜁니다. invoiceId={} code={}", invoiceId, e.getErrorCode());
       }
     }
@@ -576,12 +588,16 @@ public class BillingJobService {
 
   static Instant nextBoundary(Instant anchor, Instant start) {
     Instant base = anchor == null ? start : anchor;
-    for (int step = 0; step <= MAX_BOUNDARY_STEPS; step++) {
-      Instant boundary = BillingPeriods.boundary(base, step);
-      if (boundary.isAfter(start)) {
-        return boundary;
-      }
+    long months =
+        Math.max(
+            0,
+            ChronoUnit.MONTHS.between(
+                YearMonth.from(TimeRules.toDisplay(base)),
+                YearMonth.from(TimeRules.toDisplay(start))));
+    Instant boundary = BillingPeriods.boundary(base, months);
+    while (!boundary.isAfter(start)) {
+      boundary = BillingPeriods.boundary(base, ++months);
     }
-    return BillingPeriods.boundary(start, 1);
+    return boundary;
   }
 }
