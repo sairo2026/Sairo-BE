@@ -157,15 +157,15 @@ class InvoiceIntegrationTest extends BillingIntegrationTestBase {
             .insert();
     jdbcTemplate.update(
         "INSERT INTO billing_charge_attempt (invoice_id, attempt_no, result, failure_category,"
-            + " pg_order_id, idempotency_key, attempted_at) VALUES (?, 1, 'FAILED',"
-            + " 'INSUFFICIENT_FUNDS', 'ORD-20270701-01', ?, ?)",
+            + " pg_order_id, idempotency_key, attempted_at, pg_receipt_url) VALUES (?, 1, 'FAILED',"
+            + " 'INSUFFICIENT_FUNDS', 'ORD-20270701-01', ?, ?, 'https://dashboard.tosspayments.com/invalid')",
         invoiceId,
         java.util.UUID.randomUUID().toString(),
         Timestamp.from(Instant.parse("2027-07-01T00:00:05Z")));
     jdbcTemplate.update(
         "INSERT INTO billing_charge_attempt (invoice_id, attempt_no, result, pg_transaction_id,"
-            + " pg_order_id, idempotency_key, attempted_at) VALUES (?, 2, 'SUCCESS', 'toss_abc',"
-            + " 'ORD-20270701-02', ?, ?)",
+            + " pg_order_id, idempotency_key, attempted_at, pg_receipt_url) VALUES (?, 2, 'SUCCESS', 'toss_abc',"
+            + " 'ORD-20270701-02', ?, ?, 'https://dashboard.tosspayments.com/sales-slip?transactionId=example')",
         invoiceId,
         java.util.UUID.randomUUID().toString(),
         Timestamp.from(Instant.parse("2027-07-01T01:00:05Z")));
@@ -201,7 +201,11 @@ class InvoiceIntegrationTest extends BillingIntegrationTestBase {
         .andExpect(jsonPath("$.attempts[0].result").value("FAILED"))
         .andExpect(jsonPath("$.attempts[0].failureCategory").value("INSUFFICIENT_FUNDS"))
         .andExpect(jsonPath("$.attempts[0].pgTransactionId").value(nullValue()))
+        .andExpect(jsonPath("$.attempts[0].receiptUrl").value(nullValue()))
         .andExpect(jsonPath("$.attempts[1].pgTransactionId").value("toss_abc"))
+        .andExpect(
+            jsonPath("$.attempts[1].receiptUrl")
+                .value("https://dashboard.tosspayments.com/sales-slip?transactionId=example"))
         .andExpect(jsonPath("$.attempts[1].failureCategory").value(nullValue()))
         .andExpect(jsonPath("$.supplier.businessName").value("사이로"))
         .andExpect(jsonPath("$.supplier.infoVersion").value(3))

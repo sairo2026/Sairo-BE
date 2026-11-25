@@ -29,7 +29,9 @@ public record BillingInvoiceDetailResponse(
       String pgTransactionId,
       String result,
       String failureCategory,
-      OffsetDateTime attemptedAt) {}
+      OffsetDateTime attemptedAt,
+      @Schema(description = "승인된 실제 PG 거래의 매출전표 링크. 과거 기록이나 PG가 링크를 반환하지 않은 거래는 null")
+          String receiptUrl) {}
 
   public record Supplier(
       String businessName,

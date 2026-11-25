@@ -9,6 +9,7 @@ import com.sairo.be.domain.office.entity.OfficeMembershipRole;
 import com.sairo.be.domain.office.repository.OfficeMembershipRepository;
 import com.sairo.be.domain.office.repository.OfficeRepository;
 import com.sairo.be.global.error.BusinessException;
+import com.sairo.be.global.port.PaymentGateway.PaymentResult;
 import com.sairo.be.global.port.PaymentGateway.PaymentStatus;
 import com.sairo.be.global.port.stub.StubPaymentGateway;
 import com.sairo.be.global.support.TextCipher;
@@ -135,6 +136,66 @@ class BillingRecoveryScenarioIntegrationTest extends AuthIntegrationTestBase {
     jdbcTemplate.update(
         "UPDATE billing_charge_attempt SET attempted_at = ?",
         Timestamp.from(Instant.now().minus(age)));
+  }
+
+  @Test
+  void 승인_응답의_매출전표_링크는_성공_시도에_저장된다() {
+    Due due = activeDue();
+    String receipt = "https://dashboard.tosspayments.com/sales-slip?transactionId=example";
+    doAnswer(
+            invocation -> {
+              PaymentResult result = (PaymentResult) invocation.callRealMethod();
+              return new PaymentResult(
+                  result.status(), result.paymentKey(), result.failureCode(), receipt);
+            })
+        .when(gateway)
+        .charge(any());
+
+    jobService.runRenewals(Instant.now());
+
+    String stored =
+        jdbcTemplate.queryForObject(
+            "SELECT a.pg_receipt_url FROM billing_charge_attempt a JOIN billing_invoice i ON"
+                + " a.invoice_id = i.id WHERE i.subscription_id = ?",
+            String.class,
+            due.subscriptionId());
+    assertThat(stored).isEqualTo(receipt);
+  }
+
+  @Test
+  void 승인_응답이_유실돼도_조회_결과의_매출전표_링크를_저장한다() {
+    Due due = activeDue();
+    String receipt = "https://dashboard.tosspayments.com/sales-slip?transactionId=recovered";
+    gateway.respondWith(PaymentStatus.VERIFYING);
+    jobService.runRenewals(Instant.now());
+    long invoiceId =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM billing_invoice WHERE subscription_id = ?",
+            Long.class,
+            due.subscriptionId());
+    String orderId =
+        jdbcTemplate.queryForObject(
+            "SELECT pg_order_id FROM billing_charge_attempt WHERE invoice_id = ?",
+            String.class,
+            invoiceId);
+    gateway.resolve(orderId, PaymentStatus.SUCCEEDED);
+    doAnswer(
+            invocation -> {
+              PaymentResult result = (PaymentResult) invocation.callRealMethod();
+              return new PaymentResult(
+                  result.status(), result.paymentKey(), result.failureCode(), receipt);
+            })
+        .when(gateway)
+        .inquire(any());
+
+    chargeService.reconcile(invoiceId);
+
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT pg_receipt_url FROM billing_charge_attempt WHERE invoice_id = ?",
+                String.class,
+                invoiceId))
+        .isEqualTo(receipt);
   }
 
   @Test

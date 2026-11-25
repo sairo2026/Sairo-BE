@@ -59,7 +59,12 @@ public interface PaymentGateway {
 
   record CancelCommand(String paymentKey, String reason, Long amount, String idempotencyKey) {}
 
-  record PaymentResult(PaymentStatus status, String paymentKey, String failureCode) {}
+  record PaymentResult(
+      PaymentStatus status, String paymentKey, String failureCode, String receiptUrl) {
+    public PaymentResult(PaymentStatus status, String paymentKey, String failureCode) {
+      this(status, paymentKey, failureCode, null);
+    }
+  }
 
   record TransactionSnapshot(PaymentStatus status, Long approvedAmount, Long cancelledAmount) {}
 }

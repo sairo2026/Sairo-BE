@@ -116,7 +116,8 @@ public class TossPaymentGateway implements PaymentGateway {
     if (reply.status() == 200) {
       String paymentKey = reply.body().path("paymentKey").asString(null);
       if ("DONE".equals(reply.body().path("status").asString(""))) {
-        return new PaymentResult(PaymentStatus.SUCCEEDED, paymentKey, null);
+        return new PaymentResult(
+            PaymentStatus.SUCCEEDED, paymentKey, null, receiptUrl(reply.body()));
       }
       return new PaymentResult(PaymentStatus.VERIFYING, paymentKey, null);
     }
@@ -134,7 +135,8 @@ public class TossPaymentGateway implements PaymentGateway {
     if (reply.status() == 200) {
       String paymentKey = reply.body().path("paymentKey").asString(command.paymentKey());
       if ("DONE".equals(reply.body().path("status").asString(""))) {
-        return new PaymentResult(PaymentStatus.SUCCEEDED, paymentKey, null);
+        return new PaymentResult(
+            PaymentStatus.SUCCEEDED, paymentKey, null, receiptUrl(reply.body()));
       }
       return new PaymentResult(PaymentStatus.VERIFYING, paymentKey, null);
     }
@@ -181,7 +183,7 @@ public class TossPaymentGateway implements PaymentGateway {
     String status = reply.body().path("status").asString("");
     String paymentKey = reply.body().path("paymentKey").asString(null);
     if ("DONE".equals(status)) {
-      return new PaymentResult(PaymentStatus.SUCCEEDED, paymentKey, null);
+      return new PaymentResult(PaymentStatus.SUCCEEDED, paymentKey, null, receiptUrl(reply.body()));
     }
     if (FAILED_PAYMENT_STATUSES.contains(status)) {
       return new PaymentResult(PaymentStatus.FAILED, paymentKey, status);
@@ -279,6 +281,30 @@ public class TossPaymentGateway implements PaymentGateway {
 
   private static String encode(String segment) {
     return URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
+  }
+
+  private static String receiptUrl(JsonNode payment) {
+    String value = payment.path("receipt").path("url").asString("");
+    if (value.isBlank()
+        || value.length() > 2048
+        || value.chars().anyMatch(c -> Character.isWhitespace(c) || Character.isISOControl(c))) {
+      return null;
+    }
+    try {
+      URI url = URI.create(value);
+      String host = url.getHost();
+      if (!"https".equalsIgnoreCase(url.getScheme())
+          || host == null
+          || url.getUserInfo() != null
+          || url.getPort() != -1 && url.getPort() != 443
+          || !("tosspayments.com".equalsIgnoreCase(host)
+              || host.toLowerCase(java.util.Locale.ROOT).endsWith(".tosspayments.com"))) {
+        return null;
+      }
+      return value;
+    } catch (IllegalArgumentException ignored) {
+      return null;
+    }
   }
 
   private static String stripTrailingSlash(String url) {
