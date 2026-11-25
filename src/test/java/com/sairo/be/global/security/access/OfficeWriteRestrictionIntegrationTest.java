@@ -96,6 +96,7 @@ class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
           "POST /api/notifications/read-all",
           "POST /api/notifications/{notificationId}/read",
           "POST /api/office-change-requests",
+          "POST /api/billing/promotion-periods/redeem",
           "POST /api/offices/current/close",
           "POST /api/offices/current/employment-roster",
           "POST /api/offices/current/memberships/invite",
