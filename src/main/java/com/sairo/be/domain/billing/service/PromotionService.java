@@ -21,6 +21,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -83,7 +84,8 @@ public class PromotionService {
       Instant startsAt,
       Instant endsAt,
       int freeMonths,
-      Integer maxOffices) {
+      Integer maxOffices,
+      boolean selfRedeemable) {
     if (name == null
         || name.isBlank()
         || name.length() > 100
@@ -94,19 +96,32 @@ public class PromotionService {
         || !endsAt.isAfter(startsAt)
         || freeMonths < 1
         || freeMonths > 120
-        || maxOffices != null && maxOffices < 1) {
+        || maxOffices != null && maxOffices < 1
+        || selfRedeemable && (code.length() < 16 || maxOffices == null)) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
     requireBillingOperator(operatorId);
-    long id =
-        promotions.createCampaign(
-            name.strip(), code, startsAt, endsAt, freeMonths, maxOffices, operatorId);
+    long id;
+    try {
+      id =
+          promotions.createCampaign(
+              name.strip(),
+              code,
+              startsAt,
+              endsAt,
+              freeMonths,
+              maxOffices,
+              operatorId,
+              selfRedeemable);
+    } catch (DuplicateKeyException ignored) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
     operators.record(
         operatorId,
         "PROMOTION_CAMPAIGN_CREATED",
         "PROMOTION_CAMPAIGN",
         id,
-        "코드 " + code + ", 무료 개월 " + freeMonths,
+        "무료 개월 " + freeMonths + ", 셀프 적용 " + selfRedeemable,
         now());
     return id;
   }
@@ -125,7 +140,12 @@ public class PromotionService {
     }
     promotions.activateCampaign(campaignId, operatorId);
     operators.record(
-        operatorId, "PROMOTION_CAMPAIGN_ACTIVATED", "PROMOTION_CAMPAIGN", campaignId, "승인", now());
+        operatorId,
+        "PROMOTION_CAMPAIGN_ACTIVATED",
+        "PROMOTION_CAMPAIGN",
+        campaignId,
+        "승인, 셀프 적용 " + campaign.selfRedeemable(),
+        now());
   }
 
   @Transactional
@@ -162,11 +182,44 @@ public class PromotionService {
         promotions
             .lockCampaign(campaignId)
             .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TRANSITION));
+    long grantId = grantToOffice(campaign, officeId, start, operatorId, null);
+    operators.record(
+        operatorId,
+        "PROMOTION_GRANTED",
+        "PROMOTION_GRANT",
+        grantId,
+        "사무소 " + officeId + ", 캠페인 " + campaignId,
+        start);
+    return grantId;
+  }
+
+  /** Only an owner can use a separately approved, explicitly self-redeemable campaign code. */
+  @Transactional
+  public long redeemCode(long membershipId, long officeId, String code) {
+    if (!promotions.isApprovedOwnerMembership(membershipId, officeId)) {
+      throw new BusinessException(ErrorCode.FORBIDDEN);
+    }
+    if (code == null || !code.matches("[A-Z0-9_-]{16,40}")) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    Instant start = now();
+    Campaign campaign =
+        promotions
+            .lockSelfRedeemableCampaign(code)
+            .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TRANSITION));
+    if (!campaign.selfRedeemable()) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    return grantToOffice(campaign, officeId, start, null, membershipId);
+  }
+
+  private long grantToOffice(
+      Campaign campaign, long officeId, Instant start, Long operatorId, Long membershipId) {
     if (!"ACTIVE".equals(campaign.status())
         || start.isBefore(campaign.startsAt())
         || !start.isBefore(campaign.endsAt())
         || campaign.maxOffices() != null
-            && promotions.grantsCount(campaignId) >= campaign.maxOffices()) {
+            && promotions.grantsCount(campaign.id()) >= campaign.maxOffices()) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
     locks.lockForTransaction("billing:office-subscription:" + officeId);
@@ -177,7 +230,9 @@ public class PromotionService {
     locks.lockForTransaction("billing:subscription:" + subscription.getId());
     if (subscription.getStatus() != SubscriptionStatus.PRE_PAYMENT
         || queries.countInvoices(subscription.getId()) > 0
-        || promotions.hasLiveGrant(officeId)) {
+        || (membershipId == null
+            ? promotions.hasLiveGrant(officeId)
+            : promotions.hasAnyGrantForSubscription(subscription.getId()))) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
     Instant freeEnd = BillingPeriods.boundary(start, campaign.freeMonths());
@@ -188,20 +243,20 @@ public class PromotionService {
     if (listAmount <= 0) {
       throw new BusinessException(ErrorCode.BILLING_AMOUNT_UNSUPPORTED);
     }
-    subscription.applyPromotionTrial(start, freeEnd, campaignId);
+    subscription.applyPromotionTrial(start, freeEnd, campaign.id());
     subscriptions.saveAndFlush(subscription);
     long grantId =
         promotions.createGrant(
-            campaignId, officeId, subscription.getId(), start, freeEnd, firstPeriodEnd, operatorId);
+            campaign.id(),
+            officeId,
+            subscription.getId(),
+            start,
+            freeEnd,
+            firstPeriodEnd,
+            operatorId,
+            membershipId);
     Grant grant = promotions.lockGrant(grantId).orElseThrow();
     promotions.createPeriod(grant, start, firstPeriodEnd, listAmount, price.version(), members);
-    operators.record(
-        operatorId,
-        "PROMOTION_GRANTED",
-        "PROMOTION_GRANT",
-        grantId,
-        "사무소 " + officeId + ", 캠페인 " + campaignId,
-        start);
     return grantId;
   }
 
@@ -536,7 +591,7 @@ public class PromotionService {
                       .orElse(null);
               return new CurrentPromotion(
                   campaign.name(),
-                  campaign.code(),
+                  displayCode(campaign),
                   grant.startsAt(),
                   grant.freeEndsAt(),
                   "ACTIVE".equals(grant.status())
@@ -560,14 +615,21 @@ public class PromotionService {
                 new CampaignView(
                     c.id(),
                     c.name(),
-                    c.code(),
+                    displayCode(c),
                     c.startsAt(),
                     c.endsAt(),
                     c.freeMonths(),
                     c.status(),
                     c.maxOffices(),
-                    c.creatorId()))
+                    c.creatorId(),
+                    c.selfRedeemable()))
         .toList();
+  }
+
+  private static String displayCode(Campaign campaign) {
+    return campaign.selfRedeemable()
+        ? "****" + campaign.code().substring(campaign.code().length() - 4)
+        : campaign.code();
   }
 
   @Transactional(readOnly = true)
@@ -631,7 +693,8 @@ public class PromotionService {
       Integer freeMonths,
       String status,
       Integer maxOffices,
-      long creatorId) {}
+      long creatorId,
+      boolean selfRedeemable) {}
 
   public record GrantView(
       long id,

@@ -315,6 +315,7 @@ class OpenApiDocumentationTest {
           Map.entry("GET /api/billing/invoices/{invoiceId}", Set.of("200")),
           Map.entry("GET /api/billing/promotion-periods", Set.of("200")),
           Map.entry("GET /api/billing/promotion-periods/current", Set.of("200")),
+          Map.entry("POST /api/billing/promotion-periods/redeem", Set.of("201")),
           Map.entry("POST /api/refund-requests", Set.of("200", "201")),
           Map.entry("GET /api/refund-requests", Set.of("200")),
           Map.entry("GET /api/refund-requests/{refundId}", Set.of("200")),

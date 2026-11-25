@@ -23,7 +23,8 @@ public class PromotionRepository {
   public Optional<Campaign> campaign(long id) {
     return jdbc.sql(
             "SELECT id, name, code, application_starts_at, application_ends_at, free_months,"
-                + " status, max_offices, created_by_operator_id FROM promotion_campaign WHERE id = :id")
+                + " status, max_offices, created_by_operator_id, self_redeemable"
+                + " FROM promotion_campaign WHERE id = :id")
         .param("id", id)
         .query(PromotionRepository::campaignRow)
         .optional();
@@ -32,7 +33,7 @@ public class PromotionRepository {
   public List<Campaign> campaigns() {
     return jdbc.sql(
             "SELECT id, name, code, application_starts_at, application_ends_at, free_months,"
-                + " status, max_offices, created_by_operator_id FROM promotion_campaign"
+                + " status, max_offices, created_by_operator_id, self_redeemable FROM promotion_campaign"
                 + " ORDER BY id DESC LIMIT 100")
         .query(PromotionRepository::campaignRow)
         .list();
@@ -41,9 +42,20 @@ public class PromotionRepository {
   public Optional<Campaign> lockCampaign(long id) {
     return jdbc.sql(
             "SELECT id, name, code, application_starts_at, application_ends_at, free_months,"
-                + " status, max_offices, created_by_operator_id FROM promotion_campaign WHERE id = :id"
+                + " status, max_offices, created_by_operator_id, self_redeemable"
+                + " FROM promotion_campaign WHERE id = :id"
                 + " FOR UPDATE")
         .param("id", id)
+        .query(PromotionRepository::campaignRow)
+        .optional();
+  }
+
+  public Optional<Campaign> lockSelfRedeemableCampaign(String code) {
+    return jdbc.sql(
+            "SELECT id, name, code, application_starts_at, application_ends_at, free_months,"
+                + " status, max_offices, created_by_operator_id, self_redeemable"
+                + " FROM promotion_campaign WHERE code = :code AND self_redeemable = TRUE FOR UPDATE")
+        .param("code", code)
         .query(PromotionRepository::campaignRow)
         .optional();
   }
@@ -55,11 +67,13 @@ public class PromotionRepository {
       Instant endsAt,
       Integer freeMonths,
       Integer maxOffices,
-      long operatorId) {
+      long operatorId,
+      boolean selfRedeemable) {
     return jdbc.sql(
             "INSERT INTO promotion_campaign (name, code, application_starts_at,"
-                + " application_ends_at, free_months, status, max_offices, created_by_operator_id)"
-                + " VALUES (:name, :code, :starts, :ends, :months, 'DRAFT', :maximum, :operator)"
+                + " application_ends_at, free_months, status, max_offices, created_by_operator_id,"
+                + " self_redeemable)"
+                + " VALUES (:name, :code, :starts, :ends, :months, 'DRAFT', :maximum, :operator, :redeemable)"
                 + " RETURNING id")
         .param("name", name)
         .param("code", code)
@@ -68,6 +82,7 @@ public class PromotionRepository {
         .param("months", freeMonths)
         .param("maximum", maxOffices)
         .param("operator", operatorId)
+        .param("redeemable", selfRedeemable)
         .query(Long.class)
         .single();
   }
@@ -103,10 +118,29 @@ public class PromotionRepository {
         .single();
   }
 
+  public boolean isApprovedOwnerMembership(long membershipId, long officeId) {
+    return jdbc.sql(
+            "SELECT id FROM office_membership WHERE id = :membership"
+                + " AND office_id = :office AND role = 'OWNER' AND status = 'APPROVED' FOR SHARE")
+        .param("membership", membershipId)
+        .param("office", officeId)
+        .query(Long.class)
+        .optional()
+        .isPresent();
+  }
+
   public boolean hasGrantForSubscription(long subscriptionId) {
     return jdbc.sql(
             "SELECT EXISTS(SELECT 1 FROM promotion_grant WHERE subscription_id = :subscription"
                 + " AND status IN ('ACTIVE', 'SUSPENDED', 'RECONCILIATION_REQUIRED', 'CONVERSION_PENDING'))")
+        .param("subscription", subscriptionId)
+        .query(Boolean.class)
+        .single();
+  }
+
+  public boolean hasAnyGrantForSubscription(long subscriptionId) {
+    return jdbc.sql(
+            "SELECT EXISTS(SELECT 1 FROM promotion_grant WHERE subscription_id = :subscription)")
         .param("subscription", subscriptionId)
         .query(Boolean.class)
         .single();
@@ -138,12 +172,14 @@ public class PromotionRepository {
       Instant start,
       Instant freeEnd,
       Instant nextPeriodStart,
-      long operatorId) {
+      Long operatorId,
+      Long membershipId) {
     return jdbc.sql(
             "INSERT INTO promotion_grant (campaign_id, office_id, subscription_id, status,"
                 + " starts_at, free_ends_at, billing_anchor_at, next_period_start,"
-                + " granted_by_operator_id) VALUES (:campaign, :office, :subscription, 'ACTIVE',"
-                + " :start, :freeEnd, :start, :next, :operator) RETURNING id")
+                + " granted_by_operator_id, redeemed_by_membership_id)"
+                + " VALUES (:campaign, :office, :subscription, 'ACTIVE',"
+                + " :start, :freeEnd, :start, :next, :operator, :member) RETURNING id")
         .param("campaign", campaignId)
         .param("office", officeId)
         .param("subscription", subscriptionId)
@@ -151,6 +187,7 @@ public class PromotionRepository {
         .param("freeEnd", freeEnd == null ? null : Timestamp.from(freeEnd))
         .param("next", Timestamp.from(nextPeriodStart))
         .param("operator", operatorId)
+        .param("member", membershipId)
         .query(Long.class)
         .single();
   }
@@ -316,7 +353,8 @@ public class PromotionRepository {
             "SELECT p.id, p.period_start, p.period_end, p.list_amount, p.discount_amount,"
                 + " p.charged_amount, p.price_version, p.created_at, p.office_name_snapshot,"
                 + " p.plan_snapshot, g.free_ends_at, c.name AS campaign_name,"
-                + " c.code AS campaign_code FROM promotion_period p"
+                + " CASE WHEN c.self_redeemable THEN '****' || right(c.code, 4)"
+                + " ELSE c.code END AS campaign_code FROM promotion_period p"
                 + " JOIN promotion_grant g ON g.id = p.grant_id"
                 + " JOIN promotion_campaign c ON c.id = g.campaign_id"
                 + " WHERE p.office_id = :office ORDER BY p.period_start DESC LIMIT 1000")
@@ -350,7 +388,8 @@ public class PromotionRepository {
         (Integer) rs.getObject("free_months"),
         rs.getString("status"),
         (Integer) rs.getObject("max_offices"),
-        rs.getLong("created_by_operator_id"));
+        rs.getLong("created_by_operator_id"),
+        rs.getBoolean("self_redeemable"));
   }
 
   private static Grant grantRow(ResultSet rs, int ignored) throws SQLException {
@@ -376,7 +415,8 @@ public class PromotionRepository {
       Integer freeMonths,
       String status,
       Integer maxOffices,
-      long creatorId) {}
+      long creatorId,
+      boolean selfRedeemable) {}
 
   public record Grant(
       long id,
