@@ -363,6 +363,7 @@ class OpenApiDocumentationTest {
               Set.of("200")),
           Map.entry("GET /api/public/customer-visit-links/{token}", Set.of("200")),
           Map.entry("POST /api/public/customer-visit-links/{token}/reusable-times", Set.of("200")),
+          Map.entry("GET /api/public/customer-visit-links/{token}/reusable-times", Set.of("200")),
           Map.entry("POST /api/public/customer-visit-links/{token}/available-times", Set.of("200")),
           Map.entry("POST /api/properties/{propertyId}/access-approvals", Set.of("201")),
           Map.entry("GET /api/properties/{propertyId}/access-approvals", Set.of("200")),

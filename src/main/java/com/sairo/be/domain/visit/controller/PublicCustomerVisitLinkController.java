@@ -14,9 +14,13 @@ import com.sairo.be.global.web.ClientRequestInfo;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Duration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,6 +35,9 @@ import tools.jackson.databind.JsonNode;
 @RequestMapping("/api/public/customer-visit-links/{token}")
 @Tag(name = "RESPOND", description = "비회원 링크 응답")
 public class PublicCustomerVisitLinkController {
+
+  private static final String REUSE_COOKIE = "SAIRO_VISIT_REUSE";
+  private static final String REUSE_COOKIE_PATH = "/api/public/customer-visit-links";
 
   private final PublicCustomerLinkQueryService queryService;
   private final PublicCustomerLinkSubmitService submitService;
@@ -60,6 +67,19 @@ public class PublicCustomerVisitLinkController {
             token,
             body == null ? null : body.previousToken(),
             ClientRequestInfo.from(request).ipAddress());
+    return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response);
+  }
+
+  @Operation(summary = "같은 브라우저의 이전 방문 가능 시간 미리 보기")
+  @GetMapping("/reusable-times")
+  @RequiresAccess(AccessPermission.GUEST_LINK)
+  public ResponseEntity<ReusableTimes> browserReusableTimes(
+      @PathVariable String token,
+      @CookieValue(value = REUSE_COOKIE, required = false) String previousToken,
+      HttpServletRequest request) {
+    ReusableTimes response =
+        reuseService.previewFromBrowser(
+            token, previousToken, ClientRequestInfo.from(request).ipAddress());
     return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response);
   }
 
@@ -98,6 +118,18 @@ public class PublicCustomerVisitLinkController {
     CustomerAvailableTimesResponse response =
         submitService.submit(
             token, body, idempotencyKey, ClientRequestInfo.from(request).ipAddress());
-    return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response);
+    boolean hasTimes = body.has("timeSlots") && !body.get("timeSlots").isEmpty();
+    ResponseCookie cookie =
+        ResponseCookie.from(REUSE_COOKIE, hasTimes ? token : "")
+            .httpOnly(true)
+            .secure(true)
+            .sameSite("Strict")
+            .path(REUSE_COOKIE_PATH)
+            .maxAge(hasTimes ? Duration.ofDays(7) : Duration.ZERO)
+            .build();
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .header(HttpHeaders.SET_COOKIE, cookie.toString())
+        .body(response);
   }
 }
