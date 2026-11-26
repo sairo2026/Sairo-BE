@@ -56,6 +56,155 @@ class PublicCustomerVisitLinkIntegrationTest extends VisitIntegrationTestBase {
     return view(token) + "/available-times";
   }
 
+  private static String reuseUrl(String token) {
+    return view(token) + "/reusable-times";
+  }
+
+  private static String reuseBody(String previousToken) {
+    return "{\"previousToken\":\"" + previousToken + "\"}";
+  }
+
+  @Test
+  void 같은_사무소의_같은_고객만_이전_시간을_미리보고_새_요청에_자동_제출하지_않는다() throws Exception {
+    Fixture first = fixture();
+    mockMvc
+        .perform(
+            jsonPostAs(
+                submitUrl(first.token()), body(NOTICE_VERSION, slot(first.start(), 10, 12)), null))
+        .andExpect(status().isOk());
+    Long customerId =
+        jdbcTemplate.queryForObject(
+            "SELECT customer_id FROM visit_coordination WHERE id = ?",
+            Long.class,
+            first.coordinationId());
+    long secondId =
+        createCoordination(
+                first.cookie(),
+                customerId,
+                null,
+                first.start(),
+                first.start().plusDays(10),
+                newProperty(first.cookie()))
+            .get("coordinationId")
+            .longValue();
+    String secondToken = issueToken(first.cookie(), secondId);
+
+    mockMvc
+        .perform(jsonPostAs(reuseUrl(secondToken), reuseBody(first.token()), null))
+        .andExpect(status().isOk())
+        .andExpect(
+            header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
+        .andExpect(jsonPath("$.timeSlots.length()").value(1));
+    mockMvc
+        .perform(authedGet(view(secondToken), null))
+        .andExpect(jsonPath("$.submittedTimeSlots.length()").value(0));
+  }
+
+  @Test
+  void 다른_고객의_이전_링크는_재사용을_거부한다() throws Exception {
+    Fixture first = fixture();
+    long otherCustomer =
+        insertCustomer(first.owner().office().getId(), first.owner().membership().getId(), "다른고객");
+    long secondId =
+        createCoordination(
+                first.cookie(),
+                otherCustomer,
+                null,
+                first.start(),
+                first.start().plusDays(10),
+                newProperty(first.cookie()))
+            .get("coordinationId")
+            .longValue();
+    String secondToken = issueToken(first.cookie(), secondId);
+    assertError(
+        mockMvc.perform(jsonPostAs(reuseUrl(secondToken), reuseBody(first.token()), null)),
+        ErrorCode.PUBLIC_LINK_NOT_FOUND);
+  }
+
+  @Test
+  void 만료된_이전_링크의_시간은_다른_요청에_제공하지_않는다() throws Exception {
+    Fixture first = fixture();
+    Long customerId =
+        jdbcTemplate.queryForObject(
+            "SELECT customer_id FROM visit_coordination WHERE id = ?",
+            Long.class,
+            first.coordinationId());
+    long secondId =
+        createCoordination(
+                first.cookie(),
+                customerId,
+                null,
+                first.start(),
+                first.start().plusDays(10),
+                newProperty(first.cookie()))
+            .get("coordinationId")
+            .longValue();
+    String secondToken = issueToken(first.cookie(), secondId);
+    jdbcTemplate.update(
+        "UPDATE visit_customer_link SET expires_at = now() - interval '1 minute' WHERE coordination_id = ?",
+        first.coordinationId());
+    assertError(
+        mockMvc.perform(jsonPostAs(reuseUrl(secondToken), reuseBody(first.token()), null)),
+        ErrorCode.PUBLIC_LINK_EXPIRED);
+  }
+
+  @Test
+  void 폐기된_이전_링크는_재사용을_거부한다() throws Exception {
+    Fixture first = fixture();
+    Long customerId =
+        jdbcTemplate.queryForObject(
+            "SELECT customer_id FROM visit_coordination WHERE id = ?",
+            Long.class,
+            first.coordinationId());
+    long secondId =
+        createCoordination(
+                first.cookie(),
+                customerId,
+                null,
+                first.start(),
+                first.start().plusDays(10),
+                newProperty(first.cookie()))
+            .get("coordinationId")
+            .longValue();
+    String secondToken = issueToken(first.cookie(), secondId);
+    jdbcTemplate.update(
+        "UPDATE visit_customer_link SET revoked_at = now() WHERE coordination_id = ?",
+        first.coordinationId());
+    assertError(
+        mockMvc.perform(jsonPostAs(reuseUrl(secondToken), reuseBody(first.token()), null)),
+        ErrorCode.PUBLIC_LINK_NOT_FOUND);
+  }
+
+  @Test
+  void 새_방문_기간_밖의_이전_시간은_재사용하지_않는다() throws Exception {
+    Fixture first = fixture();
+    mockMvc
+        .perform(
+            jsonPostAs(
+                submitUrl(first.token()), body(NOTICE_VERSION, slot(first.start(), 10, 12)), null))
+        .andExpect(status().isOk());
+    Long customerId =
+        jdbcTemplate.queryForObject(
+            "SELECT customer_id FROM visit_coordination WHERE id = ?",
+            Long.class,
+            first.coordinationId());
+    long secondId =
+        createCoordination(
+                first.cookie(),
+                customerId,
+                null,
+                first.start().plusDays(1),
+                first.start().plusDays(10),
+                newProperty(first.cookie()))
+            .get("coordinationId")
+            .longValue();
+    String secondToken = issueToken(first.cookie(), secondId);
+    mockMvc
+        .perform(jsonPostAs(reuseUrl(secondToken), reuseBody(first.token()), null))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.timeSlots.length()").value(0));
+  }
+
   private static String slot(LocalDate date, int fromHour, int toHour) {
     return "{\"startsAt\":\""
         + date
