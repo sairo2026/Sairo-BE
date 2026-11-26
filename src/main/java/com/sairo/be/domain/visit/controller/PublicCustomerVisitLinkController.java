@@ -6,6 +6,8 @@ import com.sairo.be.domain.visit.dto.response.PublicVisitLinkResponse;
 import com.sairo.be.domain.visit.service.PublicConfirmedScheduleService;
 import com.sairo.be.domain.visit.service.PublicCustomerLinkQueryService;
 import com.sairo.be.domain.visit.service.PublicCustomerLinkSubmitService;
+import com.sairo.be.domain.visit.service.PublicCustomerTimeReuseService;
+import com.sairo.be.domain.visit.service.PublicCustomerTimeReuseService.ReusableTimes;
 import com.sairo.be.global.security.access.AccessPermission;
 import com.sairo.be.global.security.access.RequiresAccess;
 import com.sairo.be.global.web.ClientRequestInfo;
@@ -33,14 +35,32 @@ public class PublicCustomerVisitLinkController {
   private final PublicCustomerLinkQueryService queryService;
   private final PublicCustomerLinkSubmitService submitService;
   private final PublicConfirmedScheduleService confirmedService;
+  private final PublicCustomerTimeReuseService reuseService;
 
   public PublicCustomerVisitLinkController(
       PublicCustomerLinkQueryService queryService,
       PublicCustomerLinkSubmitService submitService,
-      PublicConfirmedScheduleService confirmedService) {
+      PublicConfirmedScheduleService confirmedService,
+      PublicCustomerTimeReuseService reuseService) {
     this.queryService = queryService;
     this.submitService = submitService;
     this.confirmedService = confirmedService;
+    this.reuseService = reuseService;
+  }
+
+  public record ReuseRequest(String previousToken) {}
+
+  @Operation(summary = "이전 요청의 유효한 가능 시간 미리보기", description = "두 링크의 소유 범위를 확인하며 제출은 고객이 별도로 결정한다.")
+  @PostMapping("/reusable-times")
+  @RequiresAccess(AccessPermission.GUEST_LINK)
+  public ResponseEntity<ReusableTimes> reusableTimes(
+      @PathVariable String token, @RequestBody ReuseRequest body, HttpServletRequest request) {
+    ReusableTimes response =
+        reuseService.preview(
+            token,
+            body == null ? null : body.previousToken(),
+            ClientRequestInfo.from(request).ipAddress());
+    return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response);
   }
 
   @Operation(
