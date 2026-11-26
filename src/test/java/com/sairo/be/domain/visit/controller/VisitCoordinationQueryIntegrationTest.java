@@ -83,6 +83,58 @@ class VisitCoordinationQueryIntegrationTest extends VisitIntegrationTestBase {
   }
 
   @Test
+  void 고객_필터는_동명이인을_구분하고_사무소_범위를_유지한다() throws Exception {
+    var owner = newStaff(OfficeMembershipRole.OWNER);
+    var foreign = newStaff(OfficeMembershipRole.OWNER);
+    Cookie cookie = cookieOf(owner);
+    long firstCustomer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
+    long secondCustomer = insertCustomer(owner.office().getId(), owner.membership().getId(), "이수요");
+    long first =
+        createCoordination(
+                cookie, firstCustomer, null, today(), today().plusDays(3), newProperty(cookie))
+            .get("coordinationId")
+            .longValue();
+    long second =
+        createCoordination(
+                cookie, secondCustomer, null, today(), today().plusDays(3), newProperty(cookie))
+            .get("coordinationId")
+            .longValue();
+    setCoordinationStatus(second, "COORDINATABLE");
+
+    mockMvc
+        .perform(
+            authedGet("/api/visit-coordinations", cookie)
+                .param("customerId", Long.toString(firstCustomer)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.filteredCustomerId").value(firstCustomer))
+        .andExpect(jsonPath("$.items[0].coordinationId").value(first))
+        .andExpect(jsonPath("$.items[0].customerId").value(firstCustomer));
+    mockMvc
+        .perform(
+            authedGet("/api/visit-coordinations", cookie)
+                .param("customerId", Long.toString(secondCustomer)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.items[0].coordinationId").value(second))
+        .andExpect(jsonPath("$.items[0].customerId").value(secondCustomer));
+    mockMvc
+        .perform(
+            authedGet("/api/visit-coordinations", cookie)
+                .param("customerId", Long.toString(firstCustomer))
+                .param("status", "TIME_COLLECTING,COORDINATABLE"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.items[0].coordinationId").value(first));
+    mockMvc
+        .perform(
+            authedGet("/api/visit-coordinations", cookieOf(foreign))
+                .param("customerId", Long.toString(firstCustomer)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalElements").value(0));
+  }
+
+  @Test
   void 목록의_잘못된_상태_값과_페이지_크기는_400이다() throws Exception {
     var owner = newStaff(OfficeMembershipRole.OWNER);
     Cookie cookie = cookieOf(owner);
