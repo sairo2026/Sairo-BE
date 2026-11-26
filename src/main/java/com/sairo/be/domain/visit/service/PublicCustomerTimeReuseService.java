@@ -49,6 +49,32 @@ public class PublicCustomerTimeReuseService {
   @Transactional(readOnly = true)
   public ReusableTimes preview(String currentToken, String previousToken, String clientIp) {
     VisitCustomerLink current = active(currentToken, clientIp);
+    return previewForCurrent(current, previousToken, clientIp);
+  }
+
+  /**
+   * A prior response in this browser is a second proof; the new link alone never reveals history.
+   */
+  @Transactional(readOnly = true)
+  public ReusableTimes previewFromBrowser(
+      String currentToken, String previousToken, String clientIp) {
+    VisitCustomerLink current = active(currentToken, clientIp);
+    if (previousToken == null || previousToken.isBlank()) {
+      return new ReusableTimes(List.of());
+    }
+    try {
+      return previewForCurrent(current, previousToken, clientIp);
+    } catch (BusinessException error) {
+      if (error.getErrorCode() == ErrorCode.PUBLIC_LINK_NOT_FOUND
+          || error.getErrorCode() == ErrorCode.PUBLIC_LINK_EXPIRED) {
+        return new ReusableTimes(List.of());
+      }
+      throw error;
+    }
+  }
+
+  private ReusableTimes previewForCurrent(
+      VisitCustomerLink current, String previousToken, String clientIp) {
     VisitCustomerLink previous = active(previousToken, clientIp);
     VisitCoordination target = coordination(current);
     VisitCoordination source = coordination(previous);

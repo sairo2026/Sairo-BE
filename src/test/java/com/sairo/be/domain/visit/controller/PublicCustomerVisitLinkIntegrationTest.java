@@ -65,6 +65,107 @@ class PublicCustomerVisitLinkIntegrationTest extends VisitIntegrationTestBase {
   }
 
   @Test
+  void browserReuseRequiresPriorResponseCookieAndDoesNotSubmitNewRequest() throws Exception {
+    Fixture first = fixture();
+    String setCookie =
+        mockMvc
+            .perform(
+                jsonPostAs(
+                    submitUrl(first.token()),
+                    body(NOTICE_VERSION, slot(first.start(), 10, 12)),
+                    null))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getHeader("Set-Cookie");
+    assertThat(setCookie).contains("HttpOnly", "Secure", "SameSite=Strict");
+    Long customerId =
+        jdbcTemplate.queryForObject(
+            "SELECT customer_id FROM visit_coordination WHERE id = ?",
+            Long.class,
+            first.coordinationId());
+    long secondId =
+        createCoordination(
+                first.cookie(),
+                customerId,
+                null,
+                first.start(),
+                first.start().plusDays(10),
+                newProperty(first.cookie()))
+            .get("coordinationId")
+            .longValue();
+    String secondToken = issueToken(first.cookie(), secondId);
+
+    mockMvc
+        .perform(authedGet(reuseUrl(secondToken), null))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.timeSlots.length()").value(0));
+    mockMvc
+        .perform(
+            authedGet(reuseUrl(secondToken), null)
+                .cookie(new Cookie("SAIRO_VISIT_REUSE", first.token())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.timeSlots.length()").value(1));
+    mockMvc
+        .perform(authedGet(view(secondToken), null))
+        .andExpect(jsonPath("$.submittedTimeSlots.length()").value(0));
+  }
+
+  @Test
+  void browserReuseDoesNotExposeAnotherCustomerOrExpiredLink() throws Exception {
+    Fixture first = fixture();
+    mockMvc
+        .perform(
+            jsonPostAs(
+                submitUrl(first.token()), body(NOTICE_VERSION, slot(first.start(), 10, 12)), null))
+        .andExpect(status().isOk());
+    long otherCustomer =
+        insertCustomer(first.owner().office().getId(), first.owner().membership().getId(), "other");
+    long secondId =
+        createCoordination(
+                first.cookie(),
+                otherCustomer,
+                null,
+                first.start(),
+                first.start().plusDays(10),
+                newProperty(first.cookie()))
+            .get("coordinationId")
+            .longValue();
+    String secondToken = issueToken(first.cookie(), secondId);
+    mockMvc
+        .perform(
+            authedGet(reuseUrl(secondToken), null)
+                .cookie(new Cookie("SAIRO_VISIT_REUSE", first.token())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.timeSlots.length()").value(0));
+    Long firstCustomerId =
+        jdbcTemplate.queryForObject(
+            "SELECT customer_id FROM visit_coordination WHERE id = ?",
+            Long.class,
+            first.coordinationId());
+    long sameCustomerId =
+        createCoordination(
+                first.cookie(),
+                firstCustomerId,
+                null,
+                first.start(),
+                first.start().plusDays(10),
+                newProperty(first.cookie()))
+            .get("coordinationId")
+            .longValue();
+    String sameCustomerToken = issueToken(first.cookie(), sameCustomerId);
+    jdbcTemplate.update(
+        "UPDATE visit_customer_link SET expires_at = now() - interval '1 minute' WHERE coordination_id = ?",
+        first.coordinationId());
+    mockMvc
+        .perform(
+            authedGet(reuseUrl(sameCustomerToken), null)
+                .cookie(new Cookie("SAIRO_VISIT_REUSE", first.token())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.timeSlots.length()").value(0));
+  }
+
+  @Test
   void 같은_사무소의_같은_고객만_이전_시간을_미리보고_새_요청에_자동_제출하지_않는다() throws Exception {
     Fixture first = fixture();
     mockMvc
