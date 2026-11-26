@@ -6,7 +6,12 @@ import java.util.List;
 import java.util.Map;
 
 public record VisitCoordinationListResponse(
-    Map<String, Long> statusCounts, List<Item> items, int page, int size, long totalElements) {
+    Map<String, Long> statusCounts,
+    List<Item> items,
+    int page,
+    int size,
+    long totalElements,
+    Long filteredCustomerId) {
 
   public record Item(
       Long coordinationId,

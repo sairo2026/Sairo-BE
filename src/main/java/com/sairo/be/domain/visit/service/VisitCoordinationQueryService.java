@@ -150,7 +150,8 @@ public class VisitCoordinationQueryService {
         managerNames,
         officeId,
         pageQuery,
-        total);
+        total,
+        customerId);
   }
 
   public VisitCoordinationDetailResponse detail(

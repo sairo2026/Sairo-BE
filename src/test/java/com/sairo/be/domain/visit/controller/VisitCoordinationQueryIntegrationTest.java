@@ -107,6 +107,7 @@ class VisitCoordinationQueryIntegrationTest extends VisitIntegrationTestBase {
                 .param("customerId", Long.toString(firstCustomer)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.totalElements").value(1))
+        .andExpect(jsonPath("$.filteredCustomerId").value(firstCustomer))
         .andExpect(jsonPath("$.items[0].coordinationId").value(first))
         .andExpect(jsonPath("$.items[0].customerId").value(firstCustomer));
     mockMvc
