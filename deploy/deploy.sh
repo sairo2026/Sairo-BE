@@ -424,6 +424,49 @@ deploy_tag() {
     docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" up -d "${service}"
 }
 
+report_runtime() {
+  local container_id image_id expected_id actual_image expected_image image_digest java_release
+  expected_image="${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
+  container_id="$(
+    IMAGE_TAG="${IMAGE_TAG}" ECR_REPOSITORY_URI="${ECR_REPOSITORY_URI}" \
+      timeout -k 5s 15s docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" ps -q "$1" 2>/dev/null || true
+  )"
+  if [ -z "${container_id}" ]; then
+    echo "[deploy] runtime identity unavailable: no container ID for $1"
+    return
+  fi
+  actual_image="$(timeout -k 5s 15s docker inspect --format '{{.Config.Image}}' "${container_id}" 2>/dev/null || true)"
+  image_id="$(timeout -k 5s 15s docker inspect --format '{{.Image}}' "${container_id}" 2>/dev/null || true)"
+  expected_id="$(timeout -k 5s 15s docker image inspect --format '{{.Id}}' "${expected_image}" 2>/dev/null || true)"
+  image_digest="$(
+    timeout -k 5s 15s docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${expected_image}" 2>/dev/null \
+      | awk -v prefix="${ECR_REPOSITORY_URI}@sha256:" 'index($0, prefix) == 1 { print; exit }' || true
+  )"
+  if [ "${actual_image}" != "${expected_image}" ] || [ -z "${image_id}" ] \
+    || [ "${image_id}" != "${expected_id}" ]; then
+    echo "[deploy] runtime identity UNVERIFIED: container image differs from requested tag"
+    return
+  fi
+  echo "[deploy] runtime image ID: ${image_id}"
+  echo "[deploy] runtime image digest: ${image_digest:-unavailable}"
+  java_release="$(
+    timeout -k 5s 15s docker exec "${container_id}" cat /opt/java/openjdk/release 2>/dev/null \
+      | grep -E '^(IMPLEMENTOR|JAVA_RUNTIME_VERSION|JAVA_VERSION)=' || true
+  )"
+  if [ -z "${java_release}" ]; then
+    echo "[deploy] runtime JVM release metadata unavailable"
+    return
+  fi
+  printf '%s\n' "${java_release}" | sed 's/^/[deploy] runtime JVM: /'
+  if [ -z "${image_digest}" ] \
+    || ! grep -Fqx 'IMPLEMENTOR="Eclipse Adoptium"' <<<"${java_release}" \
+    || ! grep -Fqx 'JAVA_RUNTIME_VERSION="21.0.13.1+2-LTS"' <<<"${java_release}"; then
+    echo "[deploy] runtime identity UNVERIFIED: digest or patched JVM metadata is missing"
+    return
+  fi
+  echo "[deploy] runtime identity VERIFIED for requested image and patched JVM"
+}
+
 # Only reports healthy once the slot's own port answers both the aggregate
 # health and the readiness probe on HEALTH_STABLE_PASSES consecutive checks, so
 # an instance that answers once and then drops out again is not promoted.
@@ -744,6 +787,7 @@ if wait_for_healthy "${TARGET_PORT}"; then
   echo "[deploy] healthy, recording ${IMAGE_TAG} as last-good"
   echo "${IMAGE_TAG}" > "${LAST_GOOD_FILE}"
   echo "${IMAGE_TAG}" > "${VERIFIED_GOOD_FILE}"
+  report_runtime "${TARGET_SERVICE}"
   prune_old_images "${IMAGE_TAG}" "${PREVIOUS_TAG}" "${ROLLBACK_TAG}"
   exit 0
 fi
