@@ -91,7 +91,10 @@ jobs:
           cache: gradle
 
       - name: Verify patched JDK
-        run: java -version 2>&1 | tee /dev/stderr | grep -Fq 'Temurin-21.0.13.1+2'
+        run: |
+          version="$(java -version 2>&1)"
+          printf '%s\n' "$version"
+          grep -Fq 'Temurin-21.0.13.1+2' <<<"$version"
 
       - name: Measure on the baseline schema
         if: ${{ env.MODE != 'current-only' }}
