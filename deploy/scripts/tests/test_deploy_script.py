@@ -245,7 +245,7 @@ class DeployScriptTests(unittest.TestCase):
         result = self.run_deploy()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("runtime identity unavailable", result.stderr)
+        self.assertIn("runtime identity unavailable", result.stdout)
         self.assertEqual(self.read("last-good-tag"), NEW_TAG)
 
     def test_runtime_metadata_failure_is_not_reported_as_verified_jvm(self):
@@ -255,7 +255,7 @@ class DeployScriptTests(unittest.TestCase):
         result = self.run_deploy()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("runtime JVM release metadata unavailable", result.stderr)
+        self.assertIn("runtime JVM release metadata unavailable", result.stdout)
         self.assertNotIn("runtime JVM: JAVA_RUNTIME_VERSION", result.stdout)
         self.assertNotIn("runtime identity VERIFIED", result.stdout)
 
@@ -266,7 +266,7 @@ class DeployScriptTests(unittest.TestCase):
         result = self.run_deploy()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("runtime identity UNVERIFIED", result.stderr)
+        self.assertIn("runtime identity UNVERIFIED", result.stdout)
         self.assertNotIn("runtime identity VERIFIED", result.stdout)
 
     def test_wrong_runtime_image_id_is_not_reported_as_verified(self):
@@ -276,7 +276,7 @@ class DeployScriptTests(unittest.TestCase):
         result = self.run_deploy()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("runtime identity UNVERIFIED", result.stderr)
+        self.assertIn("runtime identity UNVERIFIED", result.stdout)
 
     def test_missing_ecr_digest_is_not_reported_as_verified(self):
         self.set_healthy(NEW_TAG)
@@ -286,7 +286,7 @@ class DeployScriptTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("runtime image digest: unavailable", result.stdout)
-        self.assertIn("runtime identity UNVERIFIED", result.stderr)
+        self.assertIn("runtime identity UNVERIFIED", result.stdout)
 
     def test_old_jvm_version_is_not_reported_as_verified(self):
         self.set_healthy(NEW_TAG)
@@ -295,7 +295,7 @@ class DeployScriptTests(unittest.TestCase):
         result = self.run_deploy()
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("runtime identity UNVERIFIED", result.stderr)
+        self.assertIn("runtime identity UNVERIFIED", result.stdout)
         self.assertNotIn("runtime identity VERIFIED", result.stdout)
 
     def test_unverified_previous_tag_is_not_used_for_rollback(self):

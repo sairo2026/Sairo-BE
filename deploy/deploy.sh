@@ -432,7 +432,7 @@ report_runtime() {
       timeout -k 5s 15s docker compose -f "${COMPOSE_FILE}" --project-directory "${COMPOSE_DIR}" ps -q "$1" 2>/dev/null || true
   )"
   if [ -z "${container_id}" ]; then
-    echo "[deploy] runtime identity unavailable: no container ID for $1" >&2
+    echo "[deploy] runtime identity unavailable: no container ID for $1"
     return
   fi
   actual_image="$(timeout -k 5s 15s docker inspect --format '{{.Config.Image}}' "${container_id}" 2>/dev/null || true)"
@@ -444,7 +444,7 @@ report_runtime() {
   )"
   if [ "${actual_image}" != "${expected_image}" ] || [ -z "${image_id}" ] \
     || [ "${image_id}" != "${expected_id}" ]; then
-    echo "[deploy] runtime identity UNVERIFIED: container image differs from requested tag" >&2
+    echo "[deploy] runtime identity UNVERIFIED: container image differs from requested tag"
     return
   fi
   echo "[deploy] runtime image ID: ${image_id}"
@@ -454,14 +454,14 @@ report_runtime() {
       | grep -E '^(IMPLEMENTOR|JAVA_RUNTIME_VERSION|JAVA_VERSION)=' || true
   )"
   if [ -z "${java_release}" ]; then
-    echo "[deploy] runtime JVM release metadata unavailable" >&2
+    echo "[deploy] runtime JVM release metadata unavailable"
     return
   fi
   printf '%s\n' "${java_release}" | sed 's/^/[deploy] runtime JVM: /'
   if [ -z "${image_digest}" ] \
     || ! grep -Fqx 'IMPLEMENTOR="Eclipse Adoptium"' <<<"${java_release}" \
     || ! grep -Fqx 'JAVA_RUNTIME_VERSION="21.0.13.1+2-LTS"' <<<"${java_release}"; then
-    echo "[deploy] runtime identity UNVERIFIED: digest or patched JVM metadata is missing" >&2
+    echo "[deploy] runtime identity UNVERIFIED: digest or patched JVM metadata is missing"
     return
   fi
   echo "[deploy] runtime identity VERIFIED for requested image and patched JVM"
