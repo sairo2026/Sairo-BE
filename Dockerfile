@@ -9,6 +9,7 @@ COPY src src
 RUN ./gradlew bootJar --no-daemon
 
 FROM eclipse-temurin:21-jre@sha256:d77e090ae1f6970c047b443c6f0a6c1358b0426d44432bb5a7753408cd43de0d
+# This container starts Java directly; the base image's Pebble supervisor is unused.
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && apt-get install -y --only-upgrade --no-install-recommends \
       libkrb5support0 libkrb5-3 libk5crypto3 libgssapi-krb5-2 libexpat1 perl-base \
@@ -17,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     done \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libexpat1)" ge 2.7.4-1ubuntu0.3 \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' perl-base)" ge 5.40.1-7ubuntu0.4 \
+    && rm -f /usr/bin/pebble \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system sairo \
     && useradd --system --gid sairo --no-create-home --shell /usr/sbin/nologin sairo
