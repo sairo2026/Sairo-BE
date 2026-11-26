@@ -39,7 +39,7 @@ jobs:
           cache: gradle
 
       - name: Verify patched JDK
-        run: java -version
+        run: java -version 2>&1 | tee /dev/stderr | grep -Fq 'Temurin-21.0.13.1+2'
 
       - name: Run quality checks and tests
         run: ./gradlew check --no-daemon
