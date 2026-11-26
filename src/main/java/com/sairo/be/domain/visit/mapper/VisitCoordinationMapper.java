@@ -50,6 +50,7 @@ public final class VisitCoordinationMapper {
                       candidatesByCoordination.getOrDefault(row.id(), List.of());
                   return new VisitCoordinationListResponse.Item(
                       row.id(),
+                      row.customerId(),
                       customerNames.getOrDefault(row.customerId(), ""),
                       candidates.size(),
                       managerNames.getOrDefault(row.managerMembershipId(), ""),
