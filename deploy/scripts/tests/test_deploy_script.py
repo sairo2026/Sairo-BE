@@ -35,6 +35,28 @@ DOCKER_STUB = """#!/usr/bin/env bash
 echo "IMAGE_TAG=${IMAGE_TAG:-} $*" >> "${STUB_DIR}/docker.log"
 if [ "$1" = "login" ]; then cat > /dev/null; exit 0; fi
 case "$*" in
+  *" ps -q api"*)
+    if [ ! -f "${STUB_DIR}/no-runtime-container" ]; then echo stub-container; fi ;;
+  "inspect --format {{.Config.Image}} "*)
+    if [ -f "${STUB_DIR}/wrong-runtime-image" ]; then echo example.invalid/other:tag
+    else echo "${STUB_EXPECTED_IMAGE}"; fi ;;
+  "inspect --format {{.Image}} "*)
+    if [ -f "${STUB_DIR}/wrong-image-id" ]; then echo sha256:other-image
+    else echo sha256:stub-image; fi ;;
+  "image inspect --format {{.Id}} "*) echo sha256:stub-image ;;
+  "image inspect --format {{range .RepoDigests}}{{println .}}{{end}} "*)
+    echo 'example.invalid/other@sha256:foreign-digest'
+    if [ ! -f "${STUB_DIR}/no-ecr-digest" ]; then
+      echo '632154834220.dkr.ecr.ap-northeast-2.amazonaws.com/sairo-be@sha256:stub-digest'
+    fi ;;
+  "exec "*)
+    if [ -f "${STUB_DIR}/runtime-metadata-fails" ]; then exit 1; fi
+    echo 'IMPLEMENTOR="Eclipse Adoptium"'
+    if [ -f "${STUB_DIR}/old-jvm-version" ]; then
+      echo 'JAVA_RUNTIME_VERSION="21.0.13+9-LTS"'
+    else
+      echo 'JAVA_RUNTIME_VERSION="21.0.13.1+2-LTS"'
+    fi ;;
   *"run --rm migrate"*) exit "$(cat "${STUB_DIR}/migrate-exit" 2>/dev/null || echo 0)" ;;
   *"up -d api-alt"*)
     echo "${IMAGE_TAG}" > "${STUB_DIR}/current-tag"
@@ -184,6 +206,7 @@ class DeployScriptTests(unittest.TestCase):
                 "SAIRO_DEPLOY_DIR": self.deploy_dir.as_posix(),
                 "SAIRO_NGINX_DIR": self.nginx_dir.as_posix(),
                 "SAIRO_MEMINFO_FILE": (self.stub / "meminfo").as_posix(),
+                "STUB_EXPECTED_IMAGE": f"{REPO}:{tag}",
             }
         )
         env.update(extra_env or {})
@@ -214,6 +237,66 @@ class DeployScriptTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.read("last-good-tag"), NEW_TAG)
         self.assertEqual(self.read("last-good-verified"), NEW_TAG)
+
+    def test_missing_runtime_container_is_reported_without_blocking_deploy(self):
+        self.set_healthy(NEW_TAG)
+        (self.stub / "no-runtime-container").touch()
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("runtime identity unavailable", result.stderr)
+        self.assertEqual(self.read("last-good-tag"), NEW_TAG)
+
+    def test_runtime_metadata_failure_is_not_reported_as_verified_jvm(self):
+        self.set_healthy(NEW_TAG)
+        (self.stub / "runtime-metadata-fails").touch()
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("runtime JVM release metadata unavailable", result.stderr)
+        self.assertNotIn("runtime JVM: JAVA_RUNTIME_VERSION", result.stdout)
+        self.assertNotIn("runtime identity VERIFIED", result.stdout)
+
+    def test_wrong_runtime_image_is_not_reported_as_verified(self):
+        self.set_healthy(NEW_TAG)
+        (self.stub / "wrong-runtime-image").touch()
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("runtime identity UNVERIFIED", result.stderr)
+        self.assertNotIn("runtime identity VERIFIED", result.stdout)
+
+    def test_wrong_runtime_image_id_is_not_reported_as_verified(self):
+        self.set_healthy(NEW_TAG)
+        (self.stub / "wrong-image-id").touch()
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("runtime identity UNVERIFIED", result.stderr)
+
+    def test_missing_ecr_digest_is_not_reported_as_verified(self):
+        self.set_healthy(NEW_TAG)
+        (self.stub / "no-ecr-digest").touch()
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("runtime image digest: unavailable", result.stdout)
+        self.assertIn("runtime identity UNVERIFIED", result.stderr)
+
+    def test_old_jvm_version_is_not_reported_as_verified(self):
+        self.set_healthy(NEW_TAG)
+        (self.stub / "old-jvm-version").touch()
+
+        result = self.run_deploy()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("runtime identity UNVERIFIED", result.stderr)
+        self.assertNotIn("runtime identity VERIFIED", result.stdout)
 
     def test_unverified_previous_tag_is_not_used_for_rollback(self):
         (self.deploy_dir / "last-good-tag").write_text(OLD_TAG + "\n", encoding="utf-8")
@@ -498,6 +581,9 @@ class DeployScriptTests(unittest.TestCase):
         result = self.run_deploy()
 
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"runtime image digest: {REPO}@sha256:stub-digest", result.stdout)
+        self.assertIn('runtime JVM: JAVA_RUNTIME_VERSION="21.0.13.1+2-LTS"', result.stdout)
+        self.assertIn("runtime identity VERIFIED", result.stdout)
         self.assertEqual(
             sorted(self.removed_images()), sorted(f"{REPO}:{tag}" for tag in extra)
         )
