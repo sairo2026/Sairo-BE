@@ -16,7 +16,9 @@ import com.sairo.be.support.AuthFlowSupport;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.fixture.TestData;
 import jakarta.servlet.http.Cookie;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -47,6 +49,26 @@ class LaunchScenarioVisitIntegrationTest extends ApproverAccountTestBase {
   }
 
   private record Approval(long propertyId, long approvalId, String token) {}
+
+  private record ScheduleSnapshot(
+      Instant startAt, Instant endAt, Instant travelStartsAt, Instant travelEndsAt) {}
+
+  private ScheduleSnapshot snapshot(long itemId) {
+    return jdbcTemplate.queryForObject(
+        "SELECT scheduled_start_at, scheduled_end_at, travel_starts_at, travel_ends_at"
+            + " FROM visit_schedule_item WHERE id = ?",
+        (rs, rowNum) ->
+            new ScheduleSnapshot(
+                rs.getTimestamp("scheduled_start_at").toInstant(),
+                rs.getTimestamp("scheduled_end_at").toInstant(),
+                rs.getTimestamp("travel_starts_at") == null
+                    ? null
+                    : rs.getTimestamp("travel_starts_at").toInstant(),
+                rs.getTimestamp("travel_ends_at") == null
+                    ? null
+                    : rs.getTimestamp("travel_ends_at").toInstant()),
+        itemId);
+  }
 
   private Desk owner() {
     TestData.Staff staff = newStaff(OfficeMembershipRole.OWNER);
@@ -151,6 +173,31 @@ class LaunchScenarioVisitIntegrationTest extends ApproverAccountTestBase {
                         + ",\"sortOrder\":"
                         + (index + 1)
                         + ",\"visitDurationMinutes\":30,\"travelDurationMinutes\":0}")
+            .collect(Collectors.joining(",", "{\"items\":[", "]}"));
+    mockMvc
+        .perform(
+            jsonPutAs(
+                "/api/visit-coordinations/" + coordinationId + "/schedule",
+                items,
+                desk.cookie(),
+                coordinationVersion(coordinationId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.status").value("FINAL_CONFIRMATION_REQUIRED"));
+  }
+
+  private void composeWithTravel(
+      Desk desk, long coordinationId, int travelMinutes, long... candidateIds) throws Exception {
+    String items =
+        LongStream.range(0, candidateIds.length)
+            .mapToObj(
+                index ->
+                    "{\"candidatePropertyId\":"
+                        + candidateIds[(int) index]
+                        + ",\"sortOrder\":"
+                        + (index + 1)
+                        + ",\"visitDurationMinutes\":30,\"travelDurationMinutes\":"
+                        + travelMinutes
+                        + "}")
             .collect(Collectors.joining(",", "{\"items\":[", "]}"));
     mockMvc
         .perform(
@@ -626,5 +673,122 @@ class LaunchScenarioVisitIntegrationTest extends ApproverAccountTestBase {
         .isEqualTo(1);
     assertThat(coordinationStatus(coordinationId)).isEqualTo("FINAL_CONFIRMATION_REQUIRED");
     assertThat(scheduleItemCount(coordinationId)).isZero();
+  }
+
+  @Test
+  void changedMiddleVisitKeepsUnaffectedConfirmedVisits() throws Exception {
+    Desk desk = owner();
+    long first = newProperty(desk.cookie());
+    long middle = newProperty(desk.cookie());
+    long last = newProperty(desk.cookie());
+    long coordinationId = coordination(desk, customer(desk, "Reschedule QA"), first, middle, last);
+    Approval firstApproval = approvalWithCondition(desk, first);
+    Approval middleApproval = approvalWithCondition(desk, middle);
+    Approval lastApproval = approvalWithCondition(desk, last);
+    LocalDate day = visitDay();
+    customerTimes(desk, coordinationId, slot(day, "09:00", "16:00"));
+    long firstCandidate = candidateOf(coordinationId, first);
+    long middleCandidate = candidateOf(coordinationId, middle);
+    long lastCandidate = candidateOf(coordinationId, last);
+    composeWithTravel(desk, coordinationId, 15, firstCandidate, middleCandidate, lastCandidate);
+
+    long firstRequest = submitRequest(desk, coordinationId, firstCandidate, day, "10:00", "10:30");
+    long middleRequest =
+        submitRequest(desk, coordinationId, middleCandidate, day, "11:00", "11:30");
+    long lastRequest = submitRequest(desk, coordinationId, lastCandidate, day, "12:00", "12:30");
+    selectNow(firstApproval.token(), firstRequest).andExpect(status().isOk());
+    selectNow(middleApproval.token(), middleRequest).andExpect(status().isOk());
+    selectNow(lastApproval.token(), lastRequest).andExpect(status().isOk());
+    assertThat(coordinationStatus(coordinationId)).isEqualTo("CONFIRMED");
+    long firstItem = itemOfCandidate(coordinationId, firstCandidate);
+    long middleItem = itemOfCandidate(coordinationId, middleCandidate);
+    long lastItem = itemOfCandidate(coordinationId, lastCandidate);
+    ScheduleSnapshot firstBefore = snapshot(firstItem);
+    ScheduleSnapshot lastBefore = snapshot(lastItem);
+
+    String dateWindow =
+        "[{\"windowType\":\"DATE\",\"weekday\":null,\"windowDate\":\""
+            + day
+            + "\",\"startsTime\":\"11:15\",\"endsTime\":\"11:45\",\"isException\":false}]";
+    mockMvc
+        .perform(
+            jsonPutAs(
+                conditionsUrl(middleApproval.token()),
+                conditionJson(false, Map.of("windows", dateWindow, "impactAcknowledged", "true")),
+                null,
+                null))
+        .andExpect(status().isOk());
+    assertThat(coordinationStatus(coordinationId)).isEqualTo("RESCHEDULE_REQUIRED");
+    assertThat(itemResult(firstItem)).isEqualTo("SCHEDULED");
+    assertThat(itemResult(lastItem)).isEqualTo("SCHEDULED");
+
+    long changeId =
+        AuthFlowSupport.json(
+                mockMvc
+                    .perform(
+                        jsonPostAs(
+                            itemUrl(middleItem) + "/change-requests",
+                            "{\"requestedStartAt\":\""
+                                + day
+                                + "T11:15:00+09:00\",\"requestedEndAt\":\""
+                                + day
+                                + "T11:45:00+09:00\",\"expectedDurationMinutes\":30}",
+                            desk.cookie()))
+                    .andExpect(status().isCreated())
+                    .andReturn())
+            .get("requestId")
+            .longValue();
+    selectNow(middleApproval.token(), changeId)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.requestStatus").value("CONFIRMED"));
+    assertThat(itemResult(middleItem)).isEqualTo("CANCELLED");
+    assertThat(itemResult(firstItem)).isEqualTo("SCHEDULED");
+    assertThat(itemResult(lastItem)).isEqualTo("SCHEDULED");
+    assertThat(snapshot(firstItem)).isEqualTo(firstBefore);
+    assertThat(snapshot(lastItem)).isEqualTo(lastBefore);
+    assertThat(itemOfCandidate(coordinationId, firstCandidate)).isEqualTo(firstItem);
+    assertThat(itemOfCandidate(coordinationId, lastCandidate)).isEqualTo(lastItem);
+    ScheduleSnapshot middleAfter = snapshot(itemOfCandidate(coordinationId, middleCandidate));
+    assertThat(middleAfter.startAt())
+        .isEqualTo(OffsetDateTime.parse(day + "T11:15:00+09:00").toInstant());
+    assertThat(middleAfter.endAt())
+        .isEqualTo(OffsetDateTime.parse(day + "T11:45:00+09:00").toInstant());
+    assertThat(middleAfter.travelEndsAt())
+        .isEqualTo(OffsetDateTime.parse(day + "T12:00:00+09:00").toInstant());
+    assertThat(coordinationStatus(coordinationId)).isEqualTo("CONFIRMED");
+
+    String impossibleWindow =
+        "[{\"windowType\":\"DATE\",\"weekday\":null,\"windowDate\":\""
+            + day
+            + "\",\"startsTime\":\"11:30\",\"endsTime\":\"12:00\",\"isException\":false}]";
+    mockMvc
+        .perform(
+            jsonPutAs(
+                conditionsUrl(middleApproval.token()),
+                conditionJson(
+                    false, Map.of("windows", impossibleWindow, "impactAcknowledged", "true")),
+                null,
+                null))
+        .andExpect(status().isOk());
+    assertThat(coordinationStatus(coordinationId)).isEqualTo("RESCHEDULE_REQUIRED");
+    assertError(
+            mockMvc.perform(
+                jsonPostAs(
+                    itemUrl(itemOfCandidate(coordinationId, middleCandidate)) + "/change-requests",
+                    "{\"requestedStartAt\":\""
+                        + day
+                        + "T11:30:00+09:00\",\"requestedEndAt\":\""
+                        + day
+                        + "T12:00:00+09:00\",\"expectedDurationMinutes\":30}",
+                    desk.cookie())),
+            ErrorCode.APPROVER_CONDITION_VIOLATED)
+        .andExpect(jsonPath("$.violatedRules", hasItem("TRAVEL_CONFLICT")));
+    assertThat(itemResult(firstItem)).isEqualTo("SCHEDULED");
+    assertThat(itemResult(lastItem)).isEqualTo("SCHEDULED");
+    assertThat(snapshot(firstItem)).isEqualTo(firstBefore);
+    assertThat(snapshot(lastItem)).isEqualTo(lastBefore);
+    assertThat(snapshot(itemOfCandidate(coordinationId, middleCandidate))).isEqualTo(middleAfter);
+    assertThat(itemOfCandidate(coordinationId, firstCandidate)).isEqualTo(firstItem);
+    assertThat(itemOfCandidate(coordinationId, lastCandidate)).isEqualTo(lastItem);
   }
 }
