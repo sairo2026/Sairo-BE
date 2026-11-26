@@ -59,6 +59,7 @@ class VisitCoordinationQueryIntegrationTest extends VisitIntegrationTestBase {
         .andExpect(jsonPath("$.statusCounts.CANCELLED").value(1))
         .andExpect(jsonPath("$.statusCounts.APPLYING").value(0))
         .andExpect(jsonPath("$.items[0].coordinationId").value(first))
+        .andExpect(jsonPath("$.items[0].customerId").value(customer))
         .andExpect(jsonPath("$.items[0].customerName").value("이수요"))
         .andExpect(jsonPath("$.items[0].managerName").exists())
         .andExpect(jsonPath("$.items[0].candidatePropertyCount").value(1))

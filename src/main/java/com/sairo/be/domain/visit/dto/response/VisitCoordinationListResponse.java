@@ -10,6 +10,7 @@ public record VisitCoordinationListResponse(
 
   public record Item(
       Long coordinationId,
+      Long customerId,
       String customerName,
       int candidatePropertyCount,
       String managerName,
