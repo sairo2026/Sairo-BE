@@ -66,15 +66,18 @@ public class VisitCoordinationController {
 
   @Operation(
       summary = "조율 건 목록",
-      description = "status는 반복해서 보낼 수 있고 statusCounts는 상태 필터와 무관하게 조회자가 볼 수 있는 범위 기준이다.")
+      description =
+          "status는 반복해서 보낼 수 있고 customerId는 목록과 totalElements에 적용된다. "
+              + "statusCounts는 필터와 무관하게 조회자가 볼 수 있는 범위 기준이다.")
   @GetMapping
   @RequiresAccess(AccessPermission.STAFF)
   public VisitCoordinationListResponse list(
       @RequestParam(required = false) List<String> status,
+      @RequestParam(required = false) Long customerId,
       @RequestParam(required = false) Integer page,
       @RequestParam(required = false) Integer size,
       @AuthenticationPrincipal StaffPrincipal principal) {
-    return queryService.list(principal, status, PageQuery.of(page, size));
+    return queryService.list(principal, status, customerId, PageQuery.of(page, size));
   }
 
   @Operation(summary = "조율 건 상세", description = "중개보조원은 본인에게 배정된 조율 건만 조회한다.")

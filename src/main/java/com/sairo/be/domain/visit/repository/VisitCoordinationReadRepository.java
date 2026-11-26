@@ -34,9 +34,14 @@ public class VisitCoordinationReadRepository {
   }
 
   public List<ListRow> findPage(
-      long officeId, Long managerScope, List<CoordinationStatus> statuses, int limit, long offset) {
+      long officeId,
+      Long managerScope,
+      List<CoordinationStatus> statuses,
+      Long customerId,
+      int limit,
+      long offset) {
     Map<String, Object> params = new HashMap<>();
-    String where = where(officeId, managerScope, statuses, params);
+    String where = where(officeId, managerScope, statuses, customerId, params);
     params.put("limit", limit);
     params.put("offset", offset);
     return jdbcClient
@@ -61,9 +66,10 @@ public class VisitCoordinationReadRepository {
         .list();
   }
 
-  public long count(long officeId, Long managerScope, List<CoordinationStatus> statuses) {
+  public long count(
+      long officeId, Long managerScope, List<CoordinationStatus> statuses, Long customerId) {
     Map<String, Object> params = new HashMap<>();
-    String where = where(officeId, managerScope, statuses, params);
+    String where = where(officeId, managerScope, statuses, customerId, params);
     return jdbcClient
         .sql("SELECT count(*) FROM visit_coordination" + where)
         .params(params)
@@ -77,7 +83,7 @@ public class VisitCoordinationReadRepository {
       counts.put(status, 0L);
     }
     Map<String, Object> params = new HashMap<>();
-    String where = where(officeId, managerScope, List.of(), params);
+    String where = where(officeId, managerScope, List.of(), null, params);
     jdbcClient
         .sql(
             "SELECT status, count(*) AS total FROM visit_coordination" + where + " GROUP BY status")
@@ -95,12 +101,17 @@ public class VisitCoordinationReadRepository {
       long officeId,
       Long managerScope,
       List<CoordinationStatus> statuses,
+      Long customerId,
       Map<String, Object> params) {
     StringBuilder where = new StringBuilder(" WHERE office_id = :officeId");
     params.put("officeId", officeId);
     if (managerScope != null) {
       where.append(" AND manager_membership_id = :managerScope");
       params.put("managerScope", managerScope);
+    }
+    if (customerId != null) {
+      where.append(" AND customer_id = :customerId");
+      params.put("customerId", customerId);
     }
     if (!statuses.isEmpty()) {
       where.append(" AND status IN (:statuses)");
