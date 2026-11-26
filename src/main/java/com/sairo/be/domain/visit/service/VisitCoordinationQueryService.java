@@ -108,7 +108,7 @@ public class VisitCoordinationQueryService {
   }
 
   public VisitCoordinationListResponse list(
-      StaffPrincipal principal, List<String> statusValues, PageQuery pageQuery) {
+      StaffPrincipal principal, List<String> statusValues, Long customerId, PageQuery pageQuery) {
     List<CoordinationStatus> statuses = parseStatuses(statusValues);
     Long scope = access.managerScope(principal);
     long officeId = principal.officeId();
@@ -117,9 +117,10 @@ public class VisitCoordinationQueryService {
             officeId,
             scope,
             statuses,
+            customerId,
             pageQuery.size(),
             (long) pageQuery.page() * pageQuery.size());
-    long total = readRepository.count(officeId, scope, statuses);
+    long total = readRepository.count(officeId, scope, statuses, customerId);
     Map<CoordinationStatus, Long> counts = readRepository.statusCounts(officeId, scope);
 
     List<Long> coordinationIds =
@@ -149,7 +150,8 @@ public class VisitCoordinationQueryService {
         managerNames,
         officeId,
         pageQuery,
-        total);
+        total,
+        customerId);
   }
 
   public VisitCoordinationDetailResponse detail(

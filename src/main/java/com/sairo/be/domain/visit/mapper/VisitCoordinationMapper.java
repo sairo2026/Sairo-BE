@@ -37,7 +37,8 @@ public final class VisitCoordinationMapper {
       Map<Long, String> managerNames,
       long officeId,
       PageQuery pageQuery,
-      long total) {
+      long total,
+      Long filteredCustomerId) {
     Map<String, Long> statusCounts = new LinkedHashMap<>();
     for (CoordinationStatus status : CoordinationStatus.values()) {
       statusCounts.put(status.name(), counts.getOrDefault(status, 0L));
@@ -72,7 +73,7 @@ public final class VisitCoordinationMapper {
                 })
             .toList();
     return new VisitCoordinationListResponse(
-        statusCounts, items, pageQuery.page(), pageQuery.size(), total);
+        statusCounts, items, pageQuery.page(), pageQuery.size(), total, filteredCustomerId);
   }
 
   public static VisitCoordinationDetailResponse toDetail(
