@@ -64,6 +64,7 @@ class OfficeWriteRestrictionIntegrationTest extends VisitOutcomeTestBase {
           "PublicApproverReviewController",
           "PublicCustomerVisitLinkController",
           "CustomerVisitPortalController",
+          "CustomerVisitPortalIndexController",
           "PublicPrivacyIntakeController",
           "ReturnGrantController",
           "ReturnGrantVisitController",

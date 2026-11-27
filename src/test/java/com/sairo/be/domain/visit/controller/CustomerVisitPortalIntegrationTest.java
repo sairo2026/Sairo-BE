@@ -98,6 +98,12 @@ class CustomerVisitPortalIntegrationTest extends VisitIntegrationTestBase {
     String secondToken = issueToken(first.staff(), secondId);
 
     mockMvc
+        .perform(authedGet("/api/public/customer-visit-links/portal", null))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.verified").value(false))
+        .andExpect(jsonPath("$.items.length()").value(0));
+
+    mockMvc
         .perform(authedGet(portal(secondToken), null))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.available").value(true))
@@ -125,6 +131,12 @@ class CustomerVisitPortalIntegrationTest extends VisitIntegrationTestBase {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.items.length()").value(2))
         .andExpect(jsonPath("$.items[0].coordinationId").value(secondId));
+    mockMvc
+        .perform(authedGet("/api/public/customer-visit-links/portal", null).cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(jsonPath("$.verified").value(true))
+        .andExpect(jsonPath("$.items.length()").value(2));
     mockMvc
         .perform(authedGet(portal(secondToken) + "/reusable-times", null).cookie(session))
         .andExpect(status().isOk())
@@ -182,6 +194,11 @@ class CustomerVisitPortalIntegrationTest extends VisitIntegrationTestBase {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.verified").value(false))
         .andExpect(jsonPath("$.items.length()").value(0));
+    mockMvc
+        .perform(authedGet("/api/public/customer-visit-links/portal", null).cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.verified").value(true))
+        .andExpect(jsonPath("$.items.length()").value(2));
 
     jdbcTemplate.update(
         "UPDATE customer SET email = ? WHERE id = ?", "changed@example.test", first.customerId());
@@ -191,13 +208,21 @@ class CustomerVisitPortalIntegrationTest extends VisitIntegrationTestBase {
         .andExpect(jsonPath("$.available").value(true))
         .andExpect(jsonPath("$.verified").value(false))
         .andExpect(jsonPath("$.items.length()").value(0));
+    mockMvc
+        .perform(authedGet("/api/public/customer-visit-links/portal", null).cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.verified").value(false));
     jdbcTemplate.update("UPDATE customer SET email = ? WHERE id = ?", EMAIL, first.customerId());
 
     mockMvc
-        .perform(jsonPostAs(portal(secondToken) + "/logout", "{}", session))
+        .perform(jsonPostAs("/api/public/customer-visit-links/portal/logout", "{}", session))
         .andExpect(status().isNoContent());
     mockMvc
         .perform(authedGet(portal(secondToken), null).cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.verified").value(false));
+    mockMvc
+        .perform(authedGet("/api/public/customer-visit-links/portal", null).cookie(session))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.verified").value(false));
   }
@@ -236,6 +261,10 @@ class CustomerVisitPortalIntegrationTest extends VisitIntegrationTestBase {
     mockMvc
         .perform(authedGet(portal(fixture.token()), null).cookie(session))
         .andExpect(status().isOk());
+    mockMvc
+        .perform(authedGet("/api/public/customer-visit-links/portal", null).cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.verified").value(true));
     assertError(
         mockMvc.perform(jsonPostAs(portal(fixture.token()) + "/otp", "{}", null)),
         ErrorCode.PUBLIC_LINK_EXPIRED);
@@ -245,6 +274,10 @@ class CustomerVisitPortalIntegrationTest extends VisitIntegrationTestBase {
     assertError(
         mockMvc.perform(authedGet(portal(fixture.token()), null).cookie(session)),
         ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    mockMvc
+        .perform(authedGet("/api/public/customer-visit-links/portal", null).cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.verified").value(false));
   }
 
   @Test
