@@ -4,6 +4,8 @@ import static com.sairo.be.support.ErrorResponseAssertions.assertError;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -19,9 +21,15 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.ResultActions;
 
 @IntegrationTest
@@ -29,7 +37,7 @@ class PublicConfirmedScheduleIntegrationTest extends VisitOutcomeTestBase {
 
   private static final Pattern CODE = Pattern.compile("([0-9]{6})");
 
-  @Autowired private ScheduleItemRepository scheduleItems;
+  @MockitoSpyBean private ScheduleItemRepository scheduleItems;
 
   private ResultActions customerConfirmed(String token) throws Exception {
     return mockMvc.perform(get("/api/public/customer-visit-links/" + token + "/confirmed"));
@@ -38,6 +46,57 @@ class PublicConfirmedScheduleIntegrationTest extends VisitOutcomeTestBase {
   private ResultActions approverConfirmed(String token) throws Exception {
     return mockMvc.perform(
         get("/api/public/approver-property-links/" + token + "/confirmed-schedules"));
+  }
+
+  @Test
+  void 확정_일정_조회_도중_취소가_완료되어도_응답은_한_시점의_상태와_버전을_사용한다() throws Exception {
+    RequestFixture f = requestFixture();
+    String customerToken = reissueCustomerToken(f.cookie(), f.coordinationId());
+    long requestId = submit(f);
+    selectNow(issueApproverToken(f.cookie(), f.propertyId(), f.approvalId()), requestId)
+        .andExpect(status().isOk());
+
+    CountDownLatch rowsRead = new CountDownLatch(1);
+    CountDownLatch finishRead = new CountDownLatch(1);
+    AtomicReference<Thread> reader = new AtomicReference<>();
+    doAnswer(
+            invocation -> {
+              Object rows = invocation.callRealMethod();
+              if (Thread.currentThread() == reader.get()) {
+                rowsRead.countDown();
+                if (!finishRead.await(30, TimeUnit.SECONDS)) {
+                  throw new AssertionError("Timed out waiting for the concurrent cancellation");
+                }
+              }
+              return rows;
+            })
+        .when(scheduleItems)
+        .listByCoordination(f.coordinationId());
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<String> pending =
+          executor.submit(
+              () -> {
+                reader.set(Thread.currentThread());
+                return customerConfirmed(customerToken)
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+              });
+      assertThat(rowsRead.await(30, TimeUnit.SECONDS)).isTrue();
+      cancel(f.cookie(), f.coordinationId(), "{}").andExpect(status().isOk());
+      finishRead.countDown();
+      assertThat(pending.get(30, TimeUnit.SECONDS))
+          .contains("\"state\":\"VALID\"", "\"scheduleVersion\":1");
+      customerConfirmed(customerToken)
+          .andExpect(jsonPath("$.state").value("CANCELLED"))
+          .andExpect(jsonPath("$.scheduleVersion").value(2));
+    } finally {
+      finishRead.countDown();
+      executor.shutdownNow();
+      reset(scheduleItems);
+    }
   }
 
   @Test

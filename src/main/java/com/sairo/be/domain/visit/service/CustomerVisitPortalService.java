@@ -35,6 +35,7 @@ import java.util.regex.Pattern;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 
@@ -235,7 +236,7 @@ public class CustomerVisitPortalService {
     return queryService.getForVerifiedCustomer(respondableLink(scope, coordinationId));
   }
 
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
   public PublicConfirmedVisitResponse sessionConfirmed(String sessionToken, Long coordinationId) {
     Scope scope = sessionScope(sessionToken);
     if (coordinationId == null) throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
