@@ -13,11 +13,13 @@ import java.util.List;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -55,6 +57,7 @@ public class CustomerVisitPortalIndexController {
 
   @Operation(summary = "End the verified customer's portal session")
   @PostMapping("/logout")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
   @RequiresAccess(AccessPermission.GUEST_LINK)
   public ResponseEntity<Void> logout(
       @CookieValue(value = CustomerVisitPortalController.COOKIE_NAME, required = false)

@@ -210,7 +210,7 @@ class CustomerVisitPortalIntegrationTest extends VisitIntegrationTestBase {
     jdbcTemplate.update("UPDATE customer SET email = ? WHERE id = ?", EMAIL, first.customerId());
 
     mockMvc
-        .perform(jsonPostAs(portal(secondToken) + "/logout", "{}", session))
+        .perform(jsonPostAs("/api/public/customer-visit-links/portal/logout", "{}", session))
         .andExpect(status().isNoContent());
     mockMvc
         .perform(authedGet(portal(secondToken), null).cookie(session))
