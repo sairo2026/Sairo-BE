@@ -2,6 +2,7 @@ package com.sairo.be.domain.visit.repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -92,6 +93,23 @@ public class ScheduleItemRepository {
                     rs.getInt("sort_order"),
                     rs.getInt("corrections"),
                     instant(rs.getTimestamp("created_at"))))
+        .list();
+  }
+
+  public List<Long> viewableCustomerCoordinationIds(
+      List<Long> coordinationIds, Instant cutoff, LocalDate today) {
+    if (coordinationIds.isEmpty()) return List.of();
+    return jdbcClient
+        .sql(
+            "SELECT si.coordination_id FROM visit_schedule_item si JOIN visit_customer_link l ON"
+                + " l.coordination_id = si.coordination_id WHERE si.coordination_id IN (:ids)"
+                + " AND l.id = (SELECT max(latest.id) FROM visit_customer_link latest WHERE"
+                + " latest.coordination_id = si.coordination_id) AND l.retention_until >= :today"
+                + " GROUP BY si.coordination_id HAVING max(si.scheduled_end_at) > :cutoff")
+        .param("ids", coordinationIds)
+        .param("cutoff", Timestamp.from(cutoff))
+        .param("today", today)
+        .query(Long.class)
         .list();
   }
 

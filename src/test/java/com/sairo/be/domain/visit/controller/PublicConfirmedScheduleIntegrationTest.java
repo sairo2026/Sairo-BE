@@ -9,14 +9,27 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sairo.be.domain.visit.repository.ScheduleItemRepository;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.VisitOutcomeTestBase;
+import jakarta.servlet.http.Cookie;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.ResultActions;
 
 @IntegrationTest
 class PublicConfirmedScheduleIntegrationTest extends VisitOutcomeTestBase {
+
+  private static final Pattern CODE = Pattern.compile("([0-9]{6})");
+
+  @Autowired private ScheduleItemRepository scheduleItems;
 
   private ResultActions customerConfirmed(String token) throws Exception {
     return mockMvc.perform(get("/api/public/customer-visit-links/" + token + "/confirmed"));
@@ -69,6 +82,107 @@ class PublicConfirmedScheduleIntegrationTest extends VisitOutcomeTestBase {
         f.coordinationId());
 
     assertError(customerConfirmed(customerToken), ErrorCode.PUBLIC_LINK_EXPIRED);
+  }
+
+  @Test
+  void 이메일_인증_포털은_본인_확정_일정만_보여주고_24시간_제한을_유지한다() throws Exception {
+    RequestFixture f = requestFixture();
+    jdbcTemplate.update(
+        "UPDATE customer SET email = ? WHERE id = ?",
+        "confirmed-portal@example.test",
+        f.customer());
+    String token = reissueCustomerToken(f.cookie(), f.coordinationId());
+    mockMvc
+        .perform(
+            com.sairo.be.support.AuthFlowSupport.withCsrf(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                    "/api/public/customer-visit-links/" + token + "/portal/otp")))
+        .andExpect(status().isOk());
+    String code =
+        mailSender.sent().stream()
+            .filter(message -> "confirmed-portal@example.test".equals(message.to()))
+            .map(message -> CODE.matcher(message.body()))
+            .filter(java.util.regex.Matcher::find)
+            .reduce((a, b) -> b)
+            .orElseThrow()
+            .group(1);
+    Cookie session =
+        mockMvc
+            .perform(
+                jsonPostAs(
+                    "/api/public/customer-visit-links/" + token + "/portal/verify",
+                    "{\"code\":\"" + code + "\"}",
+                    null))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getCookie("SAIRO_CUSTOMER_PORTAL");
+    assertThat(session).isNotNull();
+    long requestId = submit(f);
+    selectNow(issueApproverToken(f.cookie(), f.propertyId(), f.approvalId()), requestId)
+        .andExpect(status().isOk());
+    mockMvc
+        .perform(get("/api/public/customer-visit-links/portal").cookie(session))
+        .andExpect(jsonPath("$.items[0].canViewSchedule").value(true));
+    String url =
+        "/api/public/customer-visit-links/portal/requests/" + f.coordinationId() + "/confirmed";
+    assertError(mockMvc.perform(get(url)), ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    mockMvc
+        .perform(get(url).cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", containsString("no-store")))
+        .andExpect(jsonPath("$.state").value("VALID"))
+        .andExpect(jsonPath("$.items.length()").value(1));
+    jdbcTemplate.update(
+        "UPDATE visit_customer_link SET retention_until = CURRENT_DATE - 1 WHERE coordination_id = ?",
+        f.coordinationId());
+    assertThat(
+            scheduleItems.viewableCustomerCoordinationIds(
+                List.of(f.coordinationId()),
+                Instant.now().minus(Duration.ofHours(24)),
+                LocalDate.now(ZoneId.of("Asia/Seoul"))))
+        .isEmpty();
+    jdbcTemplate.update(
+        "UPDATE visit_customer_link SET retention_until = CURRENT_DATE + 30 WHERE coordination_id = ?",
+        f.coordinationId());
+    assertError(
+        mockMvc.perform(
+            get(url.replace(String.valueOf(f.coordinationId()), "999999999")).cookie(session)),
+        ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    RequestFixture anotherCustomer = requestFixture(f.owner(), true, true);
+    RequestFixture anotherOffice = requestFixture();
+    assertError(
+        mockMvc.perform(
+            get("/api/public/customer-visit-links/portal/requests/"
+                    + anotherCustomer.coordinationId()
+                    + "/confirmed")
+                .cookie(session)),
+        ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    assertError(
+        mockMvc.perform(
+            get("/api/public/customer-visit-links/portal/requests/"
+                    + anotherOffice.coordinationId()
+                    + "/confirmed")
+                .cookie(session)),
+        ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    jdbcTemplate.update(
+        "UPDATE visit_schedule_item SET scheduled_start_at = now() - interval '3 days',"
+            + " scheduled_end_at = now() - interval '3 days' + interval '30 minutes' WHERE"
+            + " coordination_id = ?",
+        f.coordinationId());
+    assertError(mockMvc.perform(get(url).cookie(session)), ErrorCode.PUBLIC_LINK_EXPIRED);
+    mockMvc
+        .perform(get("/api/public/customer-visit-links/portal").cookie(session))
+        .andExpect(jsonPath("$.items[0].canViewSchedule").value(false));
+    jdbcTemplate.update(
+        "UPDATE visit_customer_link SET retention_until = CURRENT_DATE - 1 WHERE coordination_id = ?",
+        f.coordinationId());
+    assertError(mockMvc.perform(get(url).cookie(session)), ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    jdbcTemplate.update(
+        "UPDATE visit_customer_link SET retention_until = CURRENT_DATE + 30, revoked_at = now()"
+            + " WHERE coordination_id = ?",
+        f.coordinationId());
+    assertError(mockMvc.perform(get(url).cookie(session)), ErrorCode.PUBLIC_LINK_NOT_FOUND);
   }
 
   @Test

@@ -103,6 +103,18 @@ public class PublicConfirmedScheduleService {
         coordinationRepository
             .findById(head.getCoordinationId())
             .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    return customerSchedule(coordination, head.getRevokedAt() != null);
+  }
+
+  /** The portal authenticates and scopes the customer before calling this read-only view. */
+  @Transactional(readOnly = true)
+  public PublicConfirmedVisitResponse verifiedCustomer(
+      VisitCoordination coordination, boolean linkRevoked) {
+    return customerSchedule(coordination, linkRevoked);
+  }
+
+  private PublicConfirmedVisitResponse customerSchedule(
+      VisitCoordination coordination, boolean linkRevoked) {
     List<ItemRow> rows = itemRepository.listByCoordination(coordination.getId());
     Instant lastEnd =
         rows.stream()
@@ -113,7 +125,7 @@ public class PublicConfirmedScheduleService {
     if (!clock.instant().isBefore(lastEnd.plus(CUSTOMER_VIEW_AFTER_LAST))) {
       throw new BusinessException(ErrorCode.PUBLIC_LINK_EXPIRED);
     }
-    String state = customerState(coordination, head.getRevokedAt() != null, rows);
+    String state = customerState(coordination, linkRevoked, rows);
     List<ConfirmedVisitItem> items = new ArrayList<>();
     if (ScheduleStateService.VALID.equals(state)) {
       List<ItemRow> kept =
