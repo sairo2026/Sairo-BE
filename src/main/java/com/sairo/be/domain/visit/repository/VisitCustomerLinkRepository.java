@@ -3,6 +3,7 @@ package com.sairo.be.domain.visit.repository;
 import com.sairo.be.domain.visit.entity.VisitCustomerLink;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -29,6 +30,8 @@ public interface VisitCustomerLinkRepository extends JpaRepository<VisitCustomer
   Optional<VisitCustomerLink> findFirstByCoordinationIdAndRevokedAtIsNull(Long coordinationId);
 
   Optional<VisitCustomerLink> findFirstByCoordinationIdOrderByIdDesc(Long coordinationId);
+
+  List<VisitCustomerLink> findByCoordinationIdOrderByIdDesc(Long coordinationId);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select l from VisitCustomerLink l where l.id = :id")
