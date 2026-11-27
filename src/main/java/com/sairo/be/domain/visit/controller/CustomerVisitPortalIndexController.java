@@ -1,7 +1,10 @@
 package com.sairo.be.domain.visit.controller;
 
+import com.sairo.be.domain.visit.dto.response.CustomerAvailableTimesResponse;
+import com.sairo.be.domain.visit.dto.response.PublicVisitLinkResponse;
 import com.sairo.be.domain.visit.service.CustomerVisitPortalService;
 import com.sairo.be.domain.visit.service.CustomerVisitPortalService.PortalRequests;
+import com.sairo.be.domain.visit.service.CustomerVisitPortalService.ReusableTimes;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.security.access.AccessPermission;
@@ -17,10 +20,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.databind.JsonNode;
 
 /**
  * A bookmarked read-only index for a customer who already completed link and email verification.
@@ -53,6 +60,44 @@ public class CustomerVisitPortalIndexController {
           .cacheControl(CacheControl.noStore())
           .body(new PortalRequests(false, false, List.of()));
     }
+  }
+
+  @Operation(summary = "Open an active visit request using the verified customer portal")
+  @GetMapping("/requests/{coordinationId}")
+  @RequiresAccess(AccessPermission.GUEST_LINK)
+  public ResponseEntity<PublicVisitLinkResponse> request(
+      @PathVariable Long coordinationId,
+      @CookieValue(value = CustomerVisitPortalController.COOKIE_NAME, required = false)
+          String session) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(portal.sessionRequest(session, coordinationId));
+  }
+
+  @Operation(summary = "Preview still-valid times from another request for this verified customer")
+  @GetMapping("/requests/{coordinationId}/reusable-times")
+  @RequiresAccess(AccessPermission.GUEST_LINK)
+  public ResponseEntity<ReusableTimes> reusableTimes(
+      @PathVariable Long coordinationId,
+      @CookieValue(value = CustomerVisitPortalController.COOKIE_NAME, required = false)
+          String session) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(portal.sessionReusableTimes(session, coordinationId));
+  }
+
+  @Operation(summary = "Submit times for an active request using the verified customer portal")
+  @PostMapping("/requests/{coordinationId}/available-times")
+  @RequiresAccess(AccessPermission.GUEST_LINK)
+  public ResponseEntity<CustomerAvailableTimesResponse> submit(
+      @PathVariable Long coordinationId,
+      @CookieValue(value = CustomerVisitPortalController.COOKIE_NAME, required = false)
+          String session,
+      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+      @RequestBody JsonNode body) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(portal.sessionSubmit(session, coordinationId, body, idempotencyKey));
   }
 
   @Operation(summary = "End the verified customer's portal session")

@@ -33,6 +33,15 @@ public interface VisitCustomerLinkRepository extends JpaRepository<VisitCustomer
 
   List<VisitCustomerLink> findByCoordinationIdOrderByIdDesc(Long coordinationId);
 
+  @Query("select l.coordinationId from VisitCustomerLink l where l.id = :id")
+  Optional<Long> findCoordinationIdByLinkId(@Param("id") Long id);
+
+  @Query(
+      "select distinct l.coordinationId from VisitCustomerLink l "
+          + "where l.coordinationId in :coordinationIds and l.revokedAt is null and l.expiresAt > :now")
+  List<Long> findActiveCoordinationIds(
+      @Param("coordinationIds") List<Long> coordinationIds, @Param("now") Instant now);
+
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select l from VisitCustomerLink l where l.id = :id")
   Optional<VisitCustomerLink> findForUpdate(@Param("id") Long id);
