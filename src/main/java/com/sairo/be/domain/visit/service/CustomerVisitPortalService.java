@@ -47,7 +47,7 @@ public class CustomerVisitPortalService {
 
   public record ReusableTimes(List<TimeSlot> timeSlots) {}
 
-  private record Scope(Long officeId, Long customerId, String email) {}
+  private record Scope(Long officeId, Long customerId, String email, Long linkId) {}
 
   private static final Pattern CODE = Pattern.compile("^[0-9]{6}$");
   private static final Duration CODE_TTL = Duration.ofMinutes(5);
@@ -55,6 +55,7 @@ public class CustomerVisitPortalService {
   private static final int MAX_ATTEMPTS = 5;
   private static final String OTP_PREFIX = "sairo:customer-portal-otp:";
   private static final String SESSION_PREFIX = "sairo:customer-portal-session:";
+  private static final String SESSION_LINK_PREFIX = "sairo:customer-portal-session-link:";
   private static final RateLimitRule SEND_IP =
       RateLimitRule.of("customer-portal-send-ip", 12, Duration.ofHours(1));
   private static final RateLimitRule SEND_LINK =
@@ -182,25 +183,37 @@ public class CustomerVisitPortalService {
             sessionKey(sessionToken),
             scope.officeId() + ":" + scope.customerId() + ":" + emailHash(scope.email()),
             SESSION_TTL);
+    try {
+      redis.opsForValue().set(sessionLinkKey(sessionToken), scope.linkId().toString(), SESSION_TTL);
+    } catch (RuntimeException e) {
+      redis.delete(sessionKey(sessionToken));
+      throw e;
+    }
     return sessionToken;
   }
 
   @Transactional(readOnly = true)
   public PortalRequests requests(String linkToken, String sessionToken, String clientIp) {
     Scope scope = authenticatedScope(linkToken, sessionToken, clientIp);
-    List<PortalItem> items =
-        coordinations
-            .findTop50ByOfficeIdAndCustomerIdOrderByIdDesc(scope.officeId(), scope.customerId())
-            .stream()
-            .map(
-                c ->
-                    new PortalItem(
-                        c.getId(),
-                        c.getStatus().name(),
-                        c.getPeriodStartDate(),
-                        c.getPeriodEndDate()))
-            .toList();
-    return new PortalRequests(true, true, items);
+    return new PortalRequests(true, true, itemsFor(scope));
+  }
+
+  /** The verified customer can return to this read-only index without finding the original link. */
+  @Transactional(readOnly = true)
+  public PortalRequests sessionRequests(String sessionToken) {
+    Scope scope = sessionScope(sessionToken);
+    return new PortalRequests(true, true, itemsFor(scope));
+  }
+
+  private List<PortalItem> itemsFor(Scope scope) {
+    return coordinations
+        .findTop50ByOfficeIdAndCustomerIdOrderByIdDesc(scope.officeId(), scope.customerId())
+        .stream()
+        .map(
+            c ->
+                new PortalItem(
+                    c.getId(), c.getStatus().name(), c.getPeriodStartDate(), c.getPeriodEndDate()))
+        .toList();
   }
 
   @Transactional(readOnly = true)
@@ -279,7 +292,56 @@ public class CustomerVisitPortalService {
   public void logout(String sessionToken) {
     if (sessionToken != null && !sessionToken.isBlank() && sessionToken.length() <= 128) {
       redis.delete(sessionKey(sessionToken));
+      redis.delete(sessionLinkKey(sessionToken));
     }
+  }
+
+  private Scope sessionScope(String sessionToken) {
+    if (sessionToken == null || sessionToken.isBlank() || sessionToken.length() > 128) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    String value = redis.opsForValue().get(sessionKey(sessionToken));
+    String linkId = redis.opsForValue().get(sessionLinkKey(sessionToken));
+    if (value == null || linkId == null) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    VisitCustomerLink link;
+    try {
+      link = links.findById(Long.parseLong(linkId)).orElse(null);
+    } catch (NumberFormatException e) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    LocalDate today = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")));
+    if (link == null || link.isRevoked() || link.getRetentionUntil().isBefore(today)) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    VisitCoordination coordination =
+        coordinations
+            .findById(link.getCoordinationId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    Customer customer =
+        customers
+            .findByIdAndOfficeId(coordination.getCustomerId(), coordination.getOfficeId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    if (customer.isArchived() || customer.getRetentionUntil().isBefore(today)) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    String email = customer.getEmail();
+    if (email == null || !email.contains("@")) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    String canonicalEmail = email.trim().toLowerCase(java.util.Locale.ROOT);
+    String expected =
+        coordination.getOfficeId()
+            + ":"
+            + coordination.getCustomerId()
+            + ":"
+            + emailHash(canonicalEmail);
+    if (!HmacSupport.constantTimeEquals(expected, value)) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    return new Scope(
+        coordination.getOfficeId(), coordination.getCustomerId(), canonicalEmail, link.getId());
   }
 
   private Scope scope(String linkToken, String clientIp, boolean requireUnexpired) {
@@ -307,7 +369,8 @@ public class CustomerVisitPortalService {
         coordination.getCustomerId(),
         email != null && email.contains("@")
             ? email.trim().toLowerCase(java.util.Locale.ROOT)
-            : null);
+            : null,
+        link.getId());
   }
 
   private String otpKey(String linkToken) {
@@ -316,6 +379,10 @@ public class CustomerVisitPortalService {
 
   private String sessionKey(String sessionToken) {
     return SESSION_PREFIX + linkTokens.hash(sessionToken);
+  }
+
+  private String sessionLinkKey(String sessionToken) {
+    return SESSION_LINK_PREFIX + linkTokens.hash(sessionToken);
   }
 
   private String codeHash(String linkToken, String code) {

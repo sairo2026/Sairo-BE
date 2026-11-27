@@ -39,7 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "RESPOND", description = "Email-verified customer visit requests")
 public class CustomerVisitPortalController {
 
-  private static final String COOKIE_NAME = "SAIRO_CUSTOMER_PORTAL";
+  static final String COOKIE_NAME = "SAIRO_CUSTOMER_PORTAL";
   private static final String COOKIE_PATH = "/api/public/customer-visit-links";
 
   private final CustomerVisitPortalService portal;
@@ -125,7 +125,7 @@ public class CustomerVisitPortalController {
         .build();
   }
 
-  private static String cookie(String value, Duration ttl) {
+  static String cookie(String value, Duration ttl) {
     return ResponseCookie.from(COOKIE_NAME, value)
         .httpOnly(true)
         .secure(true)
