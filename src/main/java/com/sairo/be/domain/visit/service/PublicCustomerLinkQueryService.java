@@ -71,6 +71,11 @@ public class PublicCustomerLinkQueryService {
         linkRepository
             .findById(resolver.resolve(token, clientIp).getId())
             .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    return getForVerifiedCustomer(link);
+  }
+
+  /** 포털에서 이메일 인증과 사무소·고객 범위를 확인한 뒤에만 호출한다. */
+  PublicVisitLinkResponse getForVerifiedCustomer(VisitCustomerLink link) {
     VisitCoordination coordination =
         coordinationRepository
             .findById(link.getCoordinationId())

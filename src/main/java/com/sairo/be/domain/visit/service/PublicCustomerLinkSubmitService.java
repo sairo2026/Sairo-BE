@@ -14,6 +14,7 @@ import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.error.FieldErrorCode;
 import com.sairo.be.global.support.TimeRules;
+import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -46,6 +47,7 @@ public class PublicCustomerLinkSubmitService {
   private final CoordinationStatusService statusService;
   private final CustomerLinkNoticeProvider noticeProvider;
   private final Clock clock;
+  private final EntityManager entityManager;
 
   public PublicCustomerLinkSubmitService(
       PublicLinkResolver resolver,
@@ -54,7 +56,8 @@ public class PublicCustomerLinkSubmitService {
       VisitCustomerTimeSlotRepository slotRepository,
       CoordinationStatusService statusService,
       CustomerLinkNoticeProvider noticeProvider,
-      Clock clock) {
+      Clock clock,
+      EntityManager entityManager) {
     this.resolver = resolver;
     this.coordinationRepository = coordinationRepository;
     this.linkRepository = linkRepository;
@@ -62,27 +65,53 @@ public class PublicCustomerLinkSubmitService {
     this.statusService = statusService;
     this.noticeProvider = noticeProvider;
     this.clock = clock;
+    this.entityManager = entityManager;
   }
 
   @Transactional
   public CustomerAvailableTimesResponse submit(
       String token, JsonNode body, String idempotencyKey, String clientIp) {
     VisitCustomerLinkRepository.LinkHead found = resolver.resolve(token, clientIp);
-    Instant now = clock.instant();
-    if (!now.isBefore(found.getExpiresAt())) {
+    if (!clock.instant().isBefore(found.getExpiresAt())) {
       throw new BusinessException(ErrorCode.PUBLIC_LINK_EXPIRED);
     }
+    return submitResolved(found.getId(), null, null, body, idempotencyKey);
+  }
+
+  /** 포털에서 사무소와 고객 범위를 확인한 뒤에만 호출한다. */
+  @Transactional
+  public CustomerAvailableTimesResponse submitForVerifiedCustomer(
+      Long linkId, Long officeId, Long customerId, JsonNode body, String idempotencyKey) {
+    return submitResolved(linkId, officeId, customerId, body, idempotencyKey);
+  }
+
+  private CustomerAvailableTimesResponse submitResolved(
+      Long linkId, Long officeId, Long customerId, JsonNode body, String idempotencyKey) {
+    Instant now = clock.instant();
     Submission submission = parse(body);
 
+    Long coordinationId =
+        linkRepository
+            .findCoordinationIdByLinkId(linkId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
     VisitCoordination coordination =
         coordinationRepository
-            .findForUpdateById(found.getCoordinationId())
+            .findForUpdateById(coordinationId)
             .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
     VisitCustomerLink link =
         linkRepository
-            .findForUpdate(found.getId())
-            .filter(locked -> !locked.isRevoked())
+            .findForUpdate(linkId)
             .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    // 포털이 잠금 전에 엔티티를 읽었을 수 있으므로 조정 건과 링크를 잠근 뒤 최신 상태로 다시 읽는다.
+    entityManager.refresh(coordination);
+    entityManager.refresh(link);
+    if (link.isRevoked()) throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    if (link.isExpiredAt(now)) throw new BusinessException(ErrorCode.PUBLIC_LINK_EXPIRED);
+    if (officeId != null
+        && (!officeId.equals(coordination.getOfficeId())
+            || !customerId.equals(coordination.getCustomerId()))) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
     if (!coordination.getStatus().acceptsCustomerResponse()) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }

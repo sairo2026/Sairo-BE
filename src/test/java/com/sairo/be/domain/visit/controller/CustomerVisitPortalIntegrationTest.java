@@ -8,10 +8,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.sairo.be.domain.office.entity.OfficeMembershipRole;
 import com.sairo.be.global.error.ErrorCode;
+import com.sairo.be.support.AuthFlowSupport;
 import com.sairo.be.support.IntegrationTest;
 import com.sairo.be.support.VisitIntegrationTestBase;
 import jakarta.servlet.http.Cookie;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
@@ -343,5 +348,243 @@ class CustomerVisitPortalIntegrationTest extends VisitIntegrationTestBase {
         .perform(authedGet(portal(fixture.token()), null))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.verified").value(false));
+  }
+
+  @Test
+  void verifiedCustomerCanRespondToAnotherRequestWithoutFindingItsLink() throws Exception {
+    Fixture first = fixture();
+    mockMvc
+        .perform(
+            jsonPostAs(
+                "/api/public/customer-visit-links/" + first.token() + "/available-times",
+                timeBody(first.start()),
+                null))
+        .andExpect(status().isOk());
+    long secondId =
+        createCoordination(
+                first.staff(),
+                first.customerId(),
+                null,
+                first.start(),
+                first.start().plusDays(3),
+                newProperty(first.staff()))
+            .get("coordinationId")
+            .longValue();
+    issueToken(first.staff(), secondId);
+    mockMvc
+        .perform(jsonPostAs(portal(first.token()) + "/otp", "{}", null))
+        .andExpect(status().isOk());
+    Cookie session =
+        mockMvc
+            .perform(
+                jsonPostAs(
+                    portal(first.token()) + "/verify", "{\"code\":\"" + lastCode() + "\"}", null))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getCookie("SAIRO_CUSTOMER_PORTAL");
+    assertThat(session).isNotNull();
+
+    String target = "/api/public/customer-visit-links/portal/requests/" + secondId;
+    assertError(mockMvc.perform(authedGet(target, null)), ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    assertError(
+        mockMvc.perform(jsonPostAs(target + "/available-times", timeBody(first.start()), null)),
+        ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    mockMvc
+        .perform(authedGet(target, null).cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(jsonPath("$.submittedTimeSlots.length()").value(0));
+    mockMvc
+        .perform(authedGet(target + "/reusable-times", null).cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.timeSlots.length()").value(1));
+    mockMvc
+        .perform(jsonPostAs(target + "/available-times", timeBody(first.start()), session))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.responseVersion").value(1));
+    mockMvc
+        .perform(authedGet(target, null).cookie(session))
+        .andExpect(jsonPath("$.submittedTimeSlots.length()").value(1));
+    mockMvc
+        .perform(authedGet("/api/public/customer-visit-links/portal", null).cookie(session))
+        .andExpect(jsonPath("$.items[0].coordinationId").value(secondId))
+        .andExpect(jsonPath("$.items[0].canRespond").value(true));
+
+    long otherCustomer =
+        createCustomer(first.staff(), "Other QA", "010-4444-5555", first.managerId());
+    long otherId =
+        createCoordination(
+                first.staff(),
+                otherCustomer,
+                null,
+                first.start(),
+                first.start().plusDays(3),
+                newProperty(first.staff()))
+            .get("coordinationId")
+            .longValue();
+    issueToken(first.staff(), otherId);
+    String otherTarget = "/api/public/customer-visit-links/portal/requests/" + otherId;
+    assertError(
+        mockMvc.perform(authedGet(otherTarget, null).cookie(session)),
+        ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    assertError(
+        mockMvc.perform(
+            jsonPostAs(otherTarget + "/available-times", timeBody(first.start()), session)),
+        ErrorCode.PUBLIC_LINK_NOT_FOUND);
+
+    var otherOffice = newStaff(OfficeMembershipRole.OWNER);
+    Cookie otherStaff = cookieOf(otherOffice);
+    long otherOfficeCustomer =
+        createCustomer(otherStaff, "Same email elsewhere", PHONE, otherOffice.membership().getId());
+    jdbcTemplate.update("UPDATE customer SET email = ? WHERE id = ?", EMAIL, otherOfficeCustomer);
+    long otherOfficeId =
+        createCoordination(
+                otherStaff,
+                otherOfficeCustomer,
+                null,
+                first.start(),
+                first.start().plusDays(3),
+                newProperty(otherStaff))
+            .get("coordinationId")
+            .longValue();
+    issueToken(otherStaff, otherOfficeId);
+    String otherOfficeTarget = "/api/public/customer-visit-links/portal/requests/" + otherOfficeId;
+    assertError(
+        mockMvc.perform(authedGet(otherOfficeTarget, null).cookie(session)),
+        ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    assertError(
+        mockMvc.perform(
+            jsonPostAs(otherOfficeTarget + "/available-times", timeBody(first.start()), session)),
+        ErrorCode.PUBLIC_LINK_NOT_FOUND);
+
+    jdbcTemplate.update(
+        "UPDATE visit_customer_link SET expires_at = now() - interval '1 minute' WHERE coordination_id = ?",
+        secondId);
+    mockMvc
+        .perform(authedGet("/api/public/customer-visit-links/portal", null).cookie(session))
+        .andExpect(jsonPath("$.items[0].canRespond").value(false));
+    assertError(
+        mockMvc.perform(jsonPostAs(target + "/available-times", timeBody(first.start()), session)),
+        ErrorCode.PUBLIC_LINK_NOT_FOUND);
+  }
+
+  @Test
+  void concurrentPortalSubmissionsReceiveDistinctResponseVersions() throws Exception {
+    Fixture fixture = fixture();
+    mockMvc
+        .perform(jsonPostAs(portal(fixture.token()) + "/otp", "{}", null))
+        .andExpect(status().isOk());
+    Cookie session =
+        mockMvc
+            .perform(
+                jsonPostAs(
+                    portal(fixture.token()) + "/verify", "{\"code\":\"" + lastCode() + "\"}", null))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getCookie("SAIRO_CUSTOMER_PORTAL");
+    String target =
+        "/api/public/customer-visit-links/portal/requests/"
+            + fixture.coordinationId()
+            + "/available-times";
+    CountDownLatch start = new CountDownLatch(1);
+    try (var pool = Executors.newFixedThreadPool(2)) {
+      var first =
+          pool.submit(
+              () -> {
+                start.await();
+                return AuthFlowSupport.json(
+                        mockMvc
+                            .perform(jsonPostAs(target, timeBody(fixture.start()), session))
+                            .andExpect(status().isOk())
+                            .andReturn())
+                    .get("responseVersion")
+                    .asInt();
+              });
+      var second =
+          pool.submit(
+              () -> {
+                start.await();
+                return AuthFlowSupport.json(
+                        mockMvc
+                            .perform(jsonPostAs(target, timeBody(fixture.start()), session))
+                            .andExpect(status().isOk())
+                            .andReturn())
+                    .get("responseVersion")
+                    .asInt();
+              });
+      start.countDown();
+      assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS)))
+          .containsExactlyInAnyOrder(1, 2);
+    }
+    mockMvc
+        .perform(authedGet("/api/public/customer-visit-links/" + fixture.token(), null))
+        .andExpect(jsonPath("$.responseVersion").value(2))
+        .andExpect(jsonPath("$.submittedTimeSlots.length()").value(1));
+  }
+
+  @Test
+  void reissueAndPortalSubmissionCannotWriteToAnObsoleteLink() throws Exception {
+    Fixture fixture = fixture();
+    mockMvc
+        .perform(jsonPostAs(portal(fixture.token()) + "/otp", "{}", null))
+        .andExpect(status().isOk());
+    Cookie session =
+        mockMvc
+            .perform(
+                jsonPostAs(
+                    portal(fixture.token()) + "/verify", "{\"code\":\"" + lastCode() + "\"}", null))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getCookie("SAIRO_CUSTOMER_PORTAL");
+    String target =
+        "/api/public/customer-visit-links/portal/requests/"
+            + fixture.coordinationId()
+            + "/available-times";
+    CountDownLatch start = new CountDownLatch(1);
+    try (var pool = Executors.newFixedThreadPool(2)) {
+      var submission =
+          pool.submit(
+              () -> {
+                start.await();
+                return mockMvc
+                    .perform(jsonPostAs(target, timeBody(fixture.start()), session))
+                    .andReturn()
+                    .getResponse()
+                    .getStatus();
+              });
+      var reissue =
+          pool.submit(
+              () -> {
+                start.await();
+                return AuthFlowSupport.json(
+                        mockMvc
+                            .perform(
+                                jsonPostAs(
+                                    "/api/visit-coordinations/"
+                                        + fixture.coordinationId()
+                                        + "/customer-link/reissue",
+                                    "",
+                                    fixture.staff()))
+                            .andExpect(status().isOk())
+                            .andReturn())
+                    .get("token")
+                    .asString();
+              });
+      start.countDown();
+      int submitStatus = submission.get(20, TimeUnit.SECONDS);
+      String newToken = reissue.get(20, TimeUnit.SECONDS);
+      assertThat(submitStatus).isIn(200, 404);
+      mockMvc
+          .perform(authedGet("/api/public/customer-visit-links/" + newToken, null))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.responseVersion").value(submitStatus == 200 ? 1 : 0))
+          .andExpect(jsonPath("$.submittedTimeSlots.length()").value(submitStatus == 200 ? 1 : 0));
+      assertError(
+          mockMvc.perform(authedGet("/api/public/customer-visit-links/" + fixture.token(), null)),
+          ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
   }
 }
