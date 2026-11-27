@@ -194,6 +194,11 @@ class CustomerVisitPortalIntegrationTest extends VisitIntegrationTestBase {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.verified").value(false))
         .andExpect(jsonPath("$.items.length()").value(0));
+    mockMvc
+        .perform(authedGet("/api/public/customer-visit-links/portal", null).cookie(session))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.verified").value(true))
+        .andExpect(jsonPath("$.items.length()").value(2));
 
     jdbcTemplate.update(
         "UPDATE customer SET email = ? WHERE id = ?", "changed@example.test", first.customerId());
