@@ -17,6 +17,7 @@ import java.util.List;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -112,6 +114,7 @@ public class CustomerVisitPortalController {
 
   @Operation(summary = "End customer visit request verification")
   @PostMapping("/logout")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
   @RequiresAccess(AccessPermission.GUEST_LINK)
   public ResponseEntity<Void> logout(
       @CookieValue(value = COOKIE_NAME, required = false) String session) {
