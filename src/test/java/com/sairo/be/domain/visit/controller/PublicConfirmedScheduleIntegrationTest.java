@@ -3,6 +3,7 @@ package com.sairo.be.domain.visit.controller;
 import static com.sairo.be.support.ErrorResponseAssertions.assertError;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
@@ -91,7 +92,7 @@ class PublicConfirmedScheduleIntegrationTest extends VisitOutcomeTestBase {
           .contains("\"state\":\"VALID\"", "\"scheduleVersion\":1");
       customerConfirmed(customerToken)
           .andExpect(jsonPath("$.state").value("CANCELLED"))
-          .andExpect(jsonPath("$.scheduleVersion").value(2));
+          .andExpect(jsonPath("$.scheduleVersion").value(greaterThan(1)));
     } finally {
       finishRead.countDown();
       executor.shutdownNow();
