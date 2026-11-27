@@ -9,6 +9,8 @@ import com.sairo.be.global.error.ErrorCode;
 import com.sairo.be.global.security.access.AccessPermission;
 import com.sairo.be.global.security.access.RequiresAccess;
 import com.sairo.be.global.web.ClientRequestInfo;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
 import java.util.List;
@@ -32,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Profile("!migrate")
 @RestController
 @RequestMapping("/api/public/customer-visit-links/{token}/portal")
+@Tag(name = "RESPOND", description = "Email-verified customer visit requests")
 public class CustomerVisitPortalController {
 
   private static final String COOKIE_NAME = "SAIRO_CUSTOMER_PORTAL";
@@ -47,6 +50,7 @@ public class CustomerVisitPortalController {
 
   public record VerifyResult(boolean verified, int expiresInSeconds) {}
 
+  @Operation(summary = "Send a customer visit request email verification code")
   @PostMapping("/otp")
   @RequiresAccess(AccessPermission.GUEST_LINK)
   public ResponseEntity<SendResult> send(@PathVariable String token, HttpServletRequest request) {
@@ -54,6 +58,7 @@ public class CustomerVisitPortalController {
     return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result);
   }
 
+  @Operation(summary = "Verify a customer visit request email code")
   @PostMapping("/verify")
   @RequiresAccess(AccessPermission.GUEST_LINK)
   public ResponseEntity<VerifyResult> verify(
@@ -67,6 +72,7 @@ public class CustomerVisitPortalController {
         .body(new VerifyResult(true, (int) CustomerVisitPortalService.SESSION_TTL.toSeconds()));
   }
 
+  @Operation(summary = "List the verified customer's visit requests")
   @GetMapping
   @RequiresAccess(AccessPermission.GUEST_LINK)
   public ResponseEntity<PortalRequests> requests(
@@ -92,6 +98,7 @@ public class CustomerVisitPortalController {
     }
   }
 
+  @Operation(summary = "Preview reusable visit times for the verified customer")
   @GetMapping("/reusable-times")
   @RequiresAccess(AccessPermission.GUEST_LINK)
   public ResponseEntity<ReusableTimes> reusableTimes(
@@ -103,6 +110,7 @@ public class CustomerVisitPortalController {
         .body(portal.reusableTimes(token, session, ClientRequestInfo.from(request).ipAddress()));
   }
 
+  @Operation(summary = "End customer visit request verification")
   @PostMapping("/logout")
   @RequiresAccess(AccessPermission.GUEST_LINK)
   public ResponseEntity<Void> logout(
