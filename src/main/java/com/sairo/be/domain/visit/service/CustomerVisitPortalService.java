@@ -2,6 +2,8 @@ package com.sairo.be.domain.visit.service;
 
 import com.sairo.be.domain.customer.entity.Customer;
 import com.sairo.be.domain.customer.repository.CustomerRepository;
+import com.sairo.be.domain.visit.dto.response.CustomerAvailableTimesResponse;
+import com.sairo.be.domain.visit.dto.response.PublicVisitLinkResponse;
 import com.sairo.be.domain.visit.entity.VisitCoordination;
 import com.sairo.be.domain.visit.entity.VisitCustomerLink;
 import com.sairo.be.domain.visit.repository.VisitCoordinationRepository;
@@ -23,13 +25,16 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
 
 /** A customer link plus an email OTP grants read-only access to that office's requests. */
 @Profile("!migrate")
@@ -39,7 +44,11 @@ public class CustomerVisitPortalService {
   public record SendResult(boolean accepted, String maskedEmail, int expiresInSeconds) {}
 
   public record PortalItem(
-      Long coordinationId, String status, LocalDate periodStartDate, LocalDate periodEndDate) {}
+      Long coordinationId,
+      String status,
+      LocalDate periodStartDate,
+      LocalDate periodEndDate,
+      boolean canRespond) {}
 
   public record PortalRequests(boolean available, boolean verified, List<PortalItem> items) {}
 
@@ -70,6 +79,8 @@ public class CustomerVisitPortalService {
   private final VisitCustomerLinkRepository links;
   private final VisitCustomerTimeSlotRepository slots;
   private final CustomerRepository customers;
+  private final PublicCustomerLinkQueryService queryService;
+  private final PublicCustomerLinkSubmitService submitService;
   private final StringRedisTemplate redis;
   private final MailSender mail;
   private final RequestRateLimiter rateLimiter;
@@ -84,6 +95,8 @@ public class CustomerVisitPortalService {
       VisitCustomerLinkRepository links,
       VisitCustomerTimeSlotRepository slots,
       CustomerRepository customers,
+      PublicCustomerLinkQueryService queryService,
+      PublicCustomerLinkSubmitService submitService,
       StringRedisTemplate redis,
       MailSender mail,
       RequestRateLimiter rateLimiter,
@@ -96,6 +109,8 @@ public class CustomerVisitPortalService {
     this.links = links;
     this.slots = slots;
     this.customers = customers;
+    this.queryService = queryService;
+    this.submitService = submitService;
     this.redis = redis;
     this.mail = mail;
     this.rateLimiter = rateLimiter;
@@ -205,15 +220,57 @@ public class CustomerVisitPortalService {
     return new PortalRequests(true, true, itemsFor(scope));
   }
 
+  @Transactional(readOnly = true)
+  public PublicVisitLinkResponse sessionRequest(String sessionToken, Long coordinationId) {
+    Scope scope = sessionScope(sessionToken);
+    return queryService.getForVerifiedCustomer(respondableLink(scope, coordinationId));
+  }
+
+  public CustomerAvailableTimesResponse sessionSubmit(
+      String sessionToken, Long coordinationId, JsonNode body, String idempotencyKey) {
+    Scope scope = sessionScope(sessionToken);
+    VisitCustomerLink link = respondableLink(scope, coordinationId);
+    return submitService.submitForVerifiedCustomer(
+        link.getId(), scope.officeId(), scope.customerId(), body, idempotencyKey);
+  }
+
   private List<PortalItem> itemsFor(Scope scope) {
-    return coordinations
-        .findTop50ByOfficeIdAndCustomerIdOrderByIdDesc(scope.officeId(), scope.customerId())
-        .stream()
+    List<VisitCoordination> current =
+        coordinations.findTop50ByOfficeIdAndCustomerIdOrderByIdDesc(
+            scope.officeId(), scope.customerId());
+    if (current.isEmpty()) return List.of();
+    Set<Long> activeLinkCoordinationIds =
+        new HashSet<>(
+            links.findActiveCoordinationIds(
+                current.stream().map(VisitCoordination::getId).toList(), clock.instant()));
+    return current.stream()
         .map(
             c ->
                 new PortalItem(
-                    c.getId(), c.getStatus().name(), c.getPeriodStartDate(), c.getPeriodEndDate()))
+                    c.getId(),
+                    c.getStatus().name(),
+                    c.getPeriodStartDate(),
+                    c.getPeriodEndDate(),
+                    c.getStatus().acceptsCustomerResponse()
+                        && activeLinkCoordinationIds.contains(c.getId())))
         .toList();
+  }
+
+  private VisitCustomerLink respondableLink(Scope scope, Long coordinationId) {
+    if (coordinationId == null) throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    VisitCoordination coordination =
+        coordinations
+            .findById(coordinationId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    if (!coordination.getOfficeId().equals(scope.officeId())
+        || !coordination.getCustomerId().equals(scope.customerId())
+        || !coordination.getStatus().acceptsCustomerResponse()) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    return links.findByCoordinationIdOrderByIdDesc(coordinationId).stream()
+        .filter(link -> !link.isRevoked() && !link.isExpiredAt(clock.instant()))
+        .findFirst()
+        .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
   }
 
   @Transactional(readOnly = true)
@@ -239,6 +296,21 @@ public class CustomerVisitPortalService {
     if (!target.getStatus().acceptsCustomerResponse()) {
       throw new BusinessException(ErrorCode.INVALID_TRANSITION);
     }
+    return reusableTimesForTarget(scope, target);
+  }
+
+  @Transactional(readOnly = true)
+  public ReusableTimes sessionReusableTimes(String sessionToken, Long coordinationId) {
+    Scope scope = sessionScope(sessionToken);
+    respondableLink(scope, coordinationId);
+    VisitCoordination target =
+        coordinations
+            .findById(coordinationId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    return reusableTimesForTarget(scope, target);
+  }
+
+  private ReusableTimes reusableTimesForTarget(Scope scope, VisitCoordination target) {
     Instant now = clock.instant();
     Instant start = TimeRules.startOfDisplayDay(target.getPeriodStartDate());
     Instant end = TimeRules.endOfDisplayDayExclusive(target.getPeriodEndDate());
