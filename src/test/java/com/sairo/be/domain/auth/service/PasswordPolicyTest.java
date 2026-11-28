@@ -63,10 +63,13 @@ class PasswordPolicyTest {
   }
 
   @Test
-  void 공백도_길이에_포함하고_앞뒤_공백을_제거하지_않는다() {
-    assertThatCode(() -> policy.validateNewPassword("password", "  Qx7!mK  "))
-        .doesNotThrowAnyException();
-    assertRejected(" Qx7!m ", "TOO_SHORT");
+  void 새로운_비밀번호에는_공백을_허용하지_않는다() {
+    assertRejected("  Qx7!mK  ", "NOT_ALLOWED");
+    assertRejected("Qx 7! mK", "NOT_ALLOWED");
+    assertRejected("Qx7!mK2\u00a0", "NOT_ALLOWED");
+    assertRejected("Qx7!mK2\u0085", "NOT_ALLOWED");
+    assertRejected("Qx7!mK2\uFEFF", "NOT_ALLOWED");
+    assertRejected("Qx7!mK2\u001C", "NOT_ALLOWED");
   }
 
   @ParameterizedTest
@@ -89,10 +92,9 @@ class PasswordPolicyTest {
   }
 
   @Test
-  void 공백이_아닌_문자가_하나라도_있으면_공백_규칙에_걸리지_않는다() {
-    assertThatCode(() -> policy.validateNewPassword("password", "       z"))
-        .doesNotThrowAnyException();
-    assertThatCode(() -> policy.validateNewPassword("password", "Qx 7! mK"))
+  void 공백이_없는_비밀번호는_기존_길이_규칙을_따른다() {
+    assertRejected("Qx7!mK2", "TOO_SHORT");
+    assertThatCode(() -> policy.validateNewPassword("password", "Qx7!mK2a"))
         .doesNotThrowAnyException();
   }
 }
