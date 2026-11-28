@@ -260,6 +260,77 @@ class CustomerVisitPortalIntegrationTest extends VisitIntegrationTestBase {
   }
 
   @Test
+  void firstSaveThroughAnotherLinkUsesTheDeadlineShownToTheVerifiedSession() throws Exception {
+    Fixture first = fixture();
+    long secondId =
+        createCoordination(
+                first.staff(),
+                first.customerId(),
+                null,
+                first.start(),
+                first.start().plusDays(3),
+                newProperty(first.staff()))
+            .get("coordinationId")
+            .longValue();
+    String secondToken = issueToken(first.staff(), secondId);
+    jdbcTemplate.update(
+        "UPDATE visit_customer_link SET retention_until = ? WHERE coordination_id = ?",
+        today().plusDays(1),
+        secondId);
+    mockMvc
+        .perform(jsonPostAs(portal(first.token()) + "/otp", "{}", null))
+        .andExpect(status().isOk());
+    Cookie session =
+        mockMvc
+            .perform(
+                jsonPostAs(
+                    portal(first.token()) + "/verify", "{\"code\":\"" + lastCode() + "\"}", null))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getCookie("SAIRO_CUSTOMER_PORTAL");
+    String endpoint = "/api/public/customer-visit-links/portal/preferences";
+    String onIndex =
+        mockMvc
+            .perform(authedGet(endpoint, null).cookie(session))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    String onSecondLink =
+        mockMvc
+            .perform(authedGet(portal(secondToken) + "/preferences", null).cookie(session))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    var deadline = Pattern.compile("\\\"retentionUntil\\\":\\\"([^\"]+)\\\"").matcher(onIndex);
+    var binding =
+        Pattern.compile("\\\"sessionBinding\\\":\\\"([a-f0-9]+)\\\"").matcher(onSecondLink);
+    assertThat(deadline.find()).isTrue();
+    assertThat(binding.find()).isTrue();
+    assertThat(onSecondLink).contains("\"retentionUntil\":\"" + deadline.group(1) + "\"");
+    String body =
+        "{\"expectedVersion\":0,\"preferredWeekdays\":[\"MONDAY\"],"
+            + "\"acknowledgedNoticeVersion\":\""
+            + NOTICE_VERSION
+            + "\",\"acknowledgedPreferenceDisclosureVersion\":\"1.0\","
+            + "\"sessionBinding\":\""
+            + binding.group(1)
+            + "\"}";
+    mockMvc
+        .perform(jsonPutAs(endpoint, body, session, null))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.retentionUntil").value(deadline.group(1)));
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT retention_until FROM customer_visit_preference WHERE customer_id = ?",
+                LocalDate.class,
+                first.customerId()))
+        .isEqualTo(LocalDate.parse(deadline.group(1)));
+  }
+
+  @Test
   void editingThroughOlderLinkDoesNotMisstateOrShortenSavedPreferenceRetention() throws Exception {
     Fixture first = fixture();
     String endpoint = "/api/public/customer-visit-links/portal/preferences";

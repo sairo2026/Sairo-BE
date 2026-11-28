@@ -280,7 +280,9 @@ public class CustomerVisitPortalService {
     if (!clock.instant().isBefore(link.getExpiresAt())) {
       throw new BusinessException(ErrorCode.PUBLIC_LINK_EXPIRED);
     }
-    return preferenceFor(authenticatedScope(linkToken, sessionToken, clientIp), sessionToken);
+    authenticatedScope(linkToken, sessionToken, clientIp);
+    // Writes use the verified session's link. Disclose that same retention deadline here.
+    return preferenceFor(sessionScope(sessionToken), sessionToken);
   }
 
   private PreferenceData preferenceFor(Scope scope, String sessionToken) {
