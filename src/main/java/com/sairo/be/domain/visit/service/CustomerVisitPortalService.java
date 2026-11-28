@@ -281,7 +281,6 @@ public class CustomerVisitPortalService {
       throw new BusinessException(ErrorCode.PUBLIC_LINK_EXPIRED);
     }
     authenticatedScope(linkToken, sessionToken, clientIp);
-    // Writes use the verified session's link. Disclose that same retention deadline here.
     return preferenceFor(sessionScope(sessionToken), sessionToken);
   }
 
