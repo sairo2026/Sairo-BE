@@ -2,6 +2,7 @@ package com.sairo.be.domain.visit.controller;
 
 import com.sairo.be.domain.visit.service.CustomerVisitPortalService;
 import com.sairo.be.domain.visit.service.CustomerVisitPortalService.PortalRequests;
+import com.sairo.be.domain.visit.service.CustomerVisitPortalService.PreferenceData;
 import com.sairo.be.domain.visit.service.CustomerVisitPortalService.ReusableTimes;
 import com.sairo.be.domain.visit.service.CustomerVisitPortalService.SendResult;
 import com.sairo.be.global.error.BusinessException;
@@ -110,6 +111,19 @@ public class CustomerVisitPortalController {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(portal.reusableTimes(token, session, ClientRequestInfo.from(request).ipAddress()));
+  }
+
+  @Operation(summary = "Read saved preferences only after this link matches the verified customer")
+  @GetMapping("/preferences")
+  @RequiresAccess(AccessPermission.GUEST_LINK)
+  public ResponseEntity<PreferenceData> preference(
+      @PathVariable String token,
+      @CookieValue(value = COOKIE_NAME, required = false) String session,
+      HttpServletRequest request) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            portal.preferenceForLink(token, session, ClientRequestInfo.from(request).ipAddress()));
   }
 
   @Operation(summary = "End customer visit request verification")

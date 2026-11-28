@@ -5,6 +5,8 @@ import com.sairo.be.domain.visit.dto.response.CustomerAvailableTimesResponse;
 import com.sairo.be.domain.visit.dto.response.PublicVisitLinkResponse;
 import com.sairo.be.domain.visit.service.CustomerVisitPortalService;
 import com.sairo.be.domain.visit.service.CustomerVisitPortalService.PortalRequests;
+import com.sairo.be.domain.visit.service.CustomerVisitPortalService.PreferenceData;
+import com.sairo.be.domain.visit.service.CustomerVisitPortalService.PreferenceInput;
 import com.sairo.be.domain.visit.service.CustomerVisitPortalService.ReusableTimes;
 import com.sairo.be.global.error.BusinessException;
 import com.sairo.be.global.error.ErrorCode;
@@ -20,12 +22,15 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
@@ -61,6 +66,42 @@ public class CustomerVisitPortalIndexController {
           .cacheControl(CacheControl.noStore())
           .body(new PortalRequests(false, false, List.of()));
     }
+  }
+
+  @Operation(summary = "Read customer-confirmed defaults, separate from dated availability")
+  @GetMapping("/preferences")
+  @RequiresAccess(AccessPermission.GUEST_LINK)
+  public ResponseEntity<PreferenceData> preference(
+      @CookieValue(value = CustomerVisitPortalController.COOKIE_NAME, required = false)
+          String session) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(portal.preference(session));
+  }
+
+  @Operation(summary = "Save customer-confirmed visit defaults for this office")
+  @PutMapping("/preferences")
+  @RequiresAccess(AccessPermission.GUEST_LINK)
+  public ResponseEntity<PreferenceData> savePreference(
+      @CookieValue(value = CustomerVisitPortalController.COOKIE_NAME, required = false)
+          String session,
+      @RequestBody PreferenceInput body) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(portal.savePreference(session, body));
+  }
+
+  @Operation(summary = "Withdraw customer-confirmed visit defaults for this office")
+  @DeleteMapping("/preferences")
+  @RequiresAccess(AccessPermission.GUEST_LINK)
+  public ResponseEntity<PreferenceData> deletePreference(
+      @CookieValue(value = CustomerVisitPortalController.COOKIE_NAME, required = false)
+          String session,
+      @RequestParam long expectedVersion,
+      @RequestHeader("X-Customer-Portal-Binding") String sessionBinding) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(portal.deletePreference(session, expectedVersion, sessionBinding));
   }
 
   @Operation(summary = "Open an active visit request using the verified customer portal")
