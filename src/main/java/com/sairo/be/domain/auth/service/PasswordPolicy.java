@@ -36,6 +36,9 @@ public class PasswordPolicy {
     if (isWhitespaceOnly(password)) {
       throw invalid(field, FieldErrorCode.REQUIRED, "공백만으로 된 비밀번호는 사용할 수 없습니다.");
     }
+    if (password.codePoints().anyMatch(PasswordPolicy::isWhitespace)) {
+      throw invalid(field, FieldErrorCode.NOT_ALLOWED, "비밀번호에 공백을 사용할 수 없습니다.");
+    }
     int length = password.codePointCount(0, password.length());
     if (length < MIN_LENGTH) {
       throw invalid(field, FieldErrorCode.TOO_SHORT, MIN_LENGTH + "자 이상 입력해야 합니다.");
@@ -49,9 +52,14 @@ public class PasswordPolicy {
   }
 
   private static boolean isWhitespaceOnly(String password) {
-    return password
-        .codePoints()
-        .allMatch(point -> Character.isWhitespace(point) || Character.isSpaceChar(point));
+    return password.codePoints().allMatch(PasswordPolicy::isWhitespace);
+  }
+
+  private static boolean isWhitespace(int point) {
+    return Character.isWhitespace(point)
+        || Character.isSpaceChar(point)
+        || point == 0x0085
+        || point == 0xFEFF;
   }
 
   public boolean isCommon(String password) {
