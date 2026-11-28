@@ -19,8 +19,10 @@ public class ConsentGuestNoticeAck {
 
   public static final String LINK_KIND_APPROVER_PROPERTY = "APPROVER_PROPERTY";
   public static final String LINK_KIND_APPROVER_PORTAL = "APPROVER_PORTAL";
+  public static final String LINK_KIND_CUSTOMER = "CUSTOMER";
   public static final String ACTION_PORTAL_CLAIM = "PORTAL_CLAIM";
   public static final String ACTION_CONDITION_SAVE = "CONDITION_SAVE";
+  public static final String ACTION_PREFERENCE_SAVE = "PREFERENCE_SAVE";
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -38,6 +40,9 @@ public class ConsentGuestNoticeAck {
   @Column(name = "approver_profile_id", updatable = false)
   private Long approverProfileId;
 
+  @Column(name = "customer_link_id", updatable = false)
+  private Long customerLinkId;
+
   @Column(name = "terms_code", nullable = false, length = 30, updatable = false)
   private String termsCode;
 
@@ -49,6 +54,12 @@ public class ConsentGuestNoticeAck {
 
   @Column(name = "resource_version", updatable = false)
   private Integer resourceVersion;
+
+  @Column(name = "supplemental_notice_version", updatable = false, length = 20)
+  private String supplementalNoticeVersion;
+
+  @Column(name = "supplemental_notice_hash", updatable = false, length = 64)
+  private String supplementalNoticeHash;
 
   @Column(name = "acknowledged_at", nullable = false, updatable = false)
   private Instant acknowledgedAt;
@@ -68,6 +79,29 @@ public class ConsentGuestNoticeAck {
     ack.termsVersion = termsVersion;
     ack.actionType = ACTION_CONDITION_SAVE;
     ack.resourceVersion = conditionVersion;
+    ack.acknowledgedAt = at;
+    return ack;
+  }
+
+  public static ConsentGuestNoticeAck customerPreferenceSave(
+      Long officeId,
+      Long linkId,
+      String termsCode,
+      String termsVersion,
+      String supplementalNoticeVersion,
+      String supplementalNoticeHash,
+      int resourceVersion,
+      Instant at) {
+    ConsentGuestNoticeAck ack = new ConsentGuestNoticeAck();
+    ack.officeId = officeId;
+    ack.linkKind = LINK_KIND_CUSTOMER;
+    ack.customerLinkId = linkId;
+    ack.termsCode = termsCode;
+    ack.termsVersion = termsVersion;
+    ack.actionType = ACTION_PREFERENCE_SAVE;
+    ack.supplementalNoticeVersion = supplementalNoticeVersion;
+    ack.supplementalNoticeHash = supplementalNoticeHash;
+    ack.resourceVersion = resourceVersion;
     ack.acknowledgedAt = at;
     return ack;
   }

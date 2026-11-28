@@ -367,7 +367,12 @@ class OpenApiDocumentationTest {
           Map.entry("POST /api/public/customer-visit-links/{token}/portal/otp", Set.of("200")),
           Map.entry("POST /api/public/customer-visit-links/{token}/portal/verify", Set.of("200")),
           Map.entry("GET /api/public/customer-visit-links/{token}/portal", Set.of("200")),
+          Map.entry(
+              "GET /api/public/customer-visit-links/{token}/portal/preferences", Set.of("200")),
           Map.entry("GET /api/public/customer-visit-links/portal", Set.of("200")),
+          Map.entry("GET /api/public/customer-visit-links/portal/preferences", Set.of("200")),
+          Map.entry("PUT /api/public/customer-visit-links/portal/preferences", Set.of("200")),
+          Map.entry("DELETE /api/public/customer-visit-links/portal/preferences", Set.of("200")),
           Map.entry(
               "GET /api/public/customer-visit-links/portal/requests/{coordinationId}",
               Set.of("200")),
