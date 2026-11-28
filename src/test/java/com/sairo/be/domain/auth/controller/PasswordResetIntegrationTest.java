@@ -201,7 +201,7 @@ class PasswordResetIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
-  void 새_비밀번호는_코드_포인트_8자에서_12자이고_공백을_보존한다() throws Exception {
+  void 새_비밀번호는_코드_포인트_8자에서_12자이고_공백을_거부한다() throws Exception {
     saveEmailUser(EMAIL, null);
     String token = requestToken();
 
@@ -225,10 +225,14 @@ class PasswordResetIntegrationTest extends AuthIntegrationTestBase {
         mockMvc.perform(jsonPost("/api/auth/password/reset", resetBody(token, " ".repeat(12)))),
         "newPassword",
         "REQUIRED");
+    assertFieldError(
+        mockMvc.perform(jsonPost("/api/auth/password/reset", resetBody(token, "  Newpass1  "))),
+        "newPassword",
+        "NOT_ALLOWED");
     mockMvc
-        .perform(jsonPost("/api/auth/password/reset", resetBody(token, "  Newpass1  ")))
+        .perform(jsonPost("/api/auth/password/reset", resetBody(token, "Newpass#12")))
         .andExpect(status().isNoContent());
-    assertThat(login(EMAIL, "  Newpass1  ")).isNotNull();
+    assertThat(login(EMAIL, "Newpass#12")).isNotNull();
   }
 
   @Test
