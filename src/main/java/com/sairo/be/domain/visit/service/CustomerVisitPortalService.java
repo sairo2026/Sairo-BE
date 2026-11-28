@@ -2,10 +2,12 @@ package com.sairo.be.domain.visit.service;
 
 import com.sairo.be.domain.customer.entity.Customer;
 import com.sairo.be.domain.customer.repository.CustomerRepository;
+import com.sairo.be.domain.visit.dto.response.ConfirmedScheduleResponses.PublicConfirmedVisitResponse;
 import com.sairo.be.domain.visit.dto.response.CustomerAvailableTimesResponse;
 import com.sairo.be.domain.visit.dto.response.PublicVisitLinkResponse;
 import com.sairo.be.domain.visit.entity.VisitCoordination;
 import com.sairo.be.domain.visit.entity.VisitCustomerLink;
+import com.sairo.be.domain.visit.repository.ScheduleItemRepository;
 import com.sairo.be.domain.visit.repository.VisitCoordinationRepository;
 import com.sairo.be.domain.visit.repository.VisitCustomerLinkRepository;
 import com.sairo.be.domain.visit.repository.VisitCustomerTimeSlotRepository;
@@ -33,6 +35,7 @@ import java.util.regex.Pattern;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 
@@ -48,7 +51,8 @@ public class CustomerVisitPortalService {
       String status,
       LocalDate periodStartDate,
       LocalDate periodEndDate,
-      boolean canRespond) {}
+      boolean canRespond,
+      boolean canViewSchedule) {}
 
   public record PortalRequests(boolean available, boolean verified, List<PortalItem> items) {}
 
@@ -78,9 +82,11 @@ public class CustomerVisitPortalService {
   private final VisitCoordinationRepository coordinations;
   private final VisitCustomerLinkRepository links;
   private final VisitCustomerTimeSlotRepository slots;
+  private final ScheduleItemRepository scheduleItems;
   private final CustomerRepository customers;
   private final PublicCustomerLinkQueryService queryService;
   private final PublicCustomerLinkSubmitService submitService;
+  private final PublicConfirmedScheduleService confirmedService;
   private final StringRedisTemplate redis;
   private final MailSender mail;
   private final RequestRateLimiter rateLimiter;
@@ -94,9 +100,11 @@ public class CustomerVisitPortalService {
       VisitCoordinationRepository coordinations,
       VisitCustomerLinkRepository links,
       VisitCustomerTimeSlotRepository slots,
+      ScheduleItemRepository scheduleItems,
       CustomerRepository customers,
       PublicCustomerLinkQueryService queryService,
       PublicCustomerLinkSubmitService submitService,
+      PublicConfirmedScheduleService confirmedService,
       StringRedisTemplate redis,
       MailSender mail,
       RequestRateLimiter rateLimiter,
@@ -108,9 +116,11 @@ public class CustomerVisitPortalService {
     this.coordinations = coordinations;
     this.links = links;
     this.slots = slots;
+    this.scheduleItems = scheduleItems;
     this.customers = customers;
     this.queryService = queryService;
     this.submitService = submitService;
+    this.confirmedService = confirmedService;
     this.redis = redis;
     this.mail = mail;
     this.rateLimiter = rateLimiter;
@@ -226,6 +236,28 @@ public class CustomerVisitPortalService {
     return queryService.getForVerifiedCustomer(respondableLink(scope, coordinationId));
   }
 
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+  public PublicConfirmedVisitResponse sessionConfirmed(String sessionToken, Long coordinationId) {
+    Scope scope = sessionScope(sessionToken);
+    if (coordinationId == null) throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    VisitCoordination coordination =
+        coordinations
+            .findById(coordinationId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    if (!coordination.getOfficeId().equals(scope.officeId())
+        || !coordination.getCustomerId().equals(scope.customerId())) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    VisitCustomerLink link =
+        links.findByCoordinationIdOrderByIdDesc(coordinationId).stream()
+            .findFirst()
+            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    if (link.getRetentionUntil().isBefore(LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))))) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    return confirmedService.verifiedCustomer(coordination, link.isRevoked());
+  }
+
   public CustomerAvailableTimesResponse sessionSubmit(
       String sessionToken, Long coordinationId, JsonNode body, String idempotencyKey) {
     Scope scope = sessionScope(sessionToken);
@@ -243,6 +275,12 @@ public class CustomerVisitPortalService {
         new HashSet<>(
             links.findActiveCoordinationIds(
                 current.stream().map(VisitCoordination::getId).toList(), clock.instant()));
+    Set<Long> viewableScheduleIds =
+        new HashSet<>(
+            scheduleItems.viewableCustomerCoordinationIds(
+                current.stream().map(VisitCoordination::getId).toList(),
+                clock.instant().minus(PublicConfirmedScheduleService.CUSTOMER_VIEW_AFTER_LAST),
+                LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")))));
     return current.stream()
         .map(
             c ->
@@ -252,7 +290,8 @@ public class CustomerVisitPortalService {
                     c.getPeriodStartDate(),
                     c.getPeriodEndDate(),
                     c.getStatus().acceptsCustomerResponse()
-                        && activeLinkCoordinationIds.contains(c.getId())))
+                        && activeLinkCoordinationIds.contains(c.getId()),
+                    viewableScheduleIds.contains(c.getId())))
         .toList();
   }
 

@@ -1,5 +1,6 @@
 package com.sairo.be.domain.visit.controller;
 
+import com.sairo.be.domain.visit.dto.response.ConfirmedScheduleResponses.PublicConfirmedVisitResponse;
 import com.sairo.be.domain.visit.dto.response.CustomerAvailableTimesResponse;
 import com.sairo.be.domain.visit.dto.response.PublicVisitLinkResponse;
 import com.sairo.be.domain.visit.service.CustomerVisitPortalService;
@@ -72,6 +73,18 @@ public class CustomerVisitPortalIndexController {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(portal.sessionRequest(session, coordinationId));
+  }
+
+  @Operation(summary = "Read a verified customer's confirmed visit schedule")
+  @GetMapping("/requests/{coordinationId}/confirmed")
+  @RequiresAccess(AccessPermission.GUEST_LINK)
+  public ResponseEntity<PublicConfirmedVisitResponse> confirmed(
+      @PathVariable Long coordinationId,
+      @CookieValue(value = CustomerVisitPortalController.COOKIE_NAME, required = false)
+          String session) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(portal.sessionConfirmed(session, coordinationId));
   }
 
   @Operation(summary = "Preview still-valid times from another request for this verified customer")

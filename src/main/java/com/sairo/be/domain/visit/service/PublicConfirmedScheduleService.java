@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 고객 링크와 승인자 링크의 확정 일정 읽기 전용 조회다. */
@@ -95,7 +96,7 @@ public class PublicConfirmedScheduleService {
     this.clock = clock;
   }
 
-  @Transactional(readOnly = true)
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
   public PublicConfirmedVisitResponse customer(String token, String clientIp) {
     VisitCustomerLinkRepository.LinkHead head =
         customerResolver.resolveIncludingRevoked(token, clientIp);
@@ -103,6 +104,18 @@ public class PublicConfirmedScheduleService {
         coordinationRepository
             .findById(head.getCoordinationId())
             .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    return customerSchedule(coordination, head.getRevokedAt() != null);
+  }
+
+  /** The portal authenticates and scopes the customer before calling this read-only view. */
+  @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+  public PublicConfirmedVisitResponse verifiedCustomer(
+      VisitCoordination coordination, boolean linkRevoked) {
+    return customerSchedule(coordination, linkRevoked);
+  }
+
+  private PublicConfirmedVisitResponse customerSchedule(
+      VisitCoordination coordination, boolean linkRevoked) {
     List<ItemRow> rows = itemRepository.listByCoordination(coordination.getId());
     Instant lastEnd =
         rows.stream()
@@ -113,7 +126,7 @@ public class PublicConfirmedScheduleService {
     if (!clock.instant().isBefore(lastEnd.plus(CUSTOMER_VIEW_AFTER_LAST))) {
       throw new BusinessException(ErrorCode.PUBLIC_LINK_EXPIRED);
     }
-    String state = customerState(coordination, head.getRevokedAt() != null, rows);
+    String state = customerState(coordination, linkRevoked, rows);
     List<ConfirmedVisitItem> items = new ArrayList<>();
     if (ScheduleStateService.VALID.equals(state)) {
       List<ItemRow> kept =

@@ -372,6 +372,9 @@ class OpenApiDocumentationTest {
               "GET /api/public/customer-visit-links/portal/requests/{coordinationId}",
               Set.of("200")),
           Map.entry(
+              "GET /api/public/customer-visit-links/portal/requests/{coordinationId}/confirmed",
+              Set.of("200")),
+          Map.entry(
               "GET /api/public/customer-visit-links/portal/requests/{coordinationId}/reusable-times",
               Set.of("200")),
           Map.entry(
