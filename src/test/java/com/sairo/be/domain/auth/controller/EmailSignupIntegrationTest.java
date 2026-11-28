@@ -362,24 +362,9 @@ class EmailSignupIntegrationTest extends AuthIntegrationTestBase {
   }
 
   @Test
-  void 공백도_길이에_포함하고_앞뒤_공백을_그대로_보존한다() throws Exception {
-    String spaced = "  abcdef  ";
-    signupWithPassword(spaced).andExpect(status().isCreated());
-    String email = "u" + Math.abs(spaced.hashCode()) + "@example.com";
-
-    login(email, spaced);
-    mockMvc
-        .perform(
-            jsonPost(
-                "/api/auth/login",
-                "{\"email\":\"" + email + "\",\"password\":" + quote(spaced) + "}"))
-        .andExpect(status().isOk());
-    assertError(
-        mockMvc.perform(
-            jsonPost(
-                "/api/auth/login",
-                "{\"email\":\"" + email + "\",\"password\":" + quote(spaced.strip()) + "}")),
-        ErrorCode.INVALID_CREDENTIALS);
+  void 새_비밀번호에_공백이_들어가면_가입을_거절한다() throws Exception {
+    assertFieldError(signupWithPassword("  abcdef  "), "password", "NOT_ALLOWED");
+    assertFieldError(signupWithPassword("abc defgh"), "password", "NOT_ALLOWED");
   }
 
   @Test
