@@ -5,8 +5,12 @@ import com.sairo.be.domain.customer.repository.CustomerRepository;
 import com.sairo.be.domain.visit.dto.response.ConfirmedScheduleResponses.PublicConfirmedVisitResponse;
 import com.sairo.be.domain.visit.dto.response.CustomerAvailableTimesResponse;
 import com.sairo.be.domain.visit.dto.response.PublicVisitLinkResponse;
+import com.sairo.be.domain.visit.entity.ConsentGuestNoticeAck;
+import com.sairo.be.domain.visit.entity.CustomerVisitPreference;
 import com.sairo.be.domain.visit.entity.VisitCoordination;
 import com.sairo.be.domain.visit.entity.VisitCustomerLink;
+import com.sairo.be.domain.visit.repository.ConsentGuestNoticeAckRepository;
+import com.sairo.be.domain.visit.repository.CustomerVisitPreferenceRepository;
 import com.sairo.be.domain.visit.repository.ScheduleItemRepository;
 import com.sairo.be.domain.visit.repository.VisitCoordinationRepository;
 import com.sairo.be.domain.visit.repository.VisitCustomerLinkRepository;
@@ -22,11 +26,14 @@ import com.sairo.be.global.support.RequestRateLimiter;
 import com.sairo.be.global.support.TimeRules;
 import com.sairo.be.global.support.TokenGenerator;
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -60,9 +67,32 @@ public class CustomerVisitPortalService {
 
   public record ReusableTimes(List<TimeSlot> timeSlots) {}
 
+  public record PreferenceInput(
+      Long expectedVersion,
+      List<DayOfWeek> preferredWeekdays,
+      LocalTime preferredStartTime,
+      LocalTime preferredEndTime,
+      String acknowledgedNoticeVersion,
+      String acknowledgedPreferenceDisclosureVersion,
+      String sessionBinding) {}
+
+  public record PreferenceData(
+      boolean exists,
+      long version,
+      List<DayOfWeek> preferredWeekdays,
+      LocalTime preferredStartTime,
+      LocalTime preferredEndTime,
+      Instant confirmedAt,
+      LocalDate retentionUntil,
+      String noticeVersion,
+      String preferenceDisclosureVersion,
+      String preferenceDisclosureText,
+      String sessionBinding) {}
+
   private record Scope(Long officeId, Long customerId, String email, Long linkId) {}
 
   private static final Pattern CODE = Pattern.compile("^[0-9]{6}$");
+  public static final String PREFERENCE_DISCLOSURE_VERSION = CustomerPreferenceNotice.VERSION;
   private static final Duration CODE_TTL = Duration.ofMinutes(5);
   public static final Duration SESSION_TTL = Duration.ofDays(30);
   private static final int MAX_ATTEMPTS = 5;
@@ -82,6 +112,9 @@ public class CustomerVisitPortalService {
   private final VisitCoordinationRepository coordinations;
   private final VisitCustomerLinkRepository links;
   private final VisitCustomerTimeSlotRepository slots;
+  private final CustomerVisitPreferenceRepository preferences;
+  private final ConsentGuestNoticeAckRepository noticeAcks;
+  private final CustomerLinkNoticeProvider noticeProvider;
   private final ScheduleItemRepository scheduleItems;
   private final CustomerRepository customers;
   private final PublicCustomerLinkQueryService queryService;
@@ -100,6 +133,9 @@ public class CustomerVisitPortalService {
       VisitCoordinationRepository coordinations,
       VisitCustomerLinkRepository links,
       VisitCustomerTimeSlotRepository slots,
+      CustomerVisitPreferenceRepository preferences,
+      ConsentGuestNoticeAckRepository noticeAcks,
+      CustomerLinkNoticeProvider noticeProvider,
       ScheduleItemRepository scheduleItems,
       CustomerRepository customers,
       PublicCustomerLinkQueryService queryService,
@@ -116,6 +152,9 @@ public class CustomerVisitPortalService {
     this.coordinations = coordinations;
     this.links = links;
     this.slots = slots;
+    this.preferences = preferences;
+    this.noticeAcks = noticeAcks;
+    this.noticeProvider = noticeProvider;
     this.scheduleItems = scheduleItems;
     this.customers = customers;
     this.queryService = queryService;
@@ -228,6 +267,229 @@ public class CustomerVisitPortalService {
   public PortalRequests sessionRequests(String sessionToken) {
     Scope scope = sessionScope(sessionToken);
     return new PortalRequests(true, true, itemsFor(scope));
+  }
+
+  @Transactional(readOnly = true)
+  public PreferenceData preference(String sessionToken) {
+    return preferenceFor(sessionScope(sessionToken), sessionToken);
+  }
+
+  @Transactional(readOnly = true)
+  public PreferenceData preferenceForLink(String linkToken, String sessionToken, String clientIp) {
+    var link = resolver.resolve(linkToken, clientIp);
+    if (!clock.instant().isBefore(link.getExpiresAt())) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_EXPIRED);
+    }
+    return preferenceFor(authenticatedScope(linkToken, sessionToken, clientIp), sessionToken);
+  }
+
+  private PreferenceData preferenceFor(Scope scope, String sessionToken) {
+    LocalDate today = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")));
+    LocalDate retentionUntil = preferenceRetention(scope);
+    return preferences
+        .findByOfficeIdAndCustomerId(scope.officeId(), scope.customerId())
+        .filter(saved -> !saved.getRetentionUntil().isBefore(today))
+        .map(saved -> preferenceData(saved, customerRetention(scope), sessionToken))
+        .orElseGet(
+            () ->
+                new PreferenceData(
+                    false,
+                    0,
+                    List.of(),
+                    null,
+                    null,
+                    null,
+                    retentionUntil,
+                    noticeProvider.current().noticeVersion(),
+                    PREFERENCE_DISCLOSURE_VERSION,
+                    CustomerPreferenceNotice.TEXT,
+                    sessionBinding(sessionToken)));
+  }
+
+  @Transactional
+  public PreferenceData savePreference(String sessionToken, PreferenceInput input) {
+    Scope scope = sessionScope(sessionToken);
+    if (!HmacSupport.constantTimeEquals(
+        sessionBinding(sessionToken), input == null ? null : input.sessionBinding())) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    if (input == null || input.expectedVersion() == null || input.expectedVersion() < 0) {
+      throw new BusinessException(ErrorCode.INVALID_REQUEST);
+    }
+    var notice = noticeProvider.current();
+    if (!notice.noticeVersion().equals(input.acknowledgedNoticeVersion())) {
+      throw new BusinessException(ErrorCode.NOTICE_VERSION_CHANGED);
+    }
+    if (!PREFERENCE_DISCLOSURE_VERSION.equals(input.acknowledgedPreferenceDisclosureVersion())) {
+      throw new BusinessException(ErrorCode.NOTICE_VERSION_CHANGED);
+    }
+    if (input.preferredWeekdays() != null && input.preferredWeekdays().contains(null)) {
+      throw new BusinessException(ErrorCode.INVALID_REQUEST);
+    }
+    List<DayOfWeek> weekdays =
+        input.preferredWeekdays() == null
+            ? List.of()
+            : input.preferredWeekdays().stream()
+                .distinct()
+                .sorted(Comparator.naturalOrder())
+                .toList();
+    if (weekdays.size() > 7
+        || (input.preferredStartTime() == null) != (input.preferredEndTime() == null)
+        || (input.preferredStartTime() != null
+            && !input.preferredStartTime().isBefore(input.preferredEndTime()))
+        || (weekdays.isEmpty() && input.preferredStartTime() == null)) {
+      throw new BusinessException(ErrorCode.INVALID_REQUEST);
+    }
+    Customer customer = lockCustomer(scope);
+    CustomerVisitPreference preference =
+        preferences.findForUpdate(scope.officeId(), scope.customerId()).orElse(null);
+    boolean expired =
+        preference != null
+            && preference
+                .getRetentionUntil()
+                .isBefore(LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))));
+    long actualVersion = preference == null || expired ? 0 : preference.getVersion();
+    if (actualVersion != input.expectedVersion()) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    if (preference == null)
+      preference = CustomerVisitPreference.create(scope.officeId(), scope.customerId());
+    LocalDate saveRetention =
+        actualVersion == 0
+            ? preferenceRetention(scope, customer)
+            : earlier(preference.getRetentionUntil(), customer.getRetentionUntil());
+    preference.confirm(
+        String.join(",", weekdays.stream().map(DayOfWeek::name).toList()),
+        input.preferredStartTime(),
+        input.preferredEndTime(),
+        saveRetention,
+        clock.instant());
+    CustomerVisitPreference saved = preferences.saveAndFlush(preference);
+    noticeAcks.saveAndFlush(
+        ConsentGuestNoticeAck.customerPreferenceSave(
+            scope.officeId(),
+            scope.linkId(),
+            notice.noticeCode(),
+            notice.noticeVersion(),
+            PREFERENCE_DISCLOSURE_VERSION,
+            CustomerPreferenceNotice.SHA256,
+            Math.toIntExact(saved.getVersion()),
+            clock.instant()));
+    return preferenceData(saved, customer.getRetentionUntil(), sessionToken);
+  }
+
+  @Transactional
+  public PreferenceData deletePreference(
+      String sessionToken, long expectedVersion, String expectedSessionBinding) {
+    Scope scope = sessionScope(sessionToken);
+    if (!HmacSupport.constantTimeEquals(sessionBinding(sessionToken), expectedSessionBinding)) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    Customer customer = lockCustomer(scope);
+    LocalDate retentionUntil = preferenceRetention(scope, customer);
+    CustomerVisitPreference preference =
+        preferences.findForUpdate(scope.officeId(), scope.customerId()).orElse(null);
+    if (preference == null
+        || preference
+            .getRetentionUntil()
+            .isBefore(LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))))) {
+      if (expectedVersion != 0) throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+      return new PreferenceData(
+          false,
+          0,
+          List.of(),
+          null,
+          null,
+          null,
+          retentionUntil,
+          noticeProvider.current().noticeVersion(),
+          PREFERENCE_DISCLOSURE_VERSION,
+          CustomerPreferenceNotice.TEXT,
+          sessionBinding(sessionToken));
+    }
+    if (preference.getVersion() != expectedVersion) {
+      throw new BusinessException(ErrorCode.INVALID_TRANSITION);
+    }
+    preference.deactivate(clock.instant());
+    return preferenceData(
+        preferences.saveAndFlush(preference), customer.getRetentionUntil(), sessionToken);
+  }
+
+  private PreferenceData preferenceData(
+      CustomerVisitPreference preference, LocalDate currentRetention, String sessionToken) {
+    String days = preference.getPreferredWeekdays();
+    LocalDate retentionUntil =
+        preference.getRetentionUntil().isBefore(currentRetention)
+            ? preference.getRetentionUntil()
+            : currentRetention;
+    return new PreferenceData(
+        preference.isActive(),
+        preference.getVersion(),
+        !preference.isActive() || days == null || days.isEmpty()
+            ? List.of()
+            : java.util.Arrays.stream(days.split(",")).map(DayOfWeek::valueOf).toList(),
+        preference.isActive() ? preference.getPreferredStartTime() : null,
+        preference.isActive() ? preference.getPreferredEndTime() : null,
+        preference.isActive() ? preference.getConfirmedAt() : null,
+        retentionUntil,
+        noticeProvider.current().noticeVersion(),
+        PREFERENCE_DISCLOSURE_VERSION,
+        CustomerPreferenceNotice.TEXT,
+        sessionBinding(sessionToken));
+  }
+
+  private String sessionBinding(String sessionToken) {
+    return HmacSupport.hmacHex(
+        properties.ticketSecret(), "customer-preference-session|" + sessionToken);
+  }
+
+  private static LocalDate earlier(LocalDate left, LocalDate right) {
+    return left.isBefore(right) ? left : right;
+  }
+
+  private Customer lockCustomer(Scope scope) {
+    Customer customer =
+        customers
+            .findForUpdate(scope.customerId(), scope.officeId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    String email = customer.getEmail();
+    if (customer.isArchived()
+        || customer
+            .getRetentionUntil()
+            .isBefore(LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))))
+        || email == null
+        || !HmacSupport.constantTimeEquals(
+            emailHash(scope.email()), emailHash(email.trim().toLowerCase(java.util.Locale.ROOT)))) {
+      throw new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    }
+    return customer;
+  }
+
+  private LocalDate preferenceRetention(Scope scope) {
+    Customer customer =
+        customers
+            .findByIdAndOfficeId(scope.customerId(), scope.officeId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    return preferenceRetention(scope, customer);
+  }
+
+  private LocalDate customerRetention(Scope scope) {
+    Customer customer =
+        customers
+            .findByIdAndOfficeId(scope.customerId(), scope.officeId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    return customer.getRetentionUntil();
+  }
+
+  private LocalDate preferenceRetention(Scope scope, Customer customer) {
+    LocalDate linkRetention =
+        links
+            .findById(scope.linkId())
+            .orElseThrow(() -> new BusinessException(ErrorCode.PUBLIC_LINK_NOT_FOUND))
+            .getRetentionUntil();
+    return linkRetention.isBefore(customer.getRetentionUntil())
+        ? linkRetention
+        : customer.getRetentionUntil();
   }
 
   @Transactional(readOnly = true)

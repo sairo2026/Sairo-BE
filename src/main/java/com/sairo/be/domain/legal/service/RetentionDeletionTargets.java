@@ -15,21 +15,23 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 /**
- * 보관 기한이 지난 데이터군의 파기 큐 대상이다(기술설계 3.18, OPS-13). 비회원 링크 입력과 승인자 개인정보는 사무소 단위, 로그인 기록과 카카오 연결 끊기 이력은
- * 전체 단위(대상 ID 0) 한 건으로 큐에 오른다. 대상 건수는 실행 시점의 기한으로 다시 센다. 승인자 개인정보는 행을 지우지 않고 익명화한다.
+ * 보관 기한이 지난 데이터군의 파기 큐 대상이다(기술설계 3.18, OPS-13). 비회원 링크 입력·고객 방문 선호·승인자 개인정보는 사무소 단위, 로그인 기록과 카카오 연결
+ * 끊기 이력은 전체 단위(대상 ID 0) 한 건으로 큐에 오른다. 대상 건수는 실행 시점의 기한으로 다시 센다. 승인자 개인정보는 행을 지우지 않고 익명화한다.
  */
 @Profile("!migrate")
 @Component
 public class RetentionDeletionTargets {
 
   public static final String GUEST_LINK_INPUT = "GUEST_LINK_INPUT";
+  public static final String CUSTOMER_VISIT_PREFERENCE = "CUSTOMER_VISIT_PREFERENCE";
   public static final String APPROVER_PERSONAL = "APPROVER_PERSONAL";
   public static final String LOGIN_HISTORY = "LOGIN_HISTORY";
   public static final String KAKAO_UNLINK_EVENT = "KAKAO_UNLINK_EVENT";
   public static final long GLOBAL_TARGET_ID = 0L;
   public static final String RETENTION_PURGE = "RETENTION_PURGE";
 
-  static final Set<String> OFFICE_TYPES = Set.of(GUEST_LINK_INPUT, APPROVER_PERSONAL);
+  static final Set<String> OFFICE_TYPES =
+      Set.of(GUEST_LINK_INPUT, CUSTOMER_VISIT_PREFERENCE, APPROVER_PERSONAL);
   static final Set<String> GLOBAL_TYPES =
       Stream.concat(
               Stream.of(LOGIN_HISTORY, KAKAO_UNLINK_EVENT), RetentionGroupPurger.TYPES.stream())
@@ -38,6 +40,9 @@ public class RetentionDeletionTargets {
   private static final String GUEST_LINK_WHERE =
       " FROM visit_customer_link l JOIN visit_coordination c ON c.id = l.coordination_id WHERE"
           + " c.office_id = :office AND l.retention_until < :today";
+  private static final String PREFERENCE_WHERE =
+      " FROM customer_visit_preference p JOIN customer c ON c.id = p.customer_id AND c.office_id = p.office_id"
+          + " WHERE p.office_id = :office AND LEAST(p.retention_until, c.retention_until) < :today";
   private static final String APPROVAL_WHERE =
       " FROM property_access_approval a JOIN property p ON p.id = a.property_id WHERE p.office_id ="
           + " :office AND a.anonymized_at IS NULL AND a.retention_until < :today AND"
@@ -62,6 +67,8 @@ public class RetentionDeletionTargets {
   public long dueCount(String targetType, long targetId, Instant now) {
     return switch (targetType) {
       case GUEST_LINK_INPUT -> officeCount("SELECT count(*)" + GUEST_LINK_WHERE, targetId, now);
+      case CUSTOMER_VISIT_PREFERENCE ->
+          officeCount("SELECT count(*)" + PREFERENCE_WHERE, targetId, now);
       case APPROVER_PERSONAL -> officeCount("SELECT count(*)" + APPROVAL_WHERE, targetId, now);
       case LOGIN_HISTORY ->
           cutoff("LOGIN_HISTORY", now)
@@ -96,6 +103,8 @@ public class RetentionDeletionTargets {
     String from =
         switch (targetType) {
           case GUEST_LINK_INPUT -> GUEST_LINK_WHERE.replace("c.office_id = :office AND ", "");
+          case CUSTOMER_VISIT_PREFERENCE ->
+              PREFERENCE_WHERE.replace("p.office_id = :office AND ", "");
           case APPROVER_PERSONAL -> APPROVAL_WHERE.replace("p.office_id = :office AND ", "");
           default -> throw new IllegalArgumentException("사무소 단위 데이터군이 아니다: " + targetType);
         };
@@ -127,6 +136,15 @@ public class RetentionDeletionTargets {
                   "DELETE FROM visit_customer_link l USING visit_coordination c WHERE c.id ="
                       + " l.coordination_id AND c.office_id = :office AND l.retention_until <"
                       + " :today")
+              .param("office", targetId)
+              .param("today", today(now))
+              .update();
+      case CUSTOMER_VISIT_PREFERENCE ->
+          jdbcClient
+              .sql(
+                  "DELETE FROM customer_visit_preference p USING customer c WHERE c.id = p.customer_id"
+                      + " AND c.office_id = p.office_id AND p.office_id = :office"
+                      + " AND LEAST(p.retention_until, c.retention_until) < :today")
               .param("office", targetId)
               .param("today", today(now))
               .update();
